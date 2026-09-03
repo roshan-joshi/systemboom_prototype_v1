@@ -611,20 +611,24 @@ function GeoLabel({
       for (const id of Object.keys(registry.current)) {
         const e = registry.current[id];
         if (e === slot || !e.on) continue;
-        // A child may sit right beside its selected parent — the parent
-        // floats larger while the child reads below it; both belong.
-        if (selection && id === selection.id && selection.children.has(spec.id)) continue;
+        // A child may sit right beside its parent (Kathmandu under Nepal) —
+        // the parent floats larger while the child reads below it; both
+        // belong, and near the deep floor the child is the live affordance.
+        if (id === spec.parent) continue;
         if (e.pri < priNow || (e.pri === priNow && id < spec.id)) {
           // Office clearance shrinks with distance (beacons are tiny at
-          // planetary scale), and the SELECTED geography and its children
-          // may coexist with an office entirely — office text floats above
-          // the mast while place text sits below its anchor, so the two
-          // never actually overlap.
-          const selectionRelevant =
-            !!selection && (spec.id === selection.id || selection.children.has(spec.id));
+          // planetary scale). Country and city names coexist with an office
+          // entirely — office text floats above the mast while place text
+          // sits below its anchor, so the two never actually overlap, and a
+          // country hosting a SYSTEMBOOM office must keep its clickable name
+          // (clicking the NAME is the only route into that geography's map).
+          const officeCoexists =
+            spec.kind === "country" ||
+            spec.kind === "city" ||
+            (!!selection && (spec.id === selection.id || selection.children.has(spec.id)));
           const need =
             e.pri <= 2
-              ? selectionRelevant
+              ? officeCoexists
                 ? 0
                 : Math.max(30, Math.min(70, (70 * 2.2) / dist))
               : shortViewport

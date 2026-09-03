@@ -21,19 +21,17 @@ import { LeafletEarth } from "./LeafletEarth";
 
 export interface EarthExplorerProps {
   visible: boolean;
-  /** Coordinates handed over from the R3F approach (optional arrival zoom). */
-  initialView: { lat: number; lon: number; zoom?: number };
+  /** Coordinates handed over from the R3F approach (optional zoom / semantic target). */
+  initialView: { lat: number; lon: number; zoom?: number; geoId?: string };
   /** When set, the journey continues to this SYSTEMBOOM office and selects it. */
   initialOfficeId?: string | null;
   reduced: boolean;
   /** Called when the surface releases control back to the R3F Earth. */
   onExited: () => void;
-  /** Semantic ladder: a breadcrumb navigated outward past map scales. */
+  /** Map breadcrumb EARTH — the explicit exit back to the 3D Earth. */
   onNavigateOut?: (target: {
-    kind: "earth" | "continent" | "country";
+    kind: "earth";
     name: string;
-    lat?: number;
-    lon?: number;
     from: { lat: number; lon: number; zoom: number };
   }) => void;
 }

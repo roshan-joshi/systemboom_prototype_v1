@@ -38,7 +38,7 @@ export interface DestinationContext {
   displayAddress?: string;
   /** Honest coordinate-quality note, when precision demands it. */
   precisionNote?: string;
-  source: "systemboom-office" | "curated" | "surface" | "google-places";
+  source: "systemboom-office" | "curated" | "surface" | "google-places" | "osm-reverse";
 }
 
 /** "60.40° N · 51.50° W" */
@@ -152,6 +152,71 @@ export function destinationFromSurface(
     eyebrow: "Selected location",
     latitude: lat,
     longitude: lon,
+    precision: "region",
+    description: region || undefined,
+    source: "surface",
+  };
+}
+
+/**
+ * A resolved map selection (Geographic Address Trail leaf) as destination
+ * context. Honesty ladder: known SYSTEMBOOM identity → resolver-named place
+ * → restrained address detail → coordinates. Never invented text.
+ */
+export function destinationFromResolved(loc: {
+  lat: number;
+  lon: number;
+  country?: string;
+  city?: string;
+  district?: string;
+  road?: string;
+  postcode?: string;
+  placeName?: string;
+  office?: SystemboomOffice;
+  knownPlace?: GeoPlace;
+  source: string;
+}): DestinationContext {
+  if (loc.office) return destinationFromOffice(loc.office);
+  if (loc.knownPlace) return destinationFromPlace(loc.knownPlace);
+  if (loc.placeName) {
+    return {
+      id: `sel-${loc.lat.toFixed(4)}-${loc.lon.toFixed(4)}`,
+      type: "PLACE",
+      name: loc.placeName,
+      eyebrow: [loc.district, loc.city].filter(Boolean).join(" · ") || "Selected place",
+      country: loc.country,
+      latitude: loc.lat,
+      longitude: loc.lon,
+      precision: "approximate",
+      displayAddress:
+        [loc.road, loc.postcode].filter(Boolean).join("\n") || undefined,
+      source: "osm-reverse",
+    };
+  }
+  if (loc.road) {
+    return {
+      id: `sel-${loc.lat.toFixed(4)}-${loc.lon.toFixed(4)}`,
+      type: "PLACE",
+      name: loc.road,
+      eyebrow: "Selected location",
+      country: loc.country,
+      latitude: loc.lat,
+      longitude: loc.lon,
+      precision: "approximate",
+      displayAddress: [loc.road, loc.city, loc.postcode, loc.country]
+        .filter(Boolean)
+        .join("\n"),
+      source: "osm-reverse",
+    };
+  }
+  const region = [loc.district, loc.city, loc.country].filter(Boolean).join(" · ");
+  return {
+    id: `sel-${loc.lat.toFixed(4)}-${loc.lon.toFixed(4)}`,
+    type: "SURFACE_TARGET",
+    name: formatCoordinates(loc.lat, loc.lon),
+    eyebrow: "Selected location",
+    latitude: loc.lat,
+    longitude: loc.lon,
     precision: "region",
     description: region || undefined,
     source: "surface",

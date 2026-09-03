@@ -17,13 +17,7 @@ import { CosmosAmbience, storedMuted } from "@/lib/cosmos/ambience";
 import { useReducedMotionPref } from "@/lib/use-reduced-motion";
 import { PLANET_BY_ID, type PlanetId } from "@/lib/cosmos/planets";
 import { SYSTEMBOOM_OFFICES } from "@/lib/systemboom-origin";
-import {
-  GEO_BY_ID,
-  geoByName,
-  geoChildren,
-  geoPath,
-  type GlobeGeoLabel,
-} from "@/lib/earth/globe-geo";
+import { geoChildren, geoPath, type GlobeGeoLabel } from "@/lib/earth/globe-geo";
 import { EarthExplorer } from "@/components/earth/EarthExplorer";
 import { Scene } from "./Scene";
 import type { SurfaceTarget } from "./Earth";
@@ -78,11 +72,16 @@ export default function CosmosExperience() {
   const earthBodyRef = useRef<THREE.Mesh | null>(null);
   const facingRef = useRef({ lat: 27.7, lon: 85.3 });
   const surfaceTargetRef = useRef<SurfaceTarget | null>(null);
-  const handoffView = useRef<{ lat: number; lon: number; zoom?: number }>({
+  const handoffView = useRef<{ lat: number; lon: number; zoom?: number; geoId?: string }>({
     lat: 27.7,
     lon: 85.3,
   });
-  const pendingTarget = useRef<{ lat: number; lon: number; zoom?: number } | null>(null);
+  const pendingTarget = useRef<{
+    lat: number;
+    lon: number;
+    zoom?: number;
+    geoId?: string;
+  } | null>(null);
   /** Semantic navigation memory: the deep map context left via the ladder. */
   const mapReturn = useRef<{ lat: number; lon: number; zoom: number } | null>(null);
   /** The current semantic geographic subject (null = whole Earth). */
@@ -91,13 +90,6 @@ export default function CosmosExperience() {
   useEffect(() => {
     selectedGeoRef.current = selectedGeo;
   }, [selectedGeo]);
-
-  /** 3D arrival distance per geographic tier (Earth radii). City targets
-      settle at the deepest credible floor — they do NOT open the map. */
-  const GEO_NAV_DIST: Record<string, number> = useMemo(
-    () => ({ continent: 2.7, country: 1.85, region: 1.72, city: 1.3 }),
-    [],
-  );
 
   /** Map arrival scale per semantic tier — the target decides the depth. */
   const GEO_MAP_ZOOM: Record<string, number> = useMemo(
@@ -194,7 +186,7 @@ export default function CosmosExperience() {
   // semantic ladder returns to that deep context — no second search needed.
   const onApproachEarth = useCallback(() => {
     const surface = surfaceTargetRef.current;
-    let target: { lat: number; lon: number; zoom?: number } | null =
+    let target: { lat: number; lon: number; zoom?: number; geoId?: string } | null =
       surface && performance.now() - surface.at < 1600
         ? { lat: surface.lat, lon: surface.lon }
         : null;
@@ -211,6 +203,7 @@ export default function CosmosExperience() {
         lat: sel.lat,
         lon: sel.lon,
         zoom: GEO_MAP_ZOOM[sel.kind] ?? 11.5,
+        geoId: sel.id,
       };
     }
     const mem = mapReturn.current;
@@ -269,66 +262,30 @@ export default function CosmosExperience() {
     setJourney({ lat: target.lat, lon: target.lon, kind: "focus" });
   }, []);
 
-  /* ---------- THE WORLD ITSELF IS THE INTERFACE ----------
-     One semantic navigation model: globe labels, the globe breadcrumb and
-     the map breadcrumb all read and write the same selected geography.
-     Clicking geography travels; the ladder works in both directions. */
+  /* ---------- THE WORLD ITSELF IS THE INTERFACE (final model) ----------
+     Manual zoom/pinch/drag = explore the 3D Earth indefinitely.
+     Clicking a GEOGRAPHIC NAME = explicit "take me there": one guided
+     journey straight through the atmosphere into the map, framed on that
+     geography. Offices keep their special two-stage behaviour. */
 
   const [geoAnnounce, setGeoAnnounce] = useState("");
 
-  const announceGeo = useCallback((label: GlobeGeoLabel) => {
-    if (label.kind === "continent") setGeoAnnounce(`Viewing ${label.name}.`);
-    else if (label.kind === "country") setGeoAnnounce(`Viewing ${label.name} from Earth.`);
-    else {
-      const country = label.parent ? GEO_BY_ID[label.parent]?.name : undefined;
-      setGeoAnnounce(`Viewing ${label.name}${country ? `, ${country}` : ""}.`);
-    }
+  /** A geographic name on the globe was activated: travel to its map. */
+  const geoNavigate = useCallback((label: GlobeGeoLabel) => {
+    setSelected("earth");
+    setMode("focus");
+    setInfoOpen(false);
+    // Brief territory acknowledgement rides along during the descent
+    // (the selected-country boundary renders while the journey runs).
+    setSelectedGeo(label);
+    pendingTarget.current = {
+      lat: label.lat,
+      lon: label.lon,
+      geoId: label.id,
+    };
+    setJourney({ lat: label.lat, lon: label.lon, kind: "descend" });
+    setGeoAnnounce(`Travelling to ${label.name}.`);
   }, []);
-
-  /** A geographic name (globe label or breadcrumb ancestor) was activated. */
-  const geoNavigate = useCallback(
-    (label: GlobeGeoLabel) => {
-      setSelected("earth");
-      setMode("focus");
-      setInfoOpen(false);
-      const floor = (isMobile ? 1.55 : 1.62) * 1.08;
-      const isReactivation = selectedGeo?.id === label.id;
-
-      // Deliberate second activation of the already-selected deepest
-      // geography while resting at the quality floor: continue into the map
-      // at that target's semantic scale.
-      if (
-        isReactivation &&
-        label.kind !== "continent" &&
-        earthDistRef.current < floor
-      ) {
-        const mem = mapReturn.current;
-        const same =
-          mem && Math.hypot(mem.lat - label.lat, mem.lon - label.lon) < 0.6;
-        pendingTarget.current = same
-          ? { lat: mem.lat, lon: mem.lon, zoom: mem.zoom }
-          : { lat: label.lat, lon: label.lon, zoom: GEO_MAP_ZOOM[label.kind] ?? 11.5 };
-        setJourney({ lat: label.lat, lon: label.lon, kind: "descend" });
-        setGeoAnnounce(`Entering map view near ${label.name}.`);
-        return;
-      }
-      if (isReactivation && !journey) {
-        // Already the subject and not at the floor — quiet acknowledgement.
-        announceGeo(label);
-        return;
-      }
-
-      setSelectedGeo(label);
-      setJourney({
-        lat: label.lat,
-        lon: label.lon,
-        kind: "inspect",
-        dist: GEO_NAV_DIST[label.kind] ?? 1.85,
-      });
-      announceGeo(label);
-    },
-    [GEO_NAV_DIST, GEO_MAP_ZOOM, selectedGeo, journey, isMobile, announceGeo],
-  );
 
   /* ---------- keyboard: world-class Earth without a mouse ----------
      Arrows rotate, +/- zoom, G enters geography mode (arrows cycle the
@@ -476,13 +433,16 @@ export default function CosmosExperience() {
     return () => [t1, t2, t3].forEach(clearTimeout);
   }, [reduced]);
 
-  /** The map's breadcrumb ladder navigated outward past the map's scales. */
+  /**
+   * The map breadcrumb's EARTH: the explicit exit back to the living 3D
+   * Earth. Everything else in the map ladder navigates WITHIN the map.
+   * The globe returns already facing the geography the user was viewing —
+   * never an unrelated hemisphere.
+   */
   const navigateOut = useCallback(
     (target: {
-      kind: "earth" | "continent" | "country";
+      kind: "earth";
       name: string;
-      lat?: number;
-      lon?: number;
       from: { lat: number; lon: number; zoom: number };
     }) => {
       mapReturn.current = target.from;
@@ -490,56 +450,34 @@ export default function CosmosExperience() {
       setGeoAnnounce("Returning to Earth view.");
       setTimeout(
         () => {
-          if (target.kind === "earth") {
-            setSelectedGeo(null);
-            cameraHandleRef.current?.resetView();
-            setGeoAnnounce("Viewing full Earth.");
-          } else {
-            // The returned territory arrives already selected — the Earth
-            // quietly acknowledges where the user came back to.
-            const label = geoByName(target.name);
-            if (label) setSelectedGeo(label);
-            setJourney({
-              lat: target.lat ?? 0,
-              lon: target.lon ?? 0,
-              kind: "inspect",
-              dist: GEO_NAV_DIST[target.kind],
-            });
-            setGeoAnnounce(`Viewing ${target.name} from Earth.`);
-          }
+          setSelectedGeo(null);
+          setJourney({
+            lat: target.from.lat,
+            lon: target.from.lon,
+            kind: "inspect",
+            dist: 5.7,
+          });
+          setGeoAnnounce("Viewing full Earth.");
         },
         reduced ? 100 : 550,
       );
     },
-    [exitExplorer, reduced, GEO_NAV_DIST],
+    [exitExplorer, reduced],
   );
 
-  // Escape walks one meaningful semantic level out
+  // Escape walks one meaningful level out
   // (the surface handles its own Escape while live).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || explorerStage !== "off" || gMode) return;
       if (journey) setJourney(null);
       else if (infoOpen) setInfoOpen(false);
-      else if (selectedGeo) {
-        const parent = selectedGeo.parent ? GEO_BY_ID[selectedGeo.parent] : null;
-        if (parent) geoNavigate(parent);
-        else geoNavigateEarth();
-      } else if (mode === "focus") returnToSystem();
+      else if (selectedGeo) setSelectedGeo(null);
+      else if (mode === "focus") returnToSystem();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [
-    mode,
-    explorerStage,
-    journey,
-    infoOpen,
-    selectedGeo,
-    geoNavigate,
-    geoNavigateEarth,
-    returnToSystem,
-    gMode,
-  ]);
+  }, [mode, explorerStage, journey, infoOpen, selectedGeo, returnToSystem, gMode]);
 
   const announcement =
     explorerStage === "live"

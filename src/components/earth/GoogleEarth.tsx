@@ -24,15 +24,35 @@ import { CHIP_BASE, useChrome } from "@/components/cosmos/overlays";
 import { DESTINATIONS, type Destination } from "@/lib/earth/geo-data";
 import { SYSTEMBOOM_OFFICES } from "@/lib/systemboom-origin";
 import { crumbTarget, formatAltitude, resolveContext } from "@/lib/earth/breadcrumb";
+import { geoByName } from "@/lib/earth/globe-geo";
+import { geoMapTarget, type GeoBounds, type MapTarget } from "@/lib/earth/map-target";
 import { googleMapsKey, loadGoogleMaps } from "@/lib/earth/google-loader";
 import {
   destinationFromGooglePlace,
   destinationFromOffice,
+  destinationFromResolved,
   destinationFromSearch,
   destinationFromSurface,
   type DestinationContext,
 } from "@/lib/earth/destination";
+import {
+  announceResolved,
+  resolveLocationLocal,
+  trailFromResolved,
+  TRAIL_LEVEL_ZOOM,
+  type TrailEntry,
+} from "@/lib/earth/locate";
+import { geoPath } from "@/lib/earth/globe-geo";
 import { DestinationPanel } from "./DestinationPanel";
+
+/** The address trail for a curated semantic geography (globe lineage). */
+function trailForGeo(geoId: string): TrailEntry[] {
+  const entries: TrailEntry[] = [{ name: "Earth", level: "earth", lat: 0, lon: 0 }];
+  for (const l of geoPath(geoId)) {
+    entries.push({ name: l.name, level: l.kind, lat: l.lat, lon: l.lon, geoId: l.id });
+  }
+  return entries;
+}
 
 /** Camera range (m) at handoff — matches the R3F Earth's apparent size. */
 const START_RANGE = 9_000_000;
@@ -54,6 +74,14 @@ interface SearchResult {
 /** Approximate Leaflet-zoom ↔ Map3D-range conversions (900px viewport basis). */
 const zoomToRange = (zoom: number, lat: number) =>
   (156543 * Math.cos((lat * Math.PI) / 180) * 900) / 2 ** zoom;
+/** Camera range that comfortably frames a lat/lon bounds extent. */
+const boundsToRange = (bounds: GeoBounds): number => {
+  const [[latMin, lonMin], [latMax, lonMax]] = bounds;
+  const midLat = (latMin + latMax) / 2;
+  const latMeters = (latMax - latMin) * 111_320;
+  const lonMeters = (lonMax - lonMin) * 111_320 * Math.cos((midLat * Math.PI) / 180);
+  return Math.max(latMeters, lonMeters) * 1.2;
+};
 const rangeToZoom = (range: number, lat: number) =>
   Math.max(
     3,
@@ -72,8 +100,8 @@ export function GoogleEarth({
   onNavigateOut,
 }: {
   visible: boolean;
-  /** Coordinates handed over from the R3F approach raycast (optional zoom). */
-  initialView: { lat: number; lon: number; zoom?: number };
+  /** Coordinates handed over from the R3F approach (zoom or semantic target). */
+  initialView: { lat: number; lon: number; zoom?: number; geoId?: string };
   /** Continue the journey to this SYSTEMBOOM office and select it. */
   initialOfficeId?: string | null;
   reduced: boolean;
@@ -81,12 +109,10 @@ export function GoogleEarth({
   onExited: () => void;
   /** Missing key / load failure — the provider switch falls back gracefully. */
   onFailed: () => void;
-  /** Semantic ladder: a breadcrumb navigated outward past map scales. */
+  /** Map breadcrumb EARTH — the explicit exit back to the 3D Earth. */
   onNavigateOut?: (target: {
-    kind: "earth" | "continent" | "country";
+    kind: "earth";
     name: string;
-    lat?: number;
-    lon?: number;
     from: { lat: number; lon: number; zoom: number };
   }) => void;
 }) {
@@ -109,6 +135,30 @@ export function GoogleEarth({
   const [destination, setDestination] = useState<DestinationContext | null>(null);
   /** Journeys invalidate any pending arrival — no stale panels mid-flight. */
   const arrivalToken = useRef(0);
+
+  /* ---------- GEOGRAPHIC ADDRESS TRAIL (Phase 1.10C, local model) ------
+     Google-side reverse geocoding activates with the key; until verified,
+     selections resolve through the honest local model only. */
+  const [trail, setTrail] = useState<TrailEntry[] | null>(null);
+  const [selAnnounce, setSelAnnounce] = useState("");
+  const trailRef = useRef<TrailEntry[] | null>(null);
+  useEffect(() => {
+    trailRef.current = trail;
+  }, [trail]);
+
+  const selectPoint = (lat: number, lon: number) => {
+    if (exiting.current) return;
+    const local = resolveLocationLocal(lat, lon);
+    arrivalToken.current++;
+    setTrail(trailFromResolved(local));
+    setDestination(destinationFromResolved(local));
+    setSelAnnounce(announceResolved(local));
+    placeMarker(lat, lon, true);
+  };
+  const selectPointRef = useRef(selectPoint);
+  useEffect(() => {
+    selectPointRef.current = selectPoint;
+  });
 
   /** Camera settles → brief pause → the destination panel rises. */
   const scheduleArrival = (ctx: DestinationContext, afterMs: number) => {
@@ -174,6 +224,18 @@ export function GoogleEarth({
           /* decorative */
         }
 
+        // Address trail: a click asks "what is here?" — selection, never
+        // repositioning (Map3DElement gmp-click, best-effort).
+        try {
+          (map as unknown as EventTarget).addEventListener("gmp-click", (ev) => {
+            const pos = (ev as unknown as { position?: { lat: number; lng: number } })
+              .position;
+            if (pos) selectPointRef.current(pos.lat, pos.lng);
+          });
+        } catch {
+          /* older channel without gmp-click — clicks stay gestures */
+        }
+
         // Camera context: poll (version-tolerant) → breadcrumb + return watch.
         pollTimer.current = setInterval(() => {
           const m = mapRef.current;
@@ -199,6 +261,7 @@ export function GoogleEarth({
           const m = mapRef.current;
           if (!m) return;
           const office = SYSTEMBOOM_OFFICES.find((o) => o.id === initialOfficeId);
+          const geoTarget = initialView.geoId ? geoMapTarget(initialView.geoId) : null;
           if (office) {
             const endCamera = {
               center: { lat: office.latitude, lng: office.longitude, altitude: 0 },
@@ -216,6 +279,16 @@ export function GoogleEarth({
               scheduleArrival(destinationFromOffice(office), 4200);
             }
             placeMarker(office.latitude, office.longitude, true);
+            setTrail(
+              trailFromResolved(
+                resolveLocationLocal(office.latitude, office.longitude),
+              ),
+            );
+          } else if (geoTarget) {
+            // A clicked geographic NAME arrives at the real geography —
+            // country bounds framed, continent extent, city scale. Quiet
+            // arrival: no destination card for country/continent.
+            navigateGeo3D(geoTarget);
           } else {
             const settleRange = initialView.zoom
               ? Math.max(1_400, zoomToRange(initialView.zoom, initialView.lat))
@@ -321,6 +394,12 @@ export function GoogleEarth({
   };
 
   const flyToDestination = (d: Destination) => {
+    // Search shares the click path's location identity (canonical trail).
+    const searchTrail = trailFromResolved(resolveLocationLocal(d.lat, d.lon));
+    if (searchTrail[searchTrail.length - 1]?.name !== d.name) {
+      searchTrail.push({ name: d.name, level: "place", lat: d.lat, lon: d.lon });
+    }
+    setTrail(searchTrail);
     const range = Math.max(d.altitude, 1_400);
     const tilt = Math.min(Math.max(90 + d.pitch, 0), 62);
     flyTo(
@@ -335,40 +414,116 @@ export function GoogleEarth({
   /* ---------- SEMANTIC ZOOM LADDER: breadcrumbs are navigation ---------- */
   const [crumbsExpanded, setCrumbsExpanded] = useState(false);
 
+  /**
+   * Navigate an ancestor of the active address trail: truncate to that rung
+   * and fly to its scale. EARTH alone exits to the 3D globe.
+   */
+  const navigateTrail = (name: string): boolean => {
+    const t = trailRef.current;
+    const m = mapRef.current;
+    if (!t || !m) return false;
+    const idx = t.findIndex((e) => e.name === name);
+    if (idx < 0) return false;
+    const entry = t[idx];
+    if (entry.level === "earth") {
+      if (!onNavigateOut) return true;
+      exiting.current = true;
+      m.stopCameraAnimation?.();
+      const center = m.center ?? { lat: 0, lng: 0 };
+      onNavigateOut({
+        kind: "earth",
+        name: "Earth",
+        from: {
+          lat: center.lat,
+          lon: center.lng,
+          zoom: rangeToZoom(m.range ?? DESCENT_RANGE, center.lat),
+        },
+      });
+      return true;
+    }
+    setTrail(t.slice(0, idx + 1));
+    if ((entry.level === "country" || entry.level === "continent") && entry.geoId) {
+      const mt = geoMapTarget(entry.geoId);
+      if (mt) {
+        navigateGeo3D(mt);
+        return true;
+      }
+    }
+    const range = Math.max(1_400, zoomToRange(TRAIL_LEVEL_ZOOM[entry.level], entry.lat));
+    flyTo(entry.lat, entry.lon, range, 0, null);
+    return true;
+  };
+
+  /** Fly the 3D map to a semantic geography — bounds framed, points scaled. */
+  const navigateGeo3D = (t: MapTarget) => {
+    setTrail(trailForGeo(t.id));
+    const range = t.bounds
+      ? boundsToRange(t.bounds)
+      : Math.max(1_400, zoomToRange(t.zoom ?? 9.5, t.lat));
+    const midLat = t.bounds ? (t.bounds[0][0] + t.bounds[1][0]) / 2 : t.lat;
+    const midLon = t.bounds ? (t.bounds[0][1] + t.bounds[1][1]) / 2 : t.lon;
+    // City arrivals may surface curated destination context; country and
+    // continent arrivals stay quiet — the framed geography is the answer.
+    const curatedCity =
+      t.kind === "city"
+        ? DESTINATIONS.find((d) => d.name.toLowerCase() === t.name.toLowerCase())
+        : undefined;
+    flyTo(midLat, midLon, range, 0, curatedCity ? destinationFromSearch(curatedCity) : null);
+  };
+
   const navigateCrumb = (name: string, isActive: boolean) => {
     const m = mapRef.current;
     if (!m || exiting.current || isActive) return;
     setCrumbsExpanded(false);
-    const center = m.center ?? { lat: 0, lng: 0 };
-    const from = {
-      lat: center.lat,
-      lon: center.lng,
-      zoom: rangeToZoom(m.range ?? DESCENT_RANGE, center.lat),
-    };
+    // An active address trail owns the ladder.
+    if (navigateTrail(name)) return;
     const target = crumbTarget(name);
     if (!target) return;
-    if (target.tier === "earth" || target.tier === "continent" || target.tier === "country") {
+    // ONLY the EARTH crumb exits through the atmosphere back to 3D.
+    if (target.tier === "earth") {
       if (!onNavigateOut) return;
       exiting.current = true;
       m.stopCameraAnimation?.();
+      const center = m.center ?? { lat: 0, lng: 0 };
       onNavigateOut({
-        kind: target.tier,
+        kind: "earth",
         name: target.name,
-        lat: target.lat,
-        lon: target.lon,
-        from,
+        from: {
+          lat: center.lat,
+          lon: center.lng,
+          zoom: rangeToZoom(m.range ?? DESCENT_RANGE, center.lat),
+        },
       });
       return;
     }
-    const range = target.tier === "region" ? 300_000 : target.tier === "city" ? 30_000 : 4_000;
+    // Everything else navigates WITHIN the map.
+    if (target.tier === "continent" || target.tier === "country") {
+      const g = geoByName(target.name);
+      const mt = g ? geoMapTarget(g.id) : null;
+      if (mt) {
+        navigateGeo3D(mt);
+        return;
+      }
+    }
+    const range =
+      target.tier === "continent"
+        ? 7_000_000
+        : target.tier === "country"
+          ? 1_600_000
+          : target.tier === "region"
+            ? 300_000
+            : target.tier === "city"
+              ? 30_000
+              : 4_000;
     flyTo(target.lat, target.lon, range, target.tier === "district" ? 45 : 0, null);
   };
 
-  const compress = crumbs.length > 4 && !crumbsExpanded;
-  const crumbRows = crumbs.map((name, i) => ({
+  const ladder = trail ? trail.map((e) => e.name) : crumbs;
+  const compress = ladder.length > 4 && !crumbsExpanded;
+  const crumbRows = ladder.map((name, i) => ({
     name,
-    isActive: i === crumbs.length - 1,
-    hideOnMobile: compress && i > 0 && i < crumbs.length - 2,
+    isActive: i === ladder.length - 1,
+    hideOnMobile: compress && i > 0 && i < ladder.length - 2,
     ellipsisAfter: compress && i === 0,
   }));
 
@@ -420,11 +575,16 @@ export function GoogleEarth({
       e.stopPropagation();
       if (searchOpen) setSearchOpen(false);
       else if (destination) setDestination(null);
-      else requestReturnRef.current();
+      else {
+        // Semantic back: one rung up the active trail; EARTH exits to 3D.
+        const t = trailRef.current;
+        if (t && t.length >= 2) navigateTrail(t[t.length - 2].name);
+        else requestReturnRef.current();
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigateTrail reads refs
   }, [searchOpen, destination]);
 
   const curated = DESTINATIONS.filter(
@@ -631,6 +791,10 @@ export function GoogleEarth({
       {/* Screen-reader location context */}
       <p aria-live="polite" className="sr-only">
         {crumbs.join(", ")} — camera range {formatAltitude(altitude)}
+      </p>
+      {/* One announcement per explicit location selection — never per pan */}
+      <p aria-live="polite" className="sr-only">
+        {selAnnounce}
       </p>
     </div>
   );

@@ -24,18 +24,53 @@ import {
 import { MAP_TILES } from "@/lib/earth/tiles";
 import { SYSTEMBOOM_OFFICES } from "@/lib/systemboom-origin";
 import { crumbTarget, formatAltitude, resolveContext } from "@/lib/earth/breadcrumb";
+import { GLOBE_GEO_LABELS, geoByName } from "@/lib/earth/globe-geo";
+import { countryRings } from "@/lib/earth/country-shapes";
+import { geoMapTarget, type MapTarget } from "@/lib/earth/map-target";
 import {
   destinationFromOffice,
   destinationFromPlace,
+  destinationFromResolved,
   destinationFromSearch,
   destinationFromSurface,
   type DestinationContext,
 } from "@/lib/earth/destination";
+import {
+  announceResolved,
+  resolveLocationLocal,
+  resolveLocationOnline,
+  trailFromResolved,
+  TRAIL_LEVEL_ZOOM,
+  type TrailEntry,
+} from "@/lib/earth/locate";
+import { geoPath } from "@/lib/earth/globe-geo";
 import { DestinationPanel } from "./DestinationPanel";
 
 /** Leaflet zoom at which we hand back to the R3F Earth. */
 const EXIT_ZOOM = 4;
 const ENTRY_ZOOM = 5;
+
+/**
+ * The country boundary is content, not chrome — it lives INSIDE the inverted
+ * map container, so a dark steel line on day tiles auto-inverts to a light
+ * line on night tiles. One color, legible in both themes, no counter-invert.
+ */
+const TERRITORY_COLOR = "#33517e";
+
+/** Zoom bands where SYSTEMBOOM in-map geographic targets are shown. */
+const COUNTRY_TARGET_BAND: [number, number] = [3, 6.4];
+const CITY_TARGET_BAND: [number, number] = [6.2, 10];
+
+/** In-map geographic target — honest SYSTEMBOOM overlay, clearly interactive
+ *  (raster OSM text is never claimed clickable). Content-layer colors:
+ *  dark ink + light halo on day tiles, auto-inverted on night tiles. */
+function geoTargetHtml(name: string, kind: "country" | "city"): string {
+  const size = kind === "country" ? 11 : 10;
+  const spacing = kind === "country" ? "0.16em" : "0.1em";
+  return `<span class="sb-geo-target-label" style="display:flex;width:150px;height:24px;align-items:center;justify-content:center;font-size:${size}px;font-weight:650;letter-spacing:${spacing};text-transform:uppercase;color:#16324f;text-shadow:0 1px 0 rgba(255,255,255,0.9),0 0 8px rgba(255,255,255,0.65);cursor:pointer;">
+    <span style="border-bottom:1px dotted rgba(22,50,79,0.75);padding-bottom:1.5px;">${name}</span>
+  </span>`;
+}
 
 /** Approximate visible ground height for a zoom level — feeds the scale chip. */
 function pseudoAltitude(zoom: number, lat: number, viewportPx: number): number {
@@ -63,6 +98,15 @@ function lensHtml(active: boolean): string {
  * The Cosmic Office Mast continued onto the surface — the same anatomy the
  * user followed from space: mascot · thin mast · illuminated contact point.
  */
+/** The address trail for a curated semantic geography (globe lineage). */
+function trailForGeo(geoId: string): TrailEntry[] {
+  const entries: TrailEntry[] = [{ name: "Earth", level: "earth", lat: 0, lon: 0 }];
+  for (const l of geoPath(geoId)) {
+    entries.push({ name: l.name, level: l.kind, lat: l.lat, lon: l.lon, geoId: l.id });
+  }
+  return entries;
+}
+
 function officeMastHtml(selected: boolean): string {
   const glow = selected ? 1 : 0.85;
   return `<span style="position:relative;display:block;width:52px;height:72px;">
@@ -92,19 +136,17 @@ export function LeafletEarth({
   onNavigateOut,
 }: {
   visible: boolean;
-  /** Coordinates handed over from the R3F approach (optional arrival zoom). */
-  initialView: { lat: number; lon: number; zoom?: number };
+  /** Coordinates handed over from the R3F approach (zoom or semantic target). */
+  initialView: { lat: number; lon: number; zoom?: number; geoId?: string };
   /** Continue the journey to this SYSTEMBOOM office and select it. */
   initialOfficeId?: string | null;
   reduced: boolean;
   /** Called when the surface releases control back to the R3F Earth. */
   onExited: () => void;
-  /** Semantic ladder: a breadcrumb navigated outward past map scales. */
+  /** Map breadcrumb EARTH — the explicit exit back to the 3D Earth. */
   onNavigateOut?: (target: {
-    kind: "earth" | "continent" | "country";
+    kind: "earth";
     name: string;
-    lat?: number;
-    lon?: number;
     from: { lat: number; lon: number; zoom: number };
   }) => void;
 }) {
@@ -123,6 +165,14 @@ export function LeafletEarth({
   const officeMarkersRef = useRef<Record<string, Marker>>({});
   const exiting = useRef(false);
   const suppressExitZoom = useRef(true);
+  const lastZoomRef = useRef(ENTRY_ZOOM);
+  /** Real country boundary + focus cue currently identified on the map. */
+  const territoryRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const territoryIdRef = useRef<string | null>(null);
+  /** SYSTEMBOOM in-map geographic targets, gated by zoom band. */
+  const geoTargetsRef = useRef<
+    { marker: Marker; band: [number, number]; onMap: boolean }[]
+  >([]);
 
   const [ready, setReady] = useState(false);
   const [crumbs, setCrumbs] = useState<string[]>(["Earth"]);
@@ -130,6 +180,25 @@ export function LeafletEarth({
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [destination, setDestination] = useState<DestinationContext | null>(null);
+  const [navAnnounce, setNavAnnounce] = useState("");
+  const [crumbsExpanded, setCrumbsExpanded] = useState(false);
+
+  /* ---------- GEOGRAPHIC ADDRESS TRAIL (Phase 1.10C) ----------
+     The active spatial path of the user's explicit selection. null =
+     no selection; the breadcrumb falls back to live view context. */
+  const [trail, setTrail] = useState<TrailEntry[] | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [selAnnounce, setSelAnnounce] = useState("");
+  const trailRef = useRef<TrailEntry[] | null>(null);
+  useEffect(() => {
+    trailRef.current = trail;
+  }, [trail]);
+  /** Latest-selection-wins: token + abort for in-flight reverse lookups. */
+  const selToken = useRef(0);
+  const selAbort = useRef<AbortController | null>(null);
+  /** The generic selected-location lens (never the office mascot). */
+  const selMarkerRef = useRef<Marker | null>(null);
+  const selPointRef = useRef<{ lat: number; lon: number } | null>(null);
   /** Journeys invalidate any pending arrival — no stale panels mid-flight. */
   const arrivalToken = useRef(0);
   const tempMarkerRef = useRef<Marker | null>(null);
@@ -163,9 +232,15 @@ export function LeafletEarth({
     }
     // Ordinary destinations without a standing marker get a temporary
     // SYSTEMBOOM lens — the mascot stays reserved for SYSTEMBOOM offices.
+    // Map selections (sel-*) already carry their own selection lens.
     tempMarkerRef.current?.remove();
     tempMarkerRef.current = null;
-    if (ctx && ctx.type !== "OFFICE" && !PLACES.some((p) => p.id === ctx.id)) {
+    if (
+      ctx &&
+      ctx.type !== "OFFICE" &&
+      !ctx.id.startsWith("sel-") &&
+      !PLACES.some((p) => p.id === ctx.id)
+    ) {
       tempMarkerRef.current = L.marker([ctx.latitude, ctx.longitude], {
         icon: L.divIcon({
           className: "sb-lens",
@@ -197,6 +272,219 @@ export function LeafletEarth({
       presentDestination(build());
     }, afterMs + 220);
   };
+
+  /* ---------- country territory: real boundary as map content ---------- */
+
+  /**
+   * Identify a country's REAL boundary on the map (Natural Earth subset) with
+   * a restrained lens cue near its center — context, never a cage. Selection
+   * of geography NEVER shows the SYSTEMBOOM office mascot.
+   */
+  const setTerritory = (countryId: string | null) => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map) return;
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as { __SB_TERRITORY?: string | null }).__SB_TERRITORY =
+        countryId;
+    }
+    if (territoryIdRef.current === countryId) return;
+    territoryRef.current?.remove();
+    territoryRef.current = null;
+    territoryIdRef.current = countryId;
+    if (!countryId) return;
+    const rings = countryRings(countryId);
+    if (!rings) return;
+    const group = L.layerGroup();
+    for (const ring of rings) {
+      const latlngs = ring.map(([lon, lat]) => [lat, lon] as [number, number]);
+      L.polygon(latlngs, {
+        color: TERRITORY_COLOR,
+        weight: 1.6,
+        opacity: 0.85,
+        fillColor: TERRITORY_COLOR,
+        fillOpacity: 0.045,
+        interactive: false,
+        className: "sb-territory",
+      }).addTo(group);
+    }
+    const label = GLOBE_GEO_LABELS.find((g) => g.id === countryId);
+    if (label) {
+      // Small focus lens near the country center — restrained, non-interactive.
+      L.marker([label.lat, label.lon], {
+        icon: L.divIcon({
+          className: "sb-lens",
+          html: lensHtml(false),
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        }),
+        interactive: false,
+        zIndexOffset: 200,
+      }).addTo(group);
+    }
+    group.addTo(map);
+  };
+
+  /* ---------- in-map semantic navigation (names travel WITHIN the map) --- */
+
+  /** Suppress the zoom-out exit while a semantic flight is underway. */
+  const flightGuard = (ms: number) => {
+    suppressExitZoom.current = true;
+    window.setTimeout(() => {
+      suppressExitZoom.current = false;
+      if (mapRef.current) lastZoomRef.current = mapRef.current.getZoom();
+    }, ms + 450);
+  };
+
+  /** Padding keeps fitted geography clear of the ladder and bottom chrome. */
+  const FIT_PADDING = {
+    paddingTopLeft: [36, 136] as [number, number],
+    paddingBottomRight: [36, 92] as [number, number],
+  };
+
+  /**
+   * Fly the MAP to a semantic geography: countries fit their real bounds,
+   * continents their curated extent, regions/cities a point + scale. The
+   * selection is context — after arrival the user is free.
+   */
+  const navigateGeo = (target: MapTarget) => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || exiting.current) return;
+    beginJourney();
+    // A semantic journey resets any point selection and owns the trail.
+    selToken.current++;
+    selAbort.current?.abort();
+    selMarkerRef.current?.remove();
+    selMarkerRef.current = null;
+    selPointRef.current = null;
+    setLocating(false);
+    setTrail(trailForGeo(target.id));
+    setTerritory(target.boundaryCountryId ?? null);
+    const ms = reduced ? 150 : 1900;
+    flightGuard(ms);
+    if (target.bounds) {
+      const b = L.latLngBounds(target.bounds);
+      if (reduced) map.fitBounds(b, { ...FIT_PADDING, animate: false });
+      else map.flyToBounds(b, { ...FIT_PADDING, duration: 1.9 });
+    } else {
+      const zoom = target.zoom ?? 9.5;
+      if (reduced) map.setView([target.lat, target.lon], zoom, { animate: false });
+      else map.flyTo([target.lat, target.lon], zoom, { duration: 1.9 });
+    }
+    setNavAnnounce(`Viewing ${target.name}.`);
+    // Semantic arrivals stay quiet at country/continent scale; a city may
+    // surface its curated destination context (honesty: curated only).
+    if (target.kind === "city") {
+      const curated = DESTINATIONS.find(
+        (d) => d.name.toLowerCase() === target.name.toLowerCase(),
+      );
+      if (curated) scheduleArrival(() => destinationFromSearch(curated), ms);
+    }
+  };
+  // Map markers are wired once at init — keep them on the latest closure.
+  const navigateGeoRef = useRef(navigateGeo);
+  useEffect(() => {
+    navigateGeoRef.current = navigateGeo;
+  });
+
+  /* ---------- selection: MAP CLICK = "WHAT IS HERE?" ---------- */
+
+  const clearSelMarker = () => {
+    selMarkerRef.current?.remove();
+    selMarkerRef.current = null;
+    selPointRef.current = null;
+  };
+
+  const placeSelMarker = (lat: number, lon: number) => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map) return;
+    clearSelMarker();
+    selPointRef.current = { lat, lon };
+    selMarkerRef.current = L.marker([lat, lon], {
+      icon: L.divIcon({
+        className: "sb-lens",
+        html: lensHtml(true),
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      }),
+      interactive: false,
+      zIndexOffset: 350,
+    }).addTo(map);
+  };
+
+  /**
+   * A click selects — it never repositions the map. The location resolves
+   * locally at once (continent/country/known identity), the lens appears at
+   * the point, and the trail enriches when the reverse lookup returns.
+   * Latest selection always wins; stale lookups can never overwrite it.
+   */
+  const selectPoint = (lat: number, lon: number) => {
+    const map = mapRef.current;
+    if (!map || exiting.current) return;
+    const token = ++selToken.current;
+    selAbort.current?.abort();
+    const ctl = new AbortController();
+    selAbort.current = ctl;
+
+    const local = resolveLocationLocal(lat, lon);
+    arrivalToken.current++; // retire any pending arrival panel
+    setTrail(trailFromResolved(local));
+    if (local.office || local.knownPlace) {
+      // Known SYSTEMBOOM identity — final immediately, never geocoded over.
+      clearSelMarker();
+      setLocating(false);
+      presentDestination(destinationFromResolved(local));
+      setSelAnnounce(announceResolved(local));
+      return;
+    }
+    placeSelMarker(lat, lon);
+    presentDestination(null);
+    setLocating(true);
+    resolveLocationOnline(local, ctl.signal).then((full) => {
+      if (token !== selToken.current || !mapRef.current || exiting.current) return;
+      setLocating(false);
+      setTrail(trailFromResolved(full));
+      presentDestination(destinationFromResolved(full));
+      setSelAnnounce(announceResolved(full));
+    });
+  };
+  const selectPointRef = useRef(selectPoint);
+  useEffect(() => {
+    selectPointRef.current = selectPoint;
+  });
+
+  /** Clear the active selection back to live view context. */
+  const clearSelection = () => {
+    selToken.current++;
+    selAbort.current?.abort();
+    clearSelMarker();
+    setLocating(false);
+    setTrail(null);
+  };
+  const panAway = () => {
+    clearSelection();
+    presentDestination(null);
+  };
+  const panAwayRef = useRef(panAway);
+  useEffect(() => {
+    panAwayRef.current = panAway;
+  });
+
+  // Dev/test hook: the current address trail state.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      (
+        window as unknown as {
+          __SB_TRAIL?: { entries: { name: string; level: string }[] | null; locating: boolean };
+        }
+      ).__SB_TRAIL = {
+        entries: trail ? trail.map((e) => ({ name: e.name, level: e.level })) : null,
+        locating,
+      };
+    }
+  }, [trail, locating]);
 
   /* ---------- init / teardown ---------- */
   useEffect(() => {
@@ -287,6 +575,45 @@ export function LeafletEarth({
         }
       }
 
+      /* SYSTEMBOOM in-map geographic targets — countries stay clickable
+         names at continent scales, cities at country scales. */
+      for (const g of GLOBE_GEO_LABELS) {
+        if (g.kind !== "country" && g.kind !== "city") continue;
+        const band = g.kind === "country" ? COUNTRY_TARGET_BAND : CITY_TARGET_BAND;
+        const marker = L.marker([g.lat, g.lon], {
+          icon: L.divIcon({
+            className: "sb-geo-target",
+            html: geoTargetHtml(g.name, g.kind),
+            iconSize: [150, 24],
+            iconAnchor: [75, 12],
+          }),
+          keyboard: true,
+          title: `View ${g.name}`,
+          // The NAME is the navigation affordance — it must win the tap
+          // even where an office mast crowds it at continent scale.
+          zIndexOffset: 500,
+        });
+        marker.on("click", () => {
+          const mt = geoMapTarget(g.id);
+          if (mt) navigateGeoRef.current(mt);
+        });
+        geoTargetsRef.current.push({ marker, band, onMap: false });
+      }
+      const updateGeoTargets = () => {
+        const z = map.getZoom();
+        for (const t of geoTargetsRef.current) {
+          const show = z >= t.band[0] && z < t.band[1];
+          if (show && !t.onMap) {
+            t.marker.addTo(map);
+            t.onMap = true;
+          } else if (!show && t.onMap) {
+            t.marker.remove();
+            t.onMap = false;
+          }
+        }
+      };
+      map.on("zoomend", updateGeoTargets);
+
       const updateContext = () => {
         const c = map.getCenter();
         const alt = pseudoAltitude(
@@ -300,13 +627,36 @@ export function LeafletEarth({
       };
       map.on("moveend zoomend", updateContext);
 
-      // Zooming out past country scale hands control back to the 3D Earth.
+      /* GEOGRAPHIC ADDRESS TRAIL — a map click asks "what is here?".
+         Selection, never repositioning. */
+      map.on("click", (e) => {
+        if (exiting.current || suppressExitZoom.current) return;
+        selectPointRef.current(e.latlng.lat, e.latlng.lng);
+      });
+
+      // Panning far from the selected point retires the leaf quietly and
+      // the ladder returns to broader live map context.
+      map.on("moveend", () => {
+        const sel = selPointRef.current;
+        if (!sel || suppressExitZoom.current || exiting.current) return;
+        if (!map.getBounds().pad(0.35).contains([sel.lat, sel.lon])) {
+          panAwayRef.current();
+        }
+      });
+
+      // ZOOMING OUT past country scale hands control back to the 3D Earth —
+      // only on an actual outward gesture, never on a semantic fit that lands
+      // at a wide continent scale.
       map.on("zoomend", () => {
+        const z = map.getZoom();
+        const prev = lastZoomRef.current;
+        lastZoomRef.current = z;
         if (suppressExitZoom.current || exiting.current) return;
-        if (map.getZoom() <= EXIT_ZOOM) requestReturnRef.current();
+        if (z <= EXIT_ZOOM && z < prev) requestReturnRef.current();
       });
 
       updateContext();
+      updateGeoTargets();
       setReady(true);
 
       // Continue the apparent descent as the atmosphere clears.
@@ -316,15 +666,26 @@ export function LeafletEarth({
       // arrivals stay honest (coordinates + supported classification only).
       setTimeout(() => {
         suppressExitZoom.current = false;
+        lastZoomRef.current = map.getZoom();
         if (cancelled || !mapRef.current) return;
         const office = SYSTEMBOOM_OFFICES.find((o) => o.id === initialOfficeId);
+        const geoTarget = initialView.geoId ? geoMapTarget(initialView.geoId) : null;
         if (office) {
           if (reduced) {
             map.setView([office.latitude, office.longitude], 15, { animate: false });
           } else {
             map.flyTo([office.latitude, office.longitude], 15, { duration: 3 });
           }
+          // The office journey's trail — owner-supplied identity as the leaf.
+          setTrail(trailFromResolved(resolveLocationLocal(office.latitude, office.longitude)));
+          selPointRef.current = { lat: office.latitude, lon: office.longitude };
           scheduleArrival(() => destinationFromOffice(office), reduced ? 100 : 3000);
+        } else if (geoTarget) {
+          // A clicked geographic NAME arrives at the REAL geography: country
+          // bounds fitted, continent extent framed, city at city scale. No
+          // destination card for country/continent — the map itself is the
+          // answer; the user is free from here.
+          navigateGeoRef.current(geoTarget);
         } else {
           if (!reduced) {
             map.flyTo(
@@ -352,8 +713,13 @@ export function LeafletEarth({
 
     return () => {
       cancelled = true;
+      selAbort.current?.abort();
+      selMarkerRef.current = null;
       markersRef.current = {};
       officeMarkersRef.current = {};
+      geoTargetsRef.current = [];
+      territoryRef.current = null;
+      territoryIdRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -365,6 +731,14 @@ export function LeafletEarth({
     const map = mapRef.current;
     if (!map) return;
     beginJourney();
+    // Known markers share the same location identity as clicks: the trail
+    // resolves from the same local model (office/place snap included).
+    selToken.current++;
+    selAbort.current?.abort();
+    clearSelMarker();
+    setLocating(false);
+    setTrail(trailFromResolved(resolveLocationLocal(lat, lon)));
+    selPointRef.current = { lat, lon };
     if (reduced) {
       map.setView([lat, lon], Math.max(map.getZoom(), 16.5), { animate: false });
       scheduleArrival(build, 80);
@@ -381,6 +755,18 @@ export function LeafletEarth({
     setSearchOpen(false);
     // The old destination retires while the flight is underway.
     beginJourney();
+    // Search shares the click path's location identity (canonical trail).
+    selToken.current++;
+    selAbort.current?.abort();
+    clearSelMarker();
+    setLocating(false);
+    const searchTrail = trailFromResolved(resolveLocationLocal(dest.lat, dest.lon));
+    if (searchTrail[searchTrail.length - 1]?.name !== dest.name) {
+      // Curated destinations are known identities — the leaf is honest.
+      searchTrail.push({ name: dest.name, level: "place", lat: dest.lat, lon: dest.lon });
+    }
+    setTrail(searchTrail);
+    selPointRef.current = { lat: dest.lat, lon: dest.lon };
 
     // Leaflet's flyTo already arcs: zooms out, crosses, descends.
     const target = destZoom(dest);
@@ -397,38 +783,101 @@ export function LeafletEarth({
   };
 
   /* ---------- SEMANTIC ZOOM LADDER: breadcrumbs are navigation ---------- */
-  const [navAnnounce, setNavAnnounce] = useState("");
-  const [crumbsExpanded, setCrumbsExpanded] = useState(false);
+
+  /**
+   * Navigate an ancestor of the ACTIVE ADDRESS TRAIL. The trail truncates to
+   * that rung (leaf marker retires), the map moves to that level's scale —
+   * countries fit their real bounds — and EARTH alone exits to the 3D globe.
+   */
+  const navigateTrail = (name: string): boolean => {
+    const t = trailRef.current;
+    const map = mapRef.current;
+    if (!t || !map) return false;
+    const idx = t.findIndex((e) => e.name === name);
+    if (idx < 0) return false;
+    const entry = t[idx];
+    if (entry.level === "earth") {
+      if (!onNavigateOut) return true;
+      exiting.current = true;
+      onNavigateOut({
+        kind: "earth",
+        name: "Earth",
+        from: {
+          lat: map.getCenter().lat,
+          lon: map.getCenter().lng,
+          zoom: map.getZoom(),
+        },
+      });
+      return true;
+    }
+    selToken.current++;
+    selAbort.current?.abort();
+    clearSelMarker();
+    setLocating(false);
+    setTrail(t.slice(0, idx + 1));
+    if ((entry.level === "country" || entry.level === "continent") && entry.geoId) {
+      const mt = geoMapTarget(entry.geoId);
+      if (mt) {
+        navigateGeo(mt);
+        return true;
+      }
+    }
+    beginJourney();
+    const zoom = TRAIL_LEVEL_ZOOM[entry.level];
+    flightGuard(reduced ? 150 : 1700);
+    if (reduced) map.setView([entry.lat, entry.lon], zoom, { animate: false });
+    else map.flyTo([entry.lat, entry.lon], zoom, { duration: 1.7 });
+    setNavAnnounce(`Viewing ${entry.name}.`);
+    return true;
+  };
 
   const navigateCrumb = (name: string, isActive: boolean) => {
     const map = mapRef.current;
     if (!map || exiting.current) return;
     if (isActive) return; // already here — no restart, subtle acknowledgement only
     setCrumbsExpanded(false);
-    const from = {
-      lat: map.getCenter().lat,
-      lon: map.getCenter().lng,
-      zoom: map.getZoom(),
-    };
+    // An active address trail owns the ladder.
+    if (navigateTrail(name)) return;
     const target = crumbTarget(name);
     if (!target) return;
-    // Earth / continent / country live on the 3D globe — travel back out
-    // through the atmosphere rather than flattening the planet.
-    if (target.tier === "earth" || target.tier === "continent" || target.tier === "country") {
+    // ONLY the EARTH crumb exits through the atmosphere back to 3D — the
+    // globe returns already facing this map view, never a random hemisphere.
+    if (target.tier === "earth") {
       if (!onNavigateOut) return;
       exiting.current = true;
       onNavigateOut({
-        kind: target.tier,
+        kind: "earth",
         name: target.name,
-        lat: target.lat,
-        lon: target.lon,
-        from,
+        from: {
+          lat: map.getCenter().lat,
+          lon: map.getCenter().lng,
+          zoom: map.getZoom(),
+        },
       });
       return;
     }
-    // Region / city / district are map scales: one continuous outward zoom.
+    // Every other crumb navigates WITHIN the map — countries fit their real
+    // bounds, continents their extent, regions/cities zoom to scale.
+    if (target.tier === "continent" || target.tier === "country") {
+      const g = geoByName(target.name);
+      const mt = g ? geoMapTarget(g.id) : null;
+      if (mt) {
+        navigateGeo(mt);
+        return;
+      }
+    }
     beginJourney();
-    const zoom = target.tier === "region" ? 9.5 : target.tier === "city" ? 12 : 14.5;
+    const zoom =
+      target.tier === "continent"
+        ? 4.25
+        : target.tier === "country"
+          ? 6.8
+          : target.tier === "region"
+            ? 9.5
+            : target.tier === "city"
+              ? 12
+              : 14.5;
+    flightGuard(reduced ? 150 : 1700);
     if (reduced) {
       map.setView([target.lat, target.lon], zoom, { animate: false });
     } else {
@@ -438,14 +887,17 @@ export function LeafletEarth({
   };
 
   /**
-   * Mobile compression: EARTH / … / parent / current — EARTH always stays
-   * one tap away; "…" reveals the hidden ancestors. Desktop shows all.
+   * The ladder shows the ACTIVE ADDRESS TRAIL when a selection exists,
+   * otherwise the live view context. Mobile compression: EARTH / … /
+   * parent / current — EARTH always stays one tap away; "…" reveals the
+   * hidden ancestors. Desktop shows all.
    */
-  const compress = crumbs.length > 4 && !crumbsExpanded;
-  const crumbRows = crumbs.map((name, i) => ({
+  const ladder = trail ? trail.map((e) => e.name) : crumbs;
+  const compress = ladder.length > 4 && !crumbsExpanded;
+  const crumbRows = ladder.map((name, i) => ({
     name,
-    isActive: i === crumbs.length - 1,
-    hideOnMobile: compress && i > 0 && i < crumbs.length - 2,
+    isActive: i === ladder.length - 1 && !locating,
+    hideOnMobile: compress && i > 0 && i < ladder.length - 2,
     ellipsisAfter: compress && i === 0,
   }));
 
@@ -460,14 +912,19 @@ export function LeafletEarth({
     requestReturnRef.current = requestReturn;
   });
 
-  /* ---------- keyboard: Escape walks back out ---------- */
+  /* ---------- keyboard: Escape walks the address trail back out ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
       if (searchOpen) setSearchOpen(false);
       else if (destination) presentDestination(null);
-      else requestReturnRef.current();
+      else {
+        // Semantic back: one rung up the active trail; EARTH exits to 3D.
+        const t = trailRef.current;
+        if (t && t.length >= 2) navigateTrail(t[t.length - 2].name);
+        else requestReturnRef.current();
+      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
@@ -512,11 +969,17 @@ export function LeafletEarth({
             : { background: "#dbe6f0" }
         }
       />
-      {/* Un-invert attribution and SYSTEMBOOM markers so brand colors stay true in dark mode */}
+      {/* Un-invert attribution and SYSTEMBOOM markers so brand colors stay true in dark mode.
+          The territory boundary and geo targets are CONTENT — they invert with
+          the tiles so their ink always contrasts the imagery beneath. */}
       {theme === "dark" && (
         <style>{`.leaflet-control-attribution{filter:invert(1) hue-rotate(180deg);}
 .sb-origin,.sb-lens,.sb-origin-area{filter:invert(1) hue-rotate(180deg);}`}</style>
       )}
+      <style>{`.sb-geo-target{background:none;border:none;cursor:pointer;}
+.sb-geo-target-label{transition:transform .25s ease;}
+.sb-geo-target:hover .sb-geo-target-label,.sb-geo-target:focus-visible .sb-geo-target-label{transform:scale(1.07);}
+.sb-geo-target:focus-visible{outline:2px solid #8fc2ff;outline-offset:2px;border-radius:8px;}`}</style>
 
       {/* Back + search cluster */}
       <div className="fixed top-[4.4rem] left-3 z-30 flex gap-2 sm:left-6">
@@ -579,6 +1042,14 @@ export function LeafletEarth({
               )}
             </span>
           ))}
+          {locating && (
+            <span className="flex items-center gap-1 whitespace-nowrap">
+              <span aria-hidden className="text-white/35">/</span>
+              <span className="animate-pulse px-1 text-[11px] italic text-white/50">
+                locating…
+              </span>
+            </span>
+          )}
           <span className="ml-1 border-l border-white/20 pl-2 text-[11px] text-white/50">
             {formatAltitude(altitude)}
           </span>
@@ -654,6 +1125,10 @@ export function LeafletEarth({
       </p>
       <p aria-live="polite" className="sr-only">
         {navAnnounce}
+      </p>
+      {/* One announcement per explicit location selection — never per pan */}
+      <p aria-live="polite" className="sr-only">
+        {selAnnounce}
       </p>
     </div>
   );
