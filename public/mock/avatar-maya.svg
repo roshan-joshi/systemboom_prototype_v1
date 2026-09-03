@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Placeholder avatar for Maya Rai">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a5a4e"/>
+      <stop offset="0.55" stop-color="#5a4663"/>
+      <stop offset="1" stop-color="#2c3a5c"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" fill="url(#a)"/>
+  <circle cx="100" cy="82" r="34" fill="#e8d5c4" opacity="0.92"/>
+  <path d="M40 200 C40 150 68 128 100 128 C132 128 160 150 160 200 Z" fill="#e8d5c4" opacity="0.92"/>
+</svg>

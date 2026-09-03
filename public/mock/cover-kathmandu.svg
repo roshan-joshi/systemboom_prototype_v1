@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Placeholder cover: dusk over Himalayan ridgelines">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141b30"/>
+      <stop offset="0.45" stop-color="#25304f"/>
+      <stop offset="0.72" stop-color="#5c5a7a"/>
+      <stop offset="0.88" stop-color="#b0766a"/>
+      <stop offset="1" stop-color="#d9926b"/>
+    </linearGradient>
+    <linearGradient id="ridge1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a4463"/>
+      <stop offset="1" stop-color="#2b3350"/>
+    </linearGradient>
+    <linearGradient id="ridge2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232b45"/>
+      <stop offset="1" stop-color="#1a2138"/>
+    </linearGradient>
+    <linearGradient id="ridge3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131a2e"/>
+      <stop offset="1" stop-color="#0e1424"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd9a0" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="640" fill="url(#sky)"/>
+  <circle cx="1150" cy="470" r="260" fill="url(#sun)"/>
+  <g fill="#e8eef8">
+    <circle cx="140" cy="90" r="1.6"/><circle cx="320" cy="150" r="1.2"/>
+    <circle cx="520" cy="70" r="1.4"/><circle cx="760" cy="120" r="1.1"/>
+    <circle cx="960" cy="60" r="1.5"/><circle cx="1210" cy="110" r="1.2"/>
+    <circle cx="1420" cy="80" r="1.6"/><circle cx="1520" cy="170" r="1.1"/>
+    <circle cx="640" cy="190" r="1.0"/><circle cx="1080" cy="160" r="1.0"/>
+  </g>
+  <path d="M0 430 L180 330 L300 400 L470 290 L620 390 L800 310 L980 420 L1140 340 L1330 430 L1470 370 L1600 420 L1600 640 L0 640 Z" fill="url(#ridge1)"/>
+  <path d="M0 500 L220 410 L380 470 L560 390 L740 480 L930 410 L1120 500 L1300 430 L1480 500 L1600 460 L1600 640 L0 640 Z" fill="url(#ridge2)"/>
+  <path d="M0 570 L260 500 L460 560 L700 490 L920 570 L1160 510 L1380 580 L1600 530 L1600 640 L0 640 Z" fill="url(#ridge3)"/>
+</svg>

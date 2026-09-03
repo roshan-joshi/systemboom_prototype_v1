@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "systemboom-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3210"],
+      "port": 3210,
+      "autoPort": true
+    },
+    {
+      "name": "systemboom-attach",
+      "url": "http://localhost:3210"
+    }
+  ]
+}

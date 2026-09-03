@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Placeholder photo: alpine lake at first light">
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2742"/>
+      <stop offset="0.5" stop-color="#3d4d74"/>
+      <stop offset="1" stop-color="#8fa3c4"/>
+    </linearGradient>
+    <linearGradient id="w" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7d92b5"/>
+      <stop offset="1" stop-color="#2a344f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="520" fill="url(#s)"/>
+  <path d="M0 380 L240 220 L420 340 L660 180 L900 350 L1080 260 L1200 330 L1200 520 L0 520 Z" fill="#141c33"/>
+  <rect y="520" width="1200" height="280" fill="url(#w)"/>
+  <path d="M0 520 L240 560 L420 528 L660 585 L900 532 L1080 570 L1200 540 L1200 800 L0 800 Z" fill="#223453" opacity="0.55"/>
+</svg>

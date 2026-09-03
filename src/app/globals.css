@@ -1,0 +1,281 @@
+@import "tailwindcss";
+
+/* ============================================================
+   SYSTEMBOOM DESIGN TOKENS
+   Layer 1 — Human content (solid, readable)
+   Layer 2 — SYSTEMBOOM material (floating, translucent)
+   Layer 3 — Boom energy (#D92A20, meaningful state only)
+   ============================================================ */
+
+:root {
+  /* ---- DEEP COSMOS (dark, default) ---- */
+  --bg: #0a0d14;
+  --bg-atmosphere: radial-gradient(120% 90% at 50% -10%, #131b2e 0%, #0a0d14 55%),
+    #0a0d14;
+  --surface: #10141e;
+  --content: #151a27;
+  --content-raised: #1a2131;
+  --floating: rgba(15, 19, 29, 0.66);
+  --floating-edge: rgba(201, 216, 234, 0.10);
+  --text: #eef2f8;
+  --muted: #8e9bb0;
+  --edge: rgba(142, 155, 176, 0.18);
+  --divider: rgba(142, 155, 176, 0.10);
+  --steel: #7e93ae;
+  --ice: #c9d8ea;
+  --boom: #d92a20;
+  --boom-strong: #f04136;
+  --boom-soft: rgba(217, 42, 32, 0.16);
+  --success: #3dc98a;
+  --warning: #e8b04b;
+  --danger: #e5484d;
+  --focus: #7db8ff;
+  --scrim: rgba(4, 6, 10, 0.6);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  /* ---- SOLAR OBSERVATORY (light) ---- */
+  --bg: #e8ecf3;
+  --bg-atmosphere: radial-gradient(120% 90% at 50% -10%, #f6f9fd 0%, #e8ecf3 60%),
+    #e8ecf3;
+  --surface: #f2f5fa;
+  --content: #fcfdff;
+  --content-raised: #ffffff;
+  --floating: rgba(250, 252, 255, 0.72);
+  --floating-edge: rgba(15, 21, 32, 0.08);
+  --text: #0f1520;
+  --muted: #5a6880;
+  --edge: rgba(15, 21, 32, 0.14);
+  --divider: rgba(15, 21, 32, 0.07);
+  --steel: #55708f;
+  --ice: #33517a;
+  --boom: #d92a20;
+  --boom-strong: #b91f16;
+  --boom-soft: rgba(217, 42, 32, 0.10);
+  --success: #147d52;
+  --warning: #92640f;
+  --danger: #c22026;
+  --focus: #1e66d0;
+  --scrim: rgba(20, 28, 42, 0.35);
+  color-scheme: light;
+}
+
+/* ---- Motion tokens ---- */
+:root {
+  --m1: 140ms; /* feedback */
+  --m2: 220ms; /* component */
+  --m3: 360ms; /* spatial */
+  --m4: 900ms; /* cinematic, sparingly */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spatial: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ---- Map tokens into Tailwind utilities ---- */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-content: var(--content);
+  --color-content-raised: var(--content-raised);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-edge: var(--edge);
+  --color-divider: var(--divider);
+  --color-steel: var(--steel);
+  --color-ice: var(--ice);
+  --color-boom: var(--boom);
+  --color-boom-strong: var(--boom-strong);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-focus: var(--focus);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Atmosphere layer — fixed gradient without background-attachment
+   (which fights backdrop-filter compositing). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg-atmosphere);
+  pointer-events: none;
+}
+
+::selection {
+  background: var(--boom-soft);
+  color: var(--text);
+}
+
+/* Visible keyboard focus, everywhere */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ============================================================
+   TYPOGRAPHY SCALE (fluid)
+   ============================================================ */
+
+.type-hero {
+  font-size: clamp(2.5rem, 1.2rem + 5.5vw, 4.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+.type-title {
+  font-size: clamp(1.875rem, 1.3rem + 2.2vw, 2.75rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+
+.type-section {
+  font-size: clamp(1.25rem, 1.1rem + 0.8vw, 1.625rem);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.type-body {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.type-meta {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.type-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.type-counter {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================
+   SYSTEMBOOM MATERIAL (Layer 2)
+   ============================================================ */
+
+.material-floating {
+  background: var(--floating);
+  border: 1px solid var(--floating-edge);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 40px -16px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .material-floating {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 12px 36px -18px rgba(30, 45, 70, 0.35);
+}
+
+/* Human content surface (Layer 1) — solid, calm */
+.material-content {
+  background: var(--content);
+  border: 1px solid var(--edge);
+}
+
+/* ============================================================
+   MOTION / REDUCED MOTION
+   ============================================================ */
+
+.sb-transition {
+  transition-timing-function: var(--ease-out);
+  transition-duration: var(--m2);
+}
+
+@keyframes sb-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.sb-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--surface) 40%,
+    var(--content-raised) 50%,
+    var(--surface) 60%
+  );
+  background-size: 200% 100%;
+  animation: sb-shimmer 1.8s linear infinite;
+}
+
+/* SYSTEMBOOM origin beacon pulse (map surfaces) — one quiet signal every 4s.
+   The global reduced-motion rule freezes it automatically. */
+@keyframes sb-beacon-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.55;
+  }
+  45% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+}
+
+@keyframes sb-drift {
+  from {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

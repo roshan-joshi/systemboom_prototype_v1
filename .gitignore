@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Environment secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Phase evidence screenshots — large binary artifacts, kept local only
+prototype-evidence/
