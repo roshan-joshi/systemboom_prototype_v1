@@ -26,6 +26,8 @@ export interface DemoUser {
   dateOfBirth: string;
   /** Optional HH:mm birth time for a precise Life Counter. */
   birthTime?: string;
+  /** Explicit truth — never inferred from birthTime's presence. */
+  birthTimeKnown: boolean;
   location: string;
   avatar: string;
   cover: string;

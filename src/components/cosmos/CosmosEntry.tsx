@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { IdentityGate } from "@/components/identity/IdentityGate";
+import { useIdentityGate } from "@/components/identity/IdentityProvider";
 import { CosmosLoading } from "./CosmosLoading";
 import { CosmosFallback } from "./CosmosFallback";
 
@@ -23,9 +25,14 @@ function webglAvailable(): boolean {
   }
 }
 
-/** Chooses the live Cosmos or the polished static fallback. */
+/**
+ * Chooses the live Cosmos or the polished static fallback, and mounts the
+ * identity gate ABOVE that fork so both paths share one gate. While the gate
+ * is open the whole Cosmos subtree is `inert` — no focus, no pointer, no AT.
+ */
 export function CosmosEntry() {
   const [state, setState] = useState<"checking" | "webgl" | "fallback">("checking");
+  const gate = useIdentityGate();
 
   useEffect(() => {
     const forced = new URLSearchParams(window.location.search).get("cosmos");
@@ -34,7 +41,21 @@ export function CosmosEntry() {
     setState(forced === "fallback" || !webglAvailable() ? "fallback" : "webgl");
   }, []);
 
-  if (state === "fallback") return <CosmosFallback />;
-  if (state === "webgl") return <CosmosExperience />;
-  return <CosmosLoading />;
+  const cosmos =
+    state === "fallback" ? (
+      <CosmosFallback />
+    ) : state === "webgl" ? (
+      <CosmosExperience />
+    ) : (
+      <CosmosLoading />
+    );
+
+  return (
+    <>
+      <div inert={gate.open} data-sb-cosmos-root>
+        {cosmos}
+      </div>
+      <IdentityGate />
+    </>
+  );
 }

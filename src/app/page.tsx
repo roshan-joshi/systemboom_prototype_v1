@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { CosmosEntry } from "@/components/cosmos/CosmosEntry";
+import { CosmosRoot } from "@/components/shell/CosmosRoot";
 
 export const metadata: Metadata = {
   title: "SYSTEMBOOM · Cosmos",
   description:
-    "From the universe to your life. Explore a living solar system — the doorway into SYSTEMBOOM.",
+    "From the universe to your life. Explore a living solar system — the root of SYSTEMBOOM.",
 };
 
-/** SYSTEMBOOM COSMOS — space itself is the interface. */
+/** SYSTEMBOOM COSMOS — the root of the application. Space itself is the interface. */
 export default function CosmosPage() {
-  return <CosmosEntry />;
+  return <CosmosRoot />;
 }

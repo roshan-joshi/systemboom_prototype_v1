@@ -54,7 +54,12 @@ export function computeLifeTime(birth: Date, now: Date): LifeTime {
   return { years, months, days, hours, minutes, seconds, totalDays };
 }
 
-/** Circle of Life Level-0 bands: eight 15-year arcs from birth to 105+. */
+/**
+ * Circle of Life Level-0 bands: TEN 15-year arcs, 150 years from birth.
+ * Phase 4 correction (owner-authorised, 2026-09-10): the live product
+ * draws ten bands (e.g. 2000–2149); the earlier eight-band constant was
+ * a wrong number. Birth sits at 12 o'clock; time runs clockwise.
+ */
 export const CIRCLE_BANDS = [
   "0–15",
   "15–30",
@@ -63,8 +68,13 @@ export const CIRCLE_BANDS = [
   "60–75",
   "75–90",
   "90–105",
-  "105+",
+  "105–120",
+  "120–135",
+  "135–150",
 ] as const;
+
+/** Total span of the Circle in years. */
+export const CIRCLE_YEARS = 150;
 
 export function currentBandIndex(ageYears: number): number {
   return Math.min(Math.floor(ageYears / 15), CIRCLE_BANDS.length - 1);

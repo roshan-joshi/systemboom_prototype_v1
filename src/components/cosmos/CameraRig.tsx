@@ -96,6 +96,7 @@ export function CameraRig({
   handleRef,
   earthDistRef,
   surfaceTargetRef,
+  calm = false,
 }: {
   mode: CosmosMode;
   selected: PlanetId | null;
@@ -118,6 +119,13 @@ export function CameraRig({
   earthDistRef?: React.MutableRefObject<number>;
   /** Surface point under the pointer — drives pointer-targeted zoom. */
   surfaceTargetRef?: React.MutableRefObject<{ lat: number; lon: number; at: number } | null>;
+  /**
+   * AUTHORIZED EXCEPTION to the frozen Phase 1 camera code (Phase 2.2,
+   * owner-approved): while the identity gate is open the orbital motion
+   * factor is scaled down so the Cosmos idles calmly behind the scrim.
+   * Default false → behavior identical to Phase 1. Do not remove as cleanup.
+   */
+  calm?: boolean;
 }) {
   const { camera, gl } = useThree();
   const travelling = useRef(false);
@@ -196,15 +204,29 @@ export function CameraRig({
   }, [mode, selected, planetRefs]);
 
   // Save focus memory when leaving a focused planet (session only).
+  //
+  // Phase 2.2.1 hotfix (authorized frozen-zone exception, 2026-09-10): the
+  // offset is taken from `settledOffset`, recorded in the frame loop while
+  // the planet was genuinely focused — NOT from the camera at effect time.
+  // React runs this passive effect AFTER the frame loop has already drawn a
+  // frame in the new mode, and that frame's system-mode minDistance clamp
+  // (14 units) had already thrown the camera to ~13.3 Earth radii — beyond
+  // the focus-mode maxDistance (13r) — so the remembered target could never
+  // be reached and `travelling` stuck forever on the next focus.
   const prevFocus = useRef<PlanetId | null>(null);
+  const settledOffset = useRef(new THREE.Vector3());
+  const settledFor = useRef<PlanetId | null>(null);
   useEffect(() => {
     const before = prevFocus.current;
     if (before && before !== selected) {
-      const obj = planetRefs.current[before];
-      if (obj) {
-        obj.getWorldPosition(worldPos.current);
-        focusMemory.current[before] = camera.position.clone().sub(worldPos.current);
+      if (settledFor.current === before) {
+        focusMemory.current[before] = settledOffset.current.clone();
+      } else {
+        // Never settled on it (left mid-travel): remember nothing rather
+        // than a mid-flight offset the next focus could not reach.
+        delete focusMemory.current[before];
       }
+      settledFor.current = null;
     }
     prevFocus.current = mode === "focus" || mode === "explorer" ? selected : null;
   }, [selected, mode, planetRefs, camera]);
@@ -333,7 +355,9 @@ export function CameraRig({
 
     // Global motion factor: system 1 → focus 0.12 → explorer 0.
     const s = speedRef.current;
-    s.target = reduced ? 0 : mode === "system" ? 1 : mode === "focus" ? 0.12 : 0;
+    s.target =
+      (reduced ? 0 : mode === "system" ? 1 : mode === "focus" ? 0.12 : 0) *
+      (calm ? 0.55 : 1);
     s.current = THREE.MathUtils.damp(s.current, s.target, 1.6, dt);
 
     const lambda = reduced ? 40 : 2.0;
@@ -387,10 +411,13 @@ export function CameraRig({
           earthDistRef.current = camera.position.distanceTo(p) / spec.radius;
         }
         if (process.env.NODE_ENV !== "production") {
+          const mem = focusMemory.current[selected];
           (window as unknown as { __SB_CAM?: object }).__SB_CAM = {
             dist: +(camera.position.distanceTo(p) / spec.radius).toFixed(3),
             travelling: travelling.current,
             interacting: interacting.current,
+            /** Remembered focus offset for this planet, in radii (null = none). */
+            memory: mem ? +(mem.length() / spec.radius).toFixed(3) : null,
           };
         }
         // Keep the frame stable while the planet keeps drifting on its orbit.
@@ -461,6 +488,9 @@ export function CameraRig({
         if (travelling.current) {
           const saved = focusMemory.current[selected];
           if (saved && !isExplorer) {
+            // A remembered offset must lie inside this mode's distance clamp,
+            // or the controls pin the camera short of it and travel never ends.
+            saved.clampLength(c.minDistance * 1.03, c.maxDistance * 0.97);
             desired.current.copy(p).add(saved);
           } else {
             dir.current.copy(p).normalize();
@@ -475,7 +505,14 @@ export function CameraRig({
           if (camera.position.distanceTo(desired.current) < Math.max(0.06, d * 0.012)) {
             travelling.current = false;
           }
-        } else if (journey && selected === "earth" && !isExplorer) {
+        } else if (!isExplorer && camera.position.distanceTo(p) <= c.maxDistance) {
+          // Settled on this planet: this is the offset worth remembering. The
+          // distance guard skips the one frame that can run before the
+          // mode-change effects, when the camera is still parked far away.
+          settledOffset.current.copy(camera.position).sub(p);
+          settledFor.current = selected;
+        }
+        if (!travelling.current && journey && selected === "earth" && !isExplorer) {
           // Guided journey: orbit toward the geographic target; optionally descend.
           const body = earthBodyRef.current;
           if (body) {

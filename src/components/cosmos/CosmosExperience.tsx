@@ -19,6 +19,7 @@ import { PLANET_BY_ID, type PlanetId } from "@/lib/cosmos/planets";
 import { SYSTEMBOOM_OFFICES } from "@/lib/systemboom-origin";
 import { geoChildren, geoPath, type GlobeGeoLabel } from "@/lib/earth/globe-geo";
 import { EarthExplorer } from "@/components/earth/EarthExplorer";
+import { useIdentityGate } from "@/components/identity/IdentityProvider";
 import { Scene } from "./Scene";
 import type { SurfaceTarget } from "./Earth";
 import type { CameraHandle, EarthJourney } from "./CameraRig";
@@ -106,6 +107,16 @@ export default function CosmosExperience() {
   const isMobile = useIsMobile();
   const { progress } = useProgress();
 
+  /* ---------- identity gate (owned above this component) ----------
+     The Cosmos only READS `open` and REPORTS the explorer lock: the gate
+     must never open while a map provider owns the frame (its capture-phase
+     Escape would contend with the dialog's). */
+  const { open: gateOpen, setLock: setGateLock } = useIdentityGate();
+  useEffect(() => {
+    setGateLock(explorerStage !== "off");
+  }, [explorerStage, setGateLock]);
+  useEffect(() => () => setGateLock(false), [setGateLock]);
+
   /* ---------- Cosmos ambience ---------- */
   const ambienceRef = useRef<CosmosAmbience | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
@@ -129,6 +140,12 @@ export default function CosmosExperience() {
     ambience.setMuted(next);
     setSoundMuted(next);
   }, []);
+  // The ambience recedes while the identity gate is open. Restoring is safe:
+  // the gate cannot be open while the map (which ducks on its own) is live.
+  useEffect(() => {
+    if (gateOpen) ambienceRef.current?.setDucked(true);
+    else if (explorerStage === "off") ambienceRef.current?.setDucked(false);
+  }, [gateOpen, explorerStage]);
 
   // Reveal once assets are in — with a safety valve so we never trap the user.
   useEffect(() => {
@@ -152,6 +169,30 @@ export default function CosmosExperience() {
       setSelectedGeo(null);
     }
   }, []);
+
+  /**
+   * DESTINATION INTENT (owner-authorised, final navigation pass): the Compass
+   * can request Earth, which is a state of this experience rather than a route.
+   * It arrives as `/?to=earth`, is applied once through the existing select(),
+   * and is consumed so a refresh does not re-fire it. Nothing else is touched.
+   */
+  const pendingIntent = useRef<string | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("to") === "earth") {
+      // Consume the request from the URL immediately, but hold it in a ref so a
+      // re-run of this effect (React's development double-invoke) still applies it.
+      pendingIntent.current = "earth";
+      q.delete("to");
+      window.history.replaceState(null, "", `${window.location.pathname}${q.toString() ? `?${q}` : ""}`);
+    }
+    if (pendingIntent.current !== "earth") return;
+    const t = setTimeout(() => {
+      pendingIntent.current = null;
+      select("earth");
+    }, 700);
+    return () => clearTimeout(t);
+  }, [select]);
 
   const returnToSystem = useCallback(() => {
     setGMode(false);
@@ -310,7 +351,7 @@ export default function CosmosExperience() {
   }
 
   const earthKeysActive =
-    mode === "focus" && selected === "earth" && explorerStage === "off";
+    mode === "focus" && selected === "earth" && explorerStage === "off" && !gateOpen;
 
   useEffect(() => {
     if (!earthKeysActive) return;
@@ -469,7 +510,7 @@ export default function CosmosExperience() {
   // (the surface handles its own Escape while live).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || explorerStage !== "off" || gMode) return;
+      if (e.key !== "Escape" || explorerStage !== "off" || gMode || gateOpen) return;
       if (journey) setJourney(null);
       else if (infoOpen) setInfoOpen(false);
       else if (selectedGeo) setSelectedGeo(null);
@@ -477,7 +518,7 @@ export default function CosmosExperience() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, explorerStage, journey, infoOpen, selectedGeo, returnToSystem, gMode]);
+  }, [mode, explorerStage, journey, infoOpen, selectedGeo, returnToSystem, gMode, gateOpen]);
 
   const announcement =
     explorerStage === "live"
@@ -535,6 +576,7 @@ export default function CosmosExperience() {
         journey,
         explorerOffice,
         selectedOfficeId,
+        gateOpen,
         selectedGeo: selectedGeo
           ? { id: selectedGeo.id, kind: selectedGeo.kind, name: selectedGeo.name }
           : null,
@@ -582,6 +624,7 @@ export default function CosmosExperience() {
               onGeoNavigate={geoNavigate}
               selectedGeoId={selectedGeo?.id ?? null}
               focusedGeoId={gMode ? (geoCandidates[gIndex]?.id ?? null) : null}
+              calm={gateOpen}
             />
           </Suspense>
         </Canvas>

@@ -89,6 +89,12 @@ export function StyleLab() {
               <SystemboomLogo height={20} priority />
             </Link>
             <span className="type-label hidden md:inline">Visual System · Phase 0</span>
+            <Link href="/style-lab/social" className="type-meta ml-2 hidden underline-offset-4 hover:underline sm:inline">
+              Social · Phase 4
+            </Link>
+            <Link href="/style-lab/circle" className="type-meta ml-2 hidden underline-offset-4 hover:underline sm:inline">
+              Circle of Life · Phase 5
+            </Link>
             <div className="ml-auto flex items-center gap-1.5">
               <ThemeToggle labeled />
               <Avatar src={demoUser.avatar} name={demoUser.name} size="sm" />
@@ -302,7 +308,7 @@ export function StyleLab() {
                   <span className="type-meta">
                     {query
                       ? `Search is wired in a later phase — you typed “${query}”.`
-                      : "Field is real; results arrive with the dashboard phase."}
+                      : "Field is real; results arrive with the World phase."}
                   </span>
                 </label>
                 <div>

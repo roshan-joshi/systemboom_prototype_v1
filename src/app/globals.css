@@ -215,6 +215,29 @@ body::before {
    MOTION / REDUCED MOTION
    ============================================================ */
 
+/* ---- SYSTEMBOOM internal surfaces (World, Life) ----
+   The same environment Social uses, so light is one product and not two:
+   Solar Observatory field with a near-white sheet, Deep Cosmos field in dark. */
+.sb-surface {
+  --page: var(--bg);
+  --hair: rgba(201, 216, 234, 0.14);
+  --rule: rgba(201, 216, 234, 0.22);
+  --card: var(--surface);
+  --card-edge: rgba(142, 155, 176, 0.18);
+  --card-shadow: none;
+  --bar: transparent;
+  background: var(--page);
+}
+[data-theme="light"] .sb-surface {
+  --bar: #ffffff;
+  --page: #f5f5f6;
+  --hair: rgba(15, 21, 32, 0.14);
+  --rule: rgba(15, 21, 32, 0.22);
+  --card: #fdfdfd;
+  --card-edge: transparent;
+  --card-shadow: 0 8px 28px -18px rgba(30, 45, 70, 0.25);
+}
+
 .sb-transition {
   transition-timing-function: var(--ease-out);
   transition-duration: var(--m2);
@@ -267,6 +290,123 @@ body::before {
   to {
     transform: translateY(0);
   }
+}
+
+/* My World 2030 Visual Leap — the Life Instrument's ONE profile-entry event.
+   Photo resolves, the ring gains depth a beat later, the current band's
+   highlight/tick settle in last. Plays once on mount; the global
+   reduced-motion rule below collapses every duration to the final state. */
+@keyframes sb-instrument-resolve {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sb-band-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Final Social Connection pass — a relationship state resolving (Add friend →
+   Requested, Pending → Friend). One quiet ~200ms settle, never a bounce or
+   glow; the global reduced-motion rule below collapses it to the final state
+   instantly, same as every other keyframe here. */
+@keyframes sb-rel-resolve {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* S6 — the ONE transient-surface family (Search results, People, Notifications,
+   Messages, the Person surface). A surface is brought forward from My World:
+   short opacity + a few px of travel, 200ms, then still. The same keyframe
+   everywhere so three utilities never grow three motion languages; content,
+   not motion, tells them apart. The global reduced-motion rule below collapses
+   it to the final state. */
+@keyframes sb-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.sb-surface-in {
+  animation: sb-surface-in var(--m2) var(--ease-out) both;
+}
+
+/* S6 — the quiet scrim under a transient surface: My World becomes slightly
+   quieter, never blurred, never dark. */
+@keyframes sb-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.sb-scrim-in {
+  animation: sb-scrim-in var(--m2) var(--ease-out) both;
+}
+
+/* S6 — a measured reveal for context that appears inside the Composer (kind
+   fields, the media panel): one wrapper settles, labels never animate alone. */
+@keyframes sb-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.sb-reveal {
+  animation: sb-reveal 180ms var(--ease-out) both;
+}
+
+/* S6 — "I was told something changed → here is that exact thing": the Moment a
+   Search result or a Notification points at settles once, then the mark is
+   gone. Background only — nothing moves. */
+@keyframes sb-target-settle {
+  0% {
+    background-color: var(--boom-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+[data-sb-moment][data-sb-focused] {
+  animation: sb-target-settle 900ms var(--ease-out) both;
+  border-radius: 12px;
+}
+
+/* S6 — touch/press acknowledgement, immediate: a small press depth, no wait. */
+.sb-press {
+  transition-property: transform, opacity, background-color, border-color, color;
+  transition-duration: var(--m1);
+  transition-timing-function: var(--ease-out);
+}
+.sb-press:active {
+  transform: scale(0.97);
 }
 
 @media (prefers-reduced-motion: reduce) {

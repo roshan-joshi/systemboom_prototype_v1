@@ -10,8 +10,10 @@ export const demoUser: DemoUser = {
   username: "maya.rai",
   dateOfBirth: "1991-11-04",
   birthTime: "06:42",
+  birthTimeKnown: true,
   location: "Kathmandu, Nepal",
-  avatar: "/mock/avatar-maya.svg",
+  /** A real photo, not an illustration — the Person + Life Identity pass supersedes the earlier curated-avatar convention. */
+  avatar: "/mock/social/face-portrait.jpg",
   cover: "/mock/cover-kathmandu.svg",
   bio: "Photographer chasing light across the Himalayas. Collecting moments, not things.",
 };

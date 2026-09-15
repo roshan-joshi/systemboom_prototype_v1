@@ -2,6 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { IdentityProvider } from "@/components/identity/IdentityProvider";
+import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
+import { RegionSuggestion } from "@/components/i18n/RegionSuggestion";
+import { resolveRequestLocale } from "@/lib/i18n/server";
+import { localeMeta } from "@/lib/i18n/config";
 
 export const metadata: Metadata = {
   title: "SYSTEMBOOM",
@@ -24,19 +29,34 @@ export const viewport: Viewport = {
  */
 const themeBootScript = `(function(){try{var p=new URLSearchParams(location.search).get("theme");var s=localStorage.getItem("sb-theme");var t=(p==="light"||p==="dark")?p:(s==="light"||s==="dark")?s:"dark";document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="dark";}})();`;
 
-export default function RootLayout({
+// Locale boot: the server already resolved + rendered the right locale (no flash),
+// so this only reconciles the <html lang> attribute for the review route's ?lang=
+// override before paint — the same early-boot discipline the theme uses (§23).
+const localeBootScript = `(function(){try{var p=new URLSearchParams(location.search).get("lang");var ok=["en","es","it","nl","ru","hi","ne","zh-Hans"];if(p&&ok.indexOf(p)>=0){document.documentElement.lang=p;}}catch(e){}})();`;
+
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const { locale, source, region } = await resolveRequestLocale();
+  const meta = localeMeta(locale);
   return (
     <html
-      lang="en"
+      lang={locale}
+      dir={meta.dir}
       data-theme="dark"
       suppressHydrationWarning
       className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
-        {children}
+        <script dangerouslySetInnerHTML={{ __html: localeBootScript }} />
+        <LocaleProvider initialLocale={locale} initialSource={source} region={region}>
+          <IdentityProvider>{children}</IdentityProvider>
+          {/* S1 §58–§59: a quiet region-language suggestion (Keep / Switch), never an
+              auto-switch, never a modal or a bell event. Self-hides unless a genuine region
+              change maps to a different supported language. */}
+          <RegionSuggestion />
+        </LocaleProvider>
       </body>
     </html>
   );

@@ -12,11 +12,14 @@ import {
   Plus,
   RotateCcw,
   SunMedium,
+  UserRound,
   Volume2,
   VolumeX,
 } from "lucide-react";
 import { SYSTEMBOOM_OFFICES } from "@/lib/systemboom-origin";
 import { SystemboomLogo } from "@/components/ui/SystemboomLogo";
+import { Avatar } from "@/components/ui/Avatar";
+import { useIdentity } from "@/components/identity/IdentityProvider";
 import { setTheme, useTheme } from "@/lib/use-theme";
 import {
   PLANETS,
@@ -57,7 +60,12 @@ const PLANET_TINTS: Record<PlanetId, string> = {
    NAVIGATION
    ============================================================ */
 
-type NavPanel = "explore" | "learn" | "signin" | "menu" | null;
+/**
+ * Local panels only. The identity gate is NOT one of them — its state is
+ * owned by IdentityProvider above the WebGL/fallback fork (Phase 2.2); the
+ * nav merely reports intent through openGate().
+ */
+type NavPanel = "explore" | "learn" | "menu" | null;
 
 export function CosmosNav({
   onSelectPlanet,
@@ -76,11 +84,23 @@ export function CosmosNav({
   const { theme, chip, panel } = useChrome();
   const [open, setOpen] = useState<NavPanel>(null);
   const close = () => setOpen(null);
+  const { gate, activeIdentity } = useIdentity();
+  const gateChipRef = useRef<HTMLButtonElement>(null);
+  const firstName = activeIdentity?.name.split(" ")[0];
 
   const selectPlanet = (id: PlanetId) => {
     close();
     onSelectPlanet(id);
   };
+
+  /** Intent only — focus returns to the header chip, which always exists. */
+  const openGate = () => {
+    close();
+    gate.openGate(activeIdentity ? "signedIn" : "signin", gateChipRef.current);
+  };
+  const gateLabel = activeIdentity
+    ? `Signed in as ${activeIdentity.name} — open your identity`
+    : "Sign in";
 
   return (
     <>
@@ -159,13 +179,33 @@ export function CosmosNav({
               <Moon size={17} strokeWidth={1.75} />
             )}
           </button>
-          <button
-            className={`${CHIP_BASE} ${chip} hidden sm:inline-flex`}
-            aria-expanded={open === "signin"}
-            onClick={() => setOpen(open === "signin" ? null : "signin")}
-          >
-            Sign In
-          </button>
+          {/* Entry affordance — present at every width and regardless of
+              `minimal`; hidden only while a map provider is live (gate lock). */}
+          {!gate.locked && (
+            <button
+              ref={gateChipRef}
+              data-sb-gate-opener
+              aria-haspopup="dialog"
+              aria-expanded={gate.open}
+              aria-label={gateLabel}
+              onClick={openGate}
+              className={`${CHIP_BASE} ${chip} ${
+                activeIdentity ? "!px-1.5 sm:!pr-4" : "!px-3 sm:!px-5"
+              }`}
+            >
+              {activeIdentity ? (
+                <>
+                  <Avatar src={activeIdentity.avatar} name={activeIdentity.name} size="sm" />
+                  <span className="hidden sm:inline">{firstName}</span>
+                </>
+              ) : (
+                <>
+                  <UserRound size={17} strokeWidth={1.75} className="sm:hidden" />
+                  <span className="hidden sm:inline">Sign In</span>
+                </>
+              )}
+            </button>
+          )}
           {!minimal && (
             <button
               aria-label="Menu"
@@ -242,32 +282,6 @@ export function CosmosNav({
         </div>
       )}
 
-      {/* Sign In — prototype gate */}
-      {open === "signin" && (
-        <div
-          className={`fixed top-20 right-4 z-30 w-[min(92vw,340px)] rounded-2xl border p-6 backdrop-blur-xl sm:right-6 ${panel}`}
-          role="dialog"
-          aria-label="Sign in"
-        >
-          <p className="text-xs font-semibold tracking-[0.18em] uppercase opacity-60">
-            Enter SYSTEMBOOM
-          </p>
-          <p className="mt-3 text-sm leading-relaxed opacity-90">
-            The entry experience — from the Cosmos to your Earth, your world
-            and your life — arrives in Phase 2 of this prototype.
-          </p>
-          <div
-            className="mt-5 flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-full bg-[#d92a20]/45 px-6 text-sm font-semibold text-white/70"
-            aria-disabled="true"
-          >
-            Enter SYSTEMBOOM — coming in Phase 2
-          </div>
-          <button onClick={close} className={`${CHIP_BASE} ${chip} mt-3 w-full`}>
-            Close
-          </button>
-        </div>
-      )}
-
       {/* Mobile menu */}
       {open === "menu" && (
         <div
@@ -301,12 +315,11 @@ export function CosmosNav({
             >
               Learn
             </button>
-            <button
-              className={`${CHIP_BASE} ${chip} flex-1`}
-              onClick={() => setOpen("signin")}
-            >
-              Sign In
-            </button>
+            {!gate.locked && (
+              <button className={`${CHIP_BASE} ${chip} flex-1`} onClick={openGate}>
+                {activeIdentity ? firstName : "Sign In"}
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -12,3 +12,9 @@ next-env.d.ts
 
 # Phase evidence screenshots — large binary artifacts, kept local only
 prototype-evidence/
+
+# Working reference material — screen recordings and site screenshots used while
+# building. Not needed by the app or the build; references/brand/ IS kept because
+# the expression asset pipeline and the render briefs read the mascot source from it.
+references/cosmos/
+references/social/

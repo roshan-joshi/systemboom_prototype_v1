@@ -168,7 +168,7 @@ export function CircleSample({ life }: { life: LifeTime | null }) {
         viewBox="0 0 260 260"
         className="w-56 max-w-full shrink-0 sm:w-64"
         role="img"
-        aria-label={`Circle of Life sample: eight 15-year bands from birth to 105+, current band ${CIRCLE_BANDS[bandIdx]}`}
+        aria-label={`Circle of Life sample: ten 15-year bands across 150 years, current band ${CIRCLE_BANDS[bandIdx]}`}
       >
         {CIRCLE_BANDS.map((band, i) => {
           const start = i * span + gap / 2;

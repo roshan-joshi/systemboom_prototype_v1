@@ -130,6 +130,7 @@ export function Scene({
   onGeoNavigate,
   selectedGeoId,
   focusedGeoId,
+  calm = false,
 }: {
   mode: CosmosMode;
   selected: PlanetId | null;
@@ -154,6 +155,8 @@ export function Scene({
   onGeoNavigate: (label: import("@/lib/earth/globe-geo").GlobeGeoLabel) => void;
   selectedGeoId: string | null;
   focusedGeoId: string | null;
+  /** Identity gate open: the Cosmos idles a little slower behind the scrim. */
+  calm?: boolean;
 }) {
   const q = QUALITY[tier];
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -251,6 +254,7 @@ export function Scene({
         handleRef={cameraHandleRef}
         earthDistRef={earthDistRef}
         surfaceTargetRef={surfaceTargetRef}
+        calm={calm}
       />
       <FacingTracker earthBodyRef={earthBodyRef} facingRef={facingRef} mode={mode} />
     </>
