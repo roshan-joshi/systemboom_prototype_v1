@@ -298,6 +298,13 @@ const ne: Record<string, string> = {
   "expr.touched": "भावुक",
   "expr.withYou": "म छु",
   "expr.more": "थप",
+  // R3.3 §11/§38 — Human Pulse speaks PEOPLE, not reactions (names DRAFT pending native review)
+  "expr.peopleN": "{n} जना|{n} जना",
+  "expr.pulseAria": "{n} जनाले यस पलमा भावना व्यक्त गरे|{n} जनाले यस पलमा भावनाहरू व्यक्त गरे",
+  "expr.spectrumTitle": "मानिसहरूले के महसुस गरे",
+  "expr.whoFor": "{name} व्यक्त गर्ने मानिसहरू",
+  "expr.back": "पछाडि",
+  "expr.showMorePeople": "थप मानिसहरू हेर्नुहोस्",
   // R3.1 §54 — new expressions, names DRAFT pending native review
   "expr.love": "माया",
   "expr.proud": "गर्व",

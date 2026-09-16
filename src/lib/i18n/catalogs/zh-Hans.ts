@@ -299,6 +299,13 @@ const zhHans: Record<string, string> = {
   "expr.touched": "感动",
   "expr.withYou": "与你同在",
   "expr.more": "更多",
+  // R3.3 §11/§38 — Human Pulse speaks PEOPLE, not reactions (names DRAFT pending native review)
+  "expr.peopleN": "{n} 人",
+  "expr.pulseAria": "{n} 人对这个时刻表达了感受",
+  "expr.spectrumTitle": "大家的感受",
+  "expr.whoFor": "表达{name}的人",
+  "expr.back": "返回",
+  "expr.showMorePeople": "显示更多的人",
   // R3.1 §54 — new expressions, names DRAFT pending native review
   "expr.love": "爱",
   "expr.proud": "骄傲",

@@ -98,6 +98,17 @@ regret. They are marked `draft` until a native speaker reads them in context. No
 `expr.care` changed in **nl** (`Warmte`) and **ne** (`स्नेह`) so `expr.love` could take the
 word each had been using.
 
+## Human Pulse (R3.3)
+
+| key | en | meaning to translate |
+|---|---|---|
+| `expr.peopleN` | {n} person / {n} people | HUMANS present — never "reactions" |
+| `expr.pulseAria` | {n} people expressed feelings on this Moment | presence, warm, not analytics |
+| `expr.spectrumTitle` | What people felt | the detail panel's quiet title |
+| `expr.whoFor` | People who expressed {name} | {name} is the localized expression name |
+| `expr.back` | Back | one step back inside the panel |
+| `expr.showMorePeople` | Show more people | batched reveal, no pagination jargon |
+
 ## Conversation vocabulary (R3 — supersedes "note")
 
 | key | en | note |

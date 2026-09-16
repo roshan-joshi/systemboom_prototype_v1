@@ -15,7 +15,7 @@ import { MotionConfig } from "motion/react";
 import { SystemboomLogo } from "@/components/ui/SystemboomLogo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { now } from "@/lib/clock";
-import { PEOPLE, type Moment, type Person } from "./data";
+import { PEOPLE, simulateExpressions, type Moment, type Person } from "./data";
 import { Composer, draftFromMoment, emptyDraft } from "./Composer";
 import { CircleModule } from "./CircleModule";
 import { LifeCounter } from "./LifeCounter";
@@ -111,12 +111,12 @@ const SCOPED_CSS = `
    Same grammar (anticipate → express → settle), six different temperaments. Amplitudes stay
    small on purpose: this is a heavy metal character, and the mass layer below already
    carries the weight — the gesture only says WHAT KIND of feeling arrived. */
-@keyframes sb-g-care{0%{rotate:-3deg;translate:0 1px}52%{rotate:1deg;translate:0 -1px}100%{rotate:0deg;translate:0 0}}
-@keyframes sb-g-joy{0%{translate:0 2px}54%{translate:0 -4px}100%{translate:0 0}}
-@keyframes sb-g-laugh{0%{rotate:0deg}26%{rotate:-7deg}54%{rotate:5deg}78%{rotate:-2deg}100%{rotate:0deg}}
-@keyframes sb-g-wow{0%{translate:0 0;rotate:0deg}18%{translate:0 3px;rotate:2deg}46%{translate:0 -5px;rotate:-3deg}100%{translate:0 0;rotate:0deg}}
-@keyframes sb-g-celebrate{0%{translate:0 3px;rotate:0deg}30%{translate:0 -7px;rotate:-6deg}62%{translate:0 -2px;rotate:4deg}100%{translate:0 0;rotate:0deg}}
-@keyframes sb-g-support{0%{translate:0 -2px}34%{translate:0 2px}72%{translate:0 0}100%{translate:0 0}}
+@keyframes sb-g-care{0%{scale:.94;rotate:-2deg;translate:0 2px}16%{scale:.94;rotate:-3deg}58%{scale:1.03;rotate:1deg;translate:0 -1px}100%{scale:1;rotate:0deg;translate:0 0}}
+@keyframes sb-g-joy{0%{scale:.93;translate:0 3px}15%{scale:.93;translate:0 3px}55%{scale:1.06;translate:0 -4px}100%{scale:1;translate:0 0}}
+@keyframes sb-g-laugh{0%{scale:.94;rotate:2deg}14%{scale:.94;rotate:3deg}34%{scale:1.04;rotate:-7deg}58%{rotate:5deg}80%{rotate:-2deg}100%{scale:1;rotate:0deg}}
+@keyframes sb-g-wow{0%{scale:.92;translate:0 3px;rotate:2deg}12%{scale:.92;translate:0 3px;rotate:2deg}44%{scale:1.09;translate:0 -5px;rotate:-3deg}100%{scale:1;translate:0 0;rotate:0deg}}
+@keyframes sb-g-celebrate{0%{scale:.92;translate:0 4px;rotate:2deg}14%{scale:.92;translate:0 4px}36%{scale:1.08;translate:0 -8px;rotate:-6deg}64%{translate:0 -2px;rotate:4deg}100%{scale:1;translate:0 0;rotate:0deg}}
+@keyframes sb-g-support{0%{scale:.96;translate:0 -2px}20%{scale:.96;translate:0 -2px}44%{scale:1.02;translate:0 2px}76%{translate:0 0}100%{scale:1;translate:0 0}}
 .sb-social .sb-g-care{animation-name:sb-expr-in,sb-g-care;}
 .sb-social .sb-g-joy{animation-name:sb-expr-in,sb-g-joy;}
 .sb-social .sb-g-laugh{animation-name:sb-expr-in,sb-g-laugh;}
@@ -161,32 +161,221 @@ const SCOPED_CSS = `
    (recess + rim light), never from glow. The rise on focus/hover is a transition, so the
    global reduced-motion rule ends it instantly while the state stays fully legible. */
 .sb-social .sb-deck{background:linear-gradient(180deg,color-mix(in srgb,var(--sheet-raised) 96%,#fff 4%) 0%,var(--sheet-raised) 58%,color-mix(in srgb,var(--sheet-raised) 92%,#000 8%) 100%);}
-.sb-social .sb-seat{background:linear-gradient(180deg,color-mix(in srgb,var(--sheet-raised) 78%,#000 22%) 0%,color-mix(in srgb,var(--sheet-raised) 92%,#000 8%) 62%,color-mix(in srgb,var(--sheet-raised) 84%,#fff 16%) 100%);box-shadow:inset 0 3px 5px -2px rgba(0,0,0,.55),inset 0 1px 0 rgba(0,0,0,.30),inset 0 -1px 0 color-mix(in srgb,var(--sheet-raised) 40%,#fff 60%);transition:background 140ms var(--ease-out),box-shadow 180ms var(--ease-out);}
-.sb-social .sb-seat-art{position:relative;transition:transform 180ms var(--ease-out);will-change:transform;}
+/* R3.6 — light mode was the weakest surface: a warm paper gradient and crisper wells, so the
+   dark metallic vessels sit on real material instead of a flat white sheet. */
+[data-theme="light"] .sb-social .sb-deck,[data-theme="light"] .sb-social .sb-lib{background:linear-gradient(180deg,#FFFFFF 0%,#F7F5F2 62%,#EEEBE6 100%);border-color:rgba(15,21,32,.16);}
+/* hover/preview: the vessel brightens a touch — anticipation, never a performance */
+.sb-social .sb-seat-art img{transition:filter 160ms var(--ease-out);}
+.sb-social .sb-seat:hover .sb-seat-art img,.sb-social .sb-seat[data-sb-previewing] .sb-seat-art img,.sb-social .sb-lib-cell:hover .sb-seat-art img{filter:brightness(1.08) saturate(1.06);}
+/* R3.6 — the library tiles arrive with one short staggered rise, then are still */
+@keyframes sb-tile-in{0%{opacity:0;transform:translateY(8px) scale(.92)}100%{opacity:1;transform:none}}
+.sb-social .sb-tile-in{animation:sb-tile-in 240ms var(--ease-out) both;}
+/* the global reduced-motion rule zeroes durations but NOT delays — with both-fill a
+   delayed tile would sit invisible in its from-state, so the stagger itself must go too */
+@media (prefers-reduced-motion: reduce){.sb-social .sb-tile-in{animation-delay:0ms !important;}}
+/* R3.7 §4 — GRAVITY DOCK. The seat is an INVISIBLE hit target on ONE shared ground: no
+   well, no card, no per-seat background. The ground carries the material; the character
+   carries the depth (contact shadow, chamber layer). Owner-directed supersession of the
+   R3.1 machined-well seats — recorded in AGENTS.md. */
+.sb-social .sb-seat{background:none;box-shadow:none;}
+.sb-social .sb-seat-body{display:block;}
+.sb-social .sb-seat img,.sb-social .sb-seat .sb-core-layer{rotate:var(--lean,0deg);}
+.sb-social .sb-seat-art{position:relative;transition:transform 110ms var(--ease-out);will-change:transform;}
 /* R3.2 self-critique (3D depth) — a real contact shadow on the seat floor, so the character
    RESTS in its well instead of floating over it. Material, not glow: it darkens, never lights. */
 .sb-social .sb-seat-art::after{content:"";position:absolute;left:50%;bottom:-2px;width:64%;height:9%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.38),transparent);pointer-events:none;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out);}
 .sb-social .sb-seat:hover .sb-seat-art::after,.sb-social .sb-seat:focus-visible .sb-seat-art::after,.sb-social .sb-seat[data-sb-previewing] .sb-seat-art::after{opacity:.55;transform:translateX(-50%) scale(.86);}
-.sb-social .sb-seat:hover,.sb-social .sb-seat:focus-visible{background:color-mix(in srgb,var(--sheet-raised) 86%,#fff 14%);box-shadow:inset 0 2px 4px -1px rgba(0,0,0,.34),inset 0 -1px 0 color-mix(in srgb,var(--sheet-raised) 45%,#fff 55%),0 8px 18px -12px rgba(0,0,0,.62);}
-.sb-social .sb-seat:hover .sb-seat-art,.sb-social .sb-seat:focus-visible .sb-seat-art{transform:translateY(-5px) scale(1.10);}
+/* PREVIEW (§6): the character rises 3–6px in 80–140ms; the ground shadow tightens beneath */
+.sb-social .sb-seat:hover .sb-seat-art,.sb-social .sb-seat:focus-visible .sb-seat-art{transform:translateY(-4px) scale(1.06);}
 .sb-social .sb-seat:active .sb-seat-art{transform:translateY(0) scale(1.02);}
 /* R3.2 §25 — a finger sliding across the deck PREVIEWS: the seat lights and the character
    lifts a little. It never plays the expression; only an intentional release commits. */
-.sb-social .sb-seat[data-sb-previewing]{background:color-mix(in srgb,var(--sheet-raised) 86%,#fff 14%);box-shadow:inset 0 2px 4px -1px rgba(0,0,0,.34),inset 0 -1px 0 color-mix(in srgb,var(--sheet-raised) 45%,#fff 55%),0 8px 18px -12px rgba(0,0,0,.62);}
-.sb-social .sb-seat[data-sb-previewing] .sb-seat-art{transform:translateY(-5px) scale(1.10);}
+.sb-social .sb-seat[data-sb-previewing] .sb-seat-art{transform:translateY(-4px) scale(1.06);}
 /* the OWNED seat (§24): the character has settled into its well — deeper recess, a floor
    tinted by its own accent, and one small Boom notch on the rim. Never a red circle. */
-.sb-social .sb-seat-own{background:radial-gradient(120% 90% at 50% 108%,var(--seat-accent) 0%,transparent 62%),color-mix(in srgb,var(--sheet-raised) 84%,#000 16%);box-shadow:inset 0 3px 5px -1px rgba(0,0,0,.40),inset 0 -1px 0 color-mix(in srgb,var(--sheet-raised) 45%,#fff 55%);}
-.sb-social .sb-seat-own .sb-seat-art{transform:translateY(-2px) scale(1.04);}
+/* OWNED (§9, R3.7): the character has SETTLED — it rests on the ground inside an ORBIT ring
+   in its own accent (an ellipse lying on the floor, lit faintly by the core), with the Boom
+   notch on the rim. Shape + material + colour together, never colour alone. */
+.sb-social .sb-seat-own .sb-seat-art{transform:translateY(0) scale(1);}
+.sb-social .sb-seat-orbit{left:9%;right:9%;bottom:0;height:24%;border-radius:50%;background:radial-gradient(closest-side,var(--seat-accent) 0%,transparent 72%);}
+.sb-social .sb-seat-orbit-field{left:14%;right:14%;bottom:22px;height:16%;}
+/* the committed CONTROL keeps a real material of its own (it is the only seat that is also a
+   button in the action row): a recessed disc whose floor is lit by the core's accent */
+.sb-social button[data-sb-express].sb-ctrl-own{background:radial-gradient(120% 90% at 50% 108%,var(--seat-accent) 0%,transparent 62%),color-mix(in srgb,var(--sheet-raised) 84%,#000 16%);box-shadow:inset 0 3px 5px -1px rgba(0,0,0,.40),inset 0 -1px 0 color-mix(in srgb,var(--sheet-raised) 45%,#fff 55%);}
+[data-theme="light"] .sb-social button[data-sb-express].sb-ctrl-own{background:radial-gradient(120% 90% at 50% 108%,var(--seat-accent) 0%,transparent 62%),linear-gradient(180deg,#ECE9E4 0%,#F7F5F2 100%);box-shadow:inset 0 2px 4px -2px rgba(15,21,32,.35),inset 0 -1px 0 #fff;}
+
+/* R3.9 §14–§16 — WORLD LIGHT. A persistent, subtle environmental tone this person's World casts
+   on the instrument: Deep Cosmos = cool steel ambient, Solar Observatory = warm sun. The LIVE
+   seam is the World Wall's atmosphere (documented; no token exists in this repo yet), so the
+   shipped truth source is the theme material. Influence is capped ~8–14% and touches only the
+   rim reflection, the contact shadow's tint and the ground pool — NEVER the mascot's colours and
+   NEVER an Emotion Core's accent (§15/§32: warm World + blue Wow must coexist truthfully). */
+.sb-social{--wl:200 60% 72%;--wl-a:.10;}
+[data-theme="light"] .sb-social{--wl:34 85% 68%;--wl-a:.14;}
+/* the harness override lives ON the frame element itself (it carries .sb-social) */
+.sb-social[data-sb-worldlight="warm"]{--wl:30 88% 66%;--wl-a:.14;}
+.sb-social[data-sb-worldlight="cool"]{--wl:206 62% 70%;--wl-a:.10;}
+/* the vessel's WORLD-side rim: one ambient reflection from the upper-left, screen-blended */
+.sb-social .sb-stage-art::before{content:"";position:absolute;inset:-4%;border-radius:50%;background:radial-gradient(60% 50% at 26% 16%,hsl(var(--wl) / var(--wl-a)) 0%,transparent 70%);mix-blend-mode:screen;pointer-events:none;z-index:2;}
+/* THE GROUND (§4–§5, §11–§12): one physical surface with ONE directional light from the
+   upper-left. Deep Cosmos: a dark plane that falls away at the bottom. Solar Observatory: warm
+   ground in light, precise hairline edge. No stars, no orbit lines, no HUD. */
+.sb-social .sb-dock{background:radial-gradient(140% 90% at 22% -20%,rgba(255,255,255,.075) 0%,transparent 55%),radial-gradient(70% 34% at 50% 96%,rgba(255,255,255,.06) 0%,transparent 100%),linear-gradient(180deg,color-mix(in srgb,var(--sheet-raised) 94%,#fff 6%) 0%,var(--sheet-raised) 48%,color-mix(in srgb,var(--sheet-raised) 84%,#000 16%) 100%);}
+[data-theme="light"] .sb-social .sb-dock{background:radial-gradient(140% 90% at 22% -20%,#FFFFFF 0%,transparent 55%),radial-gradient(70% 34% at 50% 96%,rgba(255,255,255,.7) 0%,transparent 100%),linear-gradient(180deg,#FBF8F3 0%,#F1ECE4 52%,#E2DBCF 100%);border-color:rgba(15,21,32,.16);}
+[data-theme="light"] .sb-social .sb-seat-art::after{background:radial-gradient(closest-side,rgba(30,25,20,.42),transparent);}
+/* §8 — the dock lets go: a 140ms fade while the chamber flight departs; no movement of its own */
+@keyframes sb-dock-out{0%{opacity:1}100%{opacity:0}}
+.sb-social .sb-dock-out{animation:sb-dock-out 180ms var(--ease-out) both;}
+/* REVEAL (§6): the six rise into position, staggered 12ms, 120ms each — ≤180ms in all */
+@keyframes sb-rise-in{0%{opacity:0;transform:translateY(12px) scale(.9)}100%{opacity:1;transform:none}}
+.sb-social .sb-rise-in{animation:sb-rise-in 120ms var(--ease-out) both;}
+@media (prefers-reduced-motion: reduce){.sb-social .sb-rise-in{animation-delay:0ms !important;}}
+/* §14 MICRO-PARALLAX — pointer/touch preview only: the shell rises 4px, the core (inside,
+   heavier, further away) lags by ~1.5px. Never scroll-linked, never passive; none under
+   reduced motion (the rule lives inside no-preference, so reduce has no offset at all). */
+@media (prefers-reduced-motion: no-preference){
+.sb-social .sb-core-layer{transition:translate 110ms var(--ease-out);}
+.sb-social .sb-seat:hover .sb-core-layer,.sb-social .sb-seat:focus-visible .sb-core-layer,.sb-social .sb-seat[data-sb-previewing] .sb-core-layer,.sb-social .sb-lib-cell:hover .sb-core-layer,.sb-social .sb-lib-cell:focus-visible .sb-core-layer,.sb-social .sb-stage-art.sb-hero-preview .sb-core-layer{translate:1.2px 1.8px;}
+}
+/* §6–§7 PREVIEW WAKE — one ~120ms light event INSIDE the opening, per expression, then gone.
+   Light only (screen blend), clipped by the artwork's own opening geometry, never a glow. */
+.sb-social .sb-core-wake{position:absolute;translate:-50% -50%;border-radius:50%;pointer-events:none;mix-blend-mode:screen;background:radial-gradient(circle,currentColor 0%,transparent 64%);opacity:0;animation-duration:120ms;animation-timing-function:var(--ease-out);animation-fill-mode:both;}
+@keyframes sb-cw-care{0%{opacity:0;clip-path:inset(100% 0 0 0 round 50%)}60%{opacity:.75;clip-path:inset(0 round 50%)}100%{opacity:0;clip-path:inset(0 round 50%)}}
+@keyframes sb-cw-joy{0%{opacity:0;transform:scale(.4)}55%{opacity:.8;transform:scale(1.18) rotate(22deg)}100%{opacity:0;transform:scale(1) rotate(32deg)}}
+@keyframes sb-cw-laugh{0%{opacity:0;transform:scaleX(.55)}45%{opacity:.75;transform:scaleX(.75)}75%{opacity:.6;transform:scaleX(1.22)}100%{opacity:0;transform:scale(1)}}
+@keyframes sb-cw-wow{0%{opacity:.35;transform:scale(.55)}42%{opacity:.4;transform:scale(.48)}64%{opacity:.85;transform:scale(1.28)}100%{opacity:0;transform:scale(1)}}
+@keyframes sb-cw-celebrate{0%{opacity:0;transform:translateY(40%) scale(.7)}55%{opacity:.85;transform:translateY(-6%) scale(1.06)}100%{opacity:0;transform:translateY(-14%) scale(1)}}
+@keyframes sb-cw-support{0%{opacity:0;transform:scale(1.4)}60%{opacity:.75;transform:scale(1)}100%{opacity:0;transform:scale(.98)}}
+.sb-social .sb-cw-care{animation-name:sb-cw-care;}
+.sb-social .sb-cw-joy{animation-name:sb-cw-joy;}
+.sb-social .sb-cw-laugh{animation-name:sb-cw-laugh;}
+.sb-social .sb-cw-wow{animation-name:sb-cw-wow;}
+.sb-social .sb-cw-celebrate{animation-name:sb-cw-celebrate;}
+.sb-social .sb-cw-support{animation-name:sb-cw-support;background:none;border:2px solid currentColor;}
+/* (R3.7's chamber→lens flight was renamed sb-lens-flight in R3.8 — see the horizon block) */
+/* ── R3.9 §7–§13 — THE EMOTIONAL EVENT ──────────────────────────────────────────────
+   Committing lets the feeling briefly ESCAPE the chamber into the Moment's local space:
+   CORE AWAKENS → CHARACTER RESPONDS → EMOTION ESCAPES → SHELL/GROUND RECEIVE THE LIGHT →
+   BOOM IMPULSE → COLLAPSE INTO THE LENS → STILLNESS. Every element is one-shot ('both'),
+   positioned from the chamber (light has a source, §16), staged in real depth (bg 0 · vessel 1 ·
+   mg 2 · fg 3), and gone before the second is out. Reduced motion mounts none of it. */
+.sb-social .sb-ev{position:absolute;pointer-events:none;animation-timing-function:var(--ease-out);animation-fill-mode:both;}
+/* generic emergence: born at the chamber, travels to (--tx,--ty), grows, dissolves as energy */
+@keyframes sb-ev-emerge{0%{opacity:0;transform:translate(-50%,-50%) scale(var(--s0,.35))}18%{opacity:1}62%{opacity:.95;transform:translate(calc(-50% + var(--tx)*.8),calc(-50% + var(--ty)*.82)) scale(calc(var(--s1,1) * .96))}100%{opacity:0;transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty))) scale(var(--s1,1))}}
+.sb-social .sb-ev-emerge{animation-name:sb-ev-emerge;}
+/* a believable spark arc: up with the impulse, then gravity carries it down and out */
+@keyframes sb-ev-arc{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}14%{opacity:1}52%{opacity:.95;transform:translate(calc(-50% + var(--mx)),calc(-50% + var(--my))) scale(.85)}100%{opacity:0;transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty))) scale(.45)}}
+.sb-social .sb-ev-arc{animation-name:sb-ev-arc;}
+/* Laugh's resonance ring / Wow's pressure ring */
+@keyframes sb-ev-wave{0%{opacity:0;transform:translate(-50%,-50%) scale(var(--s0,.25))}22%{opacity:.9}100%{opacity:0;transform:translate(-50%,-50%) scale(var(--s1,1.7))}}
+.sb-social .sb-ev-wave{animation-name:sb-ev-wave;}
+/* light received by the shell (at the chamber) and by the ground (restrained, §16) */
+@keyframes sb-ev-light{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
+.sb-social .sb-ev-light{animation-name:sb-ev-light;border-radius:50%;mix-blend-mode:screen;}
+/* a cool reflection crossing the metal (Wow) / warm light travelling the shell (Joy) */
+@keyframes sb-ev-sheen{0%{opacity:0;transform:translateX(-70%) rotate(18deg)}35%{opacity:.7}100%{opacity:0;transform:translateX(70%) rotate(18deg)}}
+.sb-social .sb-ev-sheen{animation-name:sb-ev-sheen;mix-blend-mode:screen;}
+/* Support's embracing structures closing gently around the orb */
+@keyframes sb-ev-close{0%{opacity:0;transform:translate(calc(-50% + var(--fx)),calc(-50% + var(--fy))) scale(var(--sx,1),1) rotate(var(--r0,0deg))}38%{opacity:1}78%{opacity:1;transform:translate(-50%,-50%) scale(var(--sx,1),1) rotate(0deg)}100%{opacity:0;transform:translate(-50%,-50%) scale(var(--sx,1),1)}}
+.sb-social .sb-ev-close{animation-name:sb-ev-close;}
+/* Laugh's one transparent droplet */
+@keyframes sb-ev-drop{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}25%{opacity:.9;transform:translate(-50%,-30%) scale(1)}100%{opacity:0;transform:translate(-50%,90%) scale(.9)}}
+.sb-social .sb-ev-drop{animation-name:sb-ev-drop;}
+
+/* §6 RETOUCH — tapping the committed control: a small core + rim response, 160ms, nothing more */
+@keyframes sb-retouch{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
+@keyframes sb-retouch-core{0%{opacity:0}40%{opacity:.55}100%{opacity:0}}
+/* on the lens ROOT (its surface carries the commit animations — touching that animation-name
+   would restart the entry gesture when the attribute drops) */
+.sb-social [data-sb-retouch] [data-sb-lens]{animation:sb-retouch 160ms var(--ease-out) both;}
+.sb-social [data-sb-retouch] .sb-lens-surface::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 62% 50%,currentColor 0%,transparent 46%);mix-blend-mode:screen;animation:sb-retouch-core 160ms var(--ease-out) both;}
 
 /* R3.1 §25–§26 — THE EXPRESSION LIBRARY. A considered room, not a settings grid: a domed
    ground, generous cells, and the emotional groups separated by air rather than by tabs. */
 .sb-social .sb-lib{background:radial-gradient(130% 92% at 50% 0%,color-mix(in srgb,var(--sheet-raised) 90%,#fff 10%) 0%,var(--sheet-raised) 62%,color-mix(in srgb,var(--sheet-raised) 94%,#000 6%) 100%);}
-.sb-social .sb-lib-cell{transition:background 140ms var(--ease-out),box-shadow 180ms var(--ease-out);}
-.sb-social .sb-lib-cell .sb-seat-art{transition:transform 180ms var(--ease-out);}
-.sb-social .sb-lib-cell:hover,.sb-social .sb-lib-cell:focus-visible{background:color-mix(in srgb,var(--sheet-raised) 86%,#fff 14%);box-shadow:0 10px 22px -16px rgba(0,0,0,.7);}
-.sb-social .sb-lib-cell:hover .sb-seat-art,.sb-social .sb-lib-cell:focus-visible .sb-seat-art{transform:translateY(-4px) scale(1.08);}
-.sb-social .sb-lib-cell-own{background:radial-gradient(120% 80% at 50% 106%,var(--seat-accent) 0%,transparent 60%),color-mix(in srgb,var(--sheet-raised) 88%,#000 12%);box-shadow:inset 0 2px 4px -1px rgba(0,0,0,.34);}
+/* R3.7 §10 — EXPRESSION FIELD: free-standing objects, no card behind any mascot; each family
+   is one spatial band whose ground is faintly warmed by its own tone (light, not a label). */
+.sb-social .sb-lib-cell{background:none;box-shadow:none;}
+.sb-social .sb-lib-cell .sb-seat-art{transition:transform 110ms var(--ease-out);}
+.sb-social .sb-lib-cell:hover .sb-seat-art,.sb-social .sb-lib-cell:focus-visible .sb-seat-art{transform:translateY(-4px) scale(1.06);}
+.sb-social .sb-field-band{background:radial-gradient(90% 70% at 50% 100%,color-mix(in srgb,var(--band-tone) 9%,transparent) 0%,transparent 72%);}
+[data-theme="light"] .sb-social .sb-field-band{background:radial-gradient(90% 70% at 50% 100%,color-mix(in srgb,var(--band-tone) 12%,transparent) 0%,transparent 72%);}
+
+/* ── R3.8 EMOTION HORIZON ─────────────────────────────────────────────────────────
+   One vessel, six cores. The surface is a LOCAL FIELD growing from the control — no border,
+   no big card: a ground that thins toward its edges (mask), one directional light from the
+   upper-left, subtle separation from the Moment beneath. Solar Observatory in light. */
+.sb-social .sb-horizon{border-radius:16px;transform-origin:18px 100%;background:radial-gradient(120% 90% at 22% -10%,rgba(255,255,255,.07) 0%,transparent 55%),radial-gradient(80% 40% at 50% 100%,rgba(255,255,255,.05) 0%,transparent 100%),linear-gradient(180deg,color-mix(in srgb,var(--sheet-raised) 96%,#fff 4%) 0%,color-mix(in srgb,var(--sheet-raised) 97%,transparent) 60%,color-mix(in srgb,var(--sheet-raised) 86%,#000 14%) 100%);box-shadow:0 16px 30px -22px rgba(0,0,0,.5);-webkit-mask-image:radial-gradient(120% 112% at 50% 60%,#000 46%,rgba(0,0,0,.86) 68%,rgba(0,0,0,.22) 100%);mask-image:radial-gradient(120% 112% at 50% 60%,#000 46%,rgba(0,0,0,.86) 68%,rgba(0,0,0,.22) 100%);}
+[data-theme="light"] .sb-social .sb-horizon{background:radial-gradient(120% 90% at 22% -10%,#FFFFFF 0%,transparent 55%),radial-gradient(80% 40% at 50% 100%,rgba(255,255,255,.75) 0%,transparent 100%),linear-gradient(180deg,#FBF8F3 0%,#F2EDE5 55%,#E4DDD1 100%);box-shadow:0 16px 30px -24px rgba(30,25,20,.35);}
+@keyframes sb-horizon-in{0%{opacity:0;transform:translateY(8px) scale(.94)}100%{opacity:1;transform:none}}
+.sb-social .sb-horizon-in{animation:sb-horizon-in 160ms var(--ease-out) both;}
+/* the STAGE: the vessel grounded by its own contact shadow */
+.sb-social .sb-stage-art::after{content:"";position:absolute;left:50%;bottom:-1px;width:60%;height:8%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,hsl(var(--wl) / calc(var(--wl-a) * .8)),transparent 70%),radial-gradient(closest-side,rgba(0,0,0,.42),transparent);pointer-events:none;}
+[data-theme="light"] .sb-social .sb-stage-art::after{background:radial-gradient(closest-side,hsl(var(--wl) / calc(var(--wl-a) * .9)),transparent 70%),radial-gradient(closest-side,rgba(30,25,20,.40),transparent);}
+/* PREVIEW on the vessel: a small gesture only — the core has entered, the body notices */
+@keyframes sb-hero-preview{0%{transform:scale(1)}50%{transform:scale(1.025) translateY(-1.5px)}100%{transform:scale(1.012) translateY(-1px)}}
+.sb-social .sb-hero-preview{animation:sb-hero-preview 140ms var(--ease-out) both;}
+/* CORES on the horizon: invisible hit targets, one small lit orb each, grounded */
+.sb-social .sb-core{background:none;box-shadow:none;}
+.sb-social .sb-core-body{display:block;transition:translate 110ms var(--ease-out),opacity 160ms var(--ease-out),scale 160ms var(--ease-out);}
+.sb-social .sb-core-obj::after{content:"";position:absolute;left:50%;bottom:-3px;width:70%;height:12%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.42),transparent);pointer-events:none;transition:opacity 110ms var(--ease-out),transform 110ms var(--ease-out);}
+[data-theme="light"] .sb-social .sb-core-obj::after{background:radial-gradient(closest-side,rgba(30,25,20,.38),transparent);}
+.sb-social .sb-core-obj img{transition:filter 120ms var(--ease-out);}
+/* preview: the core rises and leans toward the chamber; its shadow tightens */
+.sb-social .sb-core:hover .sb-core-body,.sb-social .sb-core:focus-visible .sb-core-body,.sb-social .sb-core[data-sb-previewing] .sb-core-body{translate:calc(var(--toward,0) * 3px) -5px;}
+.sb-social .sb-core:hover .sb-core-obj img,.sb-social .sb-core[data-sb-previewing] .sb-core-obj img,.sb-social .sb-core:focus-visible .sb-core-obj img{filter:brightness(1.1) saturate(1.08);}
+.sb-social .sb-core:hover .sb-core-obj::after,.sb-social .sb-core[data-sb-previewing] .sb-core-obj::after{opacity:.55;transform:translateX(-50%) scale(.8);}
+/* the chosen core rests grounded inside its orbit ring */
+.sb-social .sb-core-own .sb-core-body{translate:0 0;}
+.sb-social .sb-core-orbit{left:6%;right:6%;bottom:1px;height:30%;}
+.sb-social .sb-core-orbit-atlas{left:14%;right:14%;bottom:20px;height:22%;}
+/* COMMIT: the unused cores recede while the chosen one enters the chamber */
+.sb-social [data-sb-committing] .sb-core:not([aria-checked=true]) .sb-core-body{opacity:.35;scale:.9;}
+/* stage 1 — the core ACCELERATES into the chamber (ease-in), 120ms */
+@keyframes sb-core-flight{0%{transform:translate(var(--fdx),var(--fdy)) scale(var(--fs));opacity:1}100%{transform:none;opacity:.55}}
+.sb-social .sb-core-flight{animation:sb-core-flight 120ms cubic-bezier(.5,0,.9,.4) both;transform-origin:50% 50%;}
+/* stage 2 — the shell LOCKS the core: a short contraction → release under the gesture */
+@keyframes sb-lock{0%{scale:1}28%{scale:.955}62%{scale:1.035}100%{scale:1}}
+.sb-social .sb-lock{animation-name:sb-lock;animation-timing-function:var(--ease-out);animation-fill-mode:both;}
+.sb-social .sb-lock.sb-g-care{animation-name:sb-lock,sb-g-care;}
+.sb-social .sb-lock.sb-g-joy{animation-name:sb-lock,sb-g-joy;}
+.sb-social .sb-lock.sb-g-laugh{animation-name:sb-lock,sb-g-laugh;}
+.sb-social .sb-lock.sb-g-wow{animation-name:sb-lock,sb-g-wow;}
+.sb-social .sb-lock.sb-g-celebrate{animation-name:sb-lock,sb-g-celebrate;}
+.sb-social .sb-lock.sb-g-support{animation-name:sb-lock,sb-g-support;}
+.sb-social .sb-lock.sb-energy-warm{animation-name:sb-lock,sb-gesture-warm;}
+.sb-social .sb-lock.sb-energy-lively{animation-name:sb-lock,sb-gesture-lively;}
+/* stage 3 — the activated chamber collapses into the lens beside Respond, 200ms */
+@keyframes sb-lens-flight{0%{transform:translate(var(--fdx),var(--fdy)) scale(var(--fs));opacity:1}80%{opacity:1}100%{transform:none;opacity:0}}
+.sb-social .sb-lens-flight{animation:sb-lens-flight 200ms cubic-bezier(.3,.7,.2,1) both;transform-origin:50% 50%;}
+/* LANDING on the control: a thump and one ring — the gesture already happened on the vessel */
+@keyframes sb-lens-land{0%{scale:.74;opacity:.5}58%{scale:1.06;opacity:1}100%{scale:1;opacity:1}}
+.sb-social .sb-lens-land{animation-name:sb-lens-land;animation-timing-function:var(--ease-out);animation-fill-mode:both;}
+/* ATLAS bands: cores in family space, no cards */
+.sb-social .sb-atlas .sb-lib-cell{background:none;box-shadow:none;}
+
+/* R3.3 — THE BOOM LENS: a tiny precision optical object. Physical rim + material surface
+   from real shading (inset bevel, a quiet top light), never frosted glass, never blur,
+   never glow. The chip is the ONE semantic mark, seated in the rim. */
+.sb-social .sb-lens-surface{background:color-mix(in srgb,var(--sheet-raised) 84%,#000 16%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--hair) 80%,#fff 20%),inset 0 1.5px 2px rgba(255,255,255,.16),inset 0 -2px 3px rgba(0,0,0,.42);}
+[data-theme="light"] .sb-social .sb-lens-surface{box-shadow:inset 0 0 0 1px rgba(15,21,32,.22),inset 0 1.5px 2px rgba(255,255,255,.5),inset 0 -2px 3px rgba(15,21,32,.22);}
+.sb-social .sb-lens-surface::after{content:"";position:absolute;inset:0;clip-path:inherit;background:linear-gradient(158deg,rgba(255,255,255,.13) 6%,transparent 44%);pointer-events:none;}
+/* R3.8 §11 — the surface is the oblique aperture (clip-path set inline per size); the metal
+   shell fragment (.sb-lens-shell) is drawn over it */
+.sb-social .sb-lens-shell{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
+[data-theme="light"] .sb-social .sb-lens-shell{filter:drop-shadow(0 1px 1px rgba(15,21,32,.25));}
+.sb-social .sb-lens-chip{background:var(--sheet-raised);box-shadow:0 0 0 1px var(--hair),0 1px 2px rgba(0,0,0,.28);}
+
+/* R3.3 §18 — the Expression Spectrum separates out of the Human Pulse cluster: one short
+   spatial expansion (~200ms), one-shot, collapsed to instant by the global reduced-motion
+   rule. The aggregate itself NEVER animates passively (§14, §25). */
+/* R3.5 §6 — the Emotion Core's activation swell: internal light only, one-shot, collapsed
+   to its (already fully visible) final state by the global reduced-motion rule. */
+@keyframes sb-core-in{0%{opacity:0;transform:scale(.55)}45%{opacity:.85;transform:scale(1.12)}100%{opacity:0;transform:scale(1)}}
+.sb-social .sb-core-in{animation-name:sb-core-in;animation-timing-function:var(--ease-out);animation-fill-mode:both;z-index:1;}
+@keyframes sb-spectrum-in{0%{opacity:0;transform:scale(.62) translateY(10px)}100%{opacity:1;transform:none}}
+.sb-social .sb-spectrum-in{animation:sb-spectrum-in 200ms var(--ease-out) both;transform-origin:14% 100%;}
+.sb-social .sb-lib-cell-own{background:none;box-shadow:none;}
 `;
 
 export function SocialPreview({ product = false }: { product?: boolean }) {
@@ -242,6 +431,11 @@ function Inner({ product = false }: { product?: boolean }) {
   const [profileName, setProfileName] = useState<string | null>(null);
   const [photoMode, setPhotoMode] = useState<"bad" | "none" | "broken" | null>(null);
   const [wallMode, setWallMode] = useState<"bad" | "broken" | null>(null);
+  // R3.9 §14/§31 — WORLD LIGHT review override. The live seam is the World Wall's atmosphere
+  // (no such token exists yet in this repo, honestly recorded); the shipped truth source is the
+  // THEME material fallback (Deep Cosmos = cool ambient · Solar Observatory = warm). This
+  // harness param only forces one tone or the other so both can be captured on one theme.
+  const [worldLight, setWorldLight] = useState<"warm" | "cool" | null>(null);
   const [relOverride, setRelOverride] = useState<import("@/components/world/model").Relationship | null>(null);
 
   // R3.2 §54 — warm the Quick Six deck art once, on idle, after Social has settled.
@@ -258,6 +452,13 @@ function Inner({ product = false }: { product?: boolean }) {
     if (q.get("bell") === "1") setBell(true);
     const v = q.get("viewer");
     if (v === "maya" || v === "asha" || v === "visitor" || v === "ashaVisitor" || v === "prakashVisitor") dispatch({ type: "viewer", viewer: v });
+    // R3.3 §31–§32 — harness-only Human Pulse scale fixtures:
+    //   ?pulse=1|2|5|20|100same|90-10|100mixed|1000mixed|18mix  (optionally ?pulseMoment=<id>)
+    const pulse = q.get("pulse");
+    if (pulse) {
+      const sim = simulateExpressions(pulse);
+      if (sim) dispatch({ type: "pulse-sim", id: q.get("pulseMoment") ?? "m-rain", expressions: sim });
+    }
     const nf = q.get("notifications");
     if (nf === "many" || nf === "empty") dispatch({ type: "notifications", mode: nf });
     if (q.get("fail") === "1") dispatch({ type: "simulateFailure", on: true });
@@ -268,6 +469,7 @@ function Inner({ product = false }: { product?: boolean }) {
     const ph = q.get("photo"); if (ph === "bad" || ph === "none" || ph === "broken") setPhotoMode(ph);
     const wl = q.get("wall"); if (wl === "bad" || wl === "broken") setWallMode(wl);
     const rl = q.get("rel"); if (rl === "none" || rl === "request-out" || rl === "request-in" || rl === "friend" || rl === "family") setRelOverride(rl);
+    const wlt = q.get("worldlight"); if (wlt === "warm" || wlt === "cool") setWorldLight(wlt);
   }, [dispatch, product]);
 
   const openComposer = useCallback(() => setComposer(state.draft ?? emptyDraft(localISO(now()).slice(0, 10), me.home)), [state.draft, me.home]);
@@ -395,7 +597,7 @@ function Inner({ product = false }: { product?: boolean }) {
               touches the Life Cursor (a preceding sibling, outside that div) or TopBar (outside
               the sheet entirely) at any width. Not a Chrome.tsx change, no frozen prop, class, or
               test contract touched. */}
-          <div data-sb-social-frame={frame} className="sb-social @container relative min-h-[900px] text-text" style={{ width: FRAME_PX[frame], maxWidth: "100%", boxShadow: frame === "desktop" ? undefined : "0 0 0 1px var(--edge)", ["--frame-w" as string]: frame === "desktop" ? "100vw" : FRAME_PX[frame] }}>
+          <div data-sb-social-frame={frame} data-sb-worldlight={worldLight ?? undefined} className="sb-social @container relative min-h-[900px] text-text" style={{ width: FRAME_PX[frame], maxWidth: "100%", boxShadow: frame === "desktop" ? undefined : "0 0 0 1px var(--edge)", ["--frame-w" as string]: frame === "desktop" ? "100vw" : FRAME_PX[frame] }}>
             <style>{SCOPED_CSS}</style>
             <div data-sb-social-inner className="@2xl:[--gutter:40px] @2xl:[--rule-x:19px] @2xl:[--bleed:0px]">
               {/* The quiet ground under any open surface — below the bar, above My World. */}

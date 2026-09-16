@@ -14,14 +14,14 @@ run native review before any locale is presented to users as complete.
 
 | locale | native name | strings | plural forms | QA status |
 |--------|-------------|---------|--------------|-----------|
-| en | English | 313 | one \| other | **reference** (canonical source; byte-identical to product strings) |
-| es | Español | 313 | one \| other | draft |
-| it | Italiano | 313 | one \| other | draft |
-| nl | Nederlands | 313 | one \| other | draft |
-| ru | Русский | 313 | one \| few \| many | draft |
-| hi | हिन्दी | 313 | one \| other | draft |
-| ne | नेपाली | 313 | one \| other | draft |
-| zh-Hans | 简体中文 | 313 | other | draft |
+| en | English | 319 | one \| other | **reference** (canonical source; byte-identical to product strings) |
+| es | Español | 319 | one \| other | draft |
+| it | Italiano | 319 | one \| other | draft |
+| nl | Nederlands | 319 | one \| other | draft |
+| ru | Русский | 319 | one \| few \| many | draft |
+| hi | हिन्दी | 319 | one \| other | draft |
+| ne | नेपाली | 319 | one \| other | draft |
+| zh-Hans | 简体中文 | 319 | other | draft |
 
 All eight catalogs are **key-complete**: every catalog has exactly the same key set as
 English (0 missing, 0 extra), verified by the completeness check. Completeness is not
@@ -89,3 +89,12 @@ both choices read as warmth-offered rather than caretaking.
 `expr.nostalgia` carries the most cultural weight of the six (it must read as fond
 remembering, never as regret) and needs review in every locale before any is called complete.
 English is unchanged and byte-identical throughout.
+
+## R3.3 review flags (2026-09-16)
+
+Human Pulse speaks PEOPLE, not reactions. Six new keys ×8 (`expr.peopleN`, `expr.pulseAria`,
+`expr.spectrumTitle`, `expr.whoFor`, `expr.back`, `expr.showMorePeople`) are **draft pending
+native review**. The plural forms matter most in **ru** (one|few|many across человек forms)
+and the counter words in **ne** ("जना") and **zh-Hans** ("人") — a native reviewer should
+confirm they read as warm presence, not census language. English is unchanged and
+byte-identical elsewhere.

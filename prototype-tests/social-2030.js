@@ -106,7 +106,11 @@ const typeSearch = (page, value) =>
     const expressed = await page.$("[data-sb-expression-summary]");
     if (expressed) {
       await expressed.click();
-      await sleep(300);
+      await sleep(350);
+      // R3.3 owner-superseded: Human Pulse opens the Expression Spectrum; the dense people
+      // list sits one deliberate step deeper. Same invariant: IDENTITY-ONLY, never band/age.
+      await page.click("[data-sb-spectrum-row]");
+      await sleep(350);
       const popoverText = await page.$eval("[data-sb-expression-who]", (e) => e.textContent.replace(/\s+/g, " ").trim());
       ok(!/band \d+–\d+|y \d\dm \d\dd/.test(popoverText), `no band/age text in the dense people list — the ring carries identity (${popoverText.slice(0, 80)})`);
       await shot(page, "04-responder-list-lives");

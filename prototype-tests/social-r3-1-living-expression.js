@@ -15,6 +15,15 @@ const ok = (c, label) => { if (c) { passed += 1; console.log(`  ✓ ${label}`); 
 
 const RAIN = "[data-sb-moment='m-rain']";
 const QUICK = ["care", "joy", "laugh", "wow", "celebrate", "support"];
+/** R3.8 — the picker has ONE vessel: attend a core and the vessel declares that expression
+    (pose · mass · energy · tier · render). Collect per id by hovering. */
+const heroOf = async (page, id) => {
+  const r = await page.evaluate((i) => { const b = document.querySelector(`[data-sb-expression-option='${i}']`).getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, id);
+  await page.mouse.move(r.x, r.y, { steps: 2 });
+  await sleep(160);
+  return page.$eval("[data-sb-horizon-stage] [data-sb-expression]", (e) => ({ pose: getComputedStyle(e.querySelector("[data-sb-pose]")).transform, mass: e.getAttribute("data-sb-expression-mass"), energy: e.getAttribute("data-sb-expression-energy"), tier: e.querySelector("[data-sb-pose-applied]")?.getAttribute("data-sb-pose-applied") ?? "", src: e.querySelector("img")?.getAttribute("src") ?? "" }));
+};
+
 const ENERGY = ["proud", "speechless"];
 const WARMTH = ["love", "thanks", "touched", "withyou"];
 const THOUGHT = ["respect", "inspired", "curious", "agree", "thinking", "nostalgia"];
@@ -47,9 +56,14 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await openLibrary(page);
   const ids = await page.$$eval("[data-sb-expression-library] [data-sb-expression-option]", (n) => n.map((o) => o.getAttribute("data-sb-expression-option")));
   ok(ids.length === 18, `the registry is eighteen expressions (${ids.length})`);
-  ok(ids.join(",") === ALL.join(","), "the library orders quick six first, then energy · warmth · thought");
-  const groups = await page.$$eval("[data-sb-expression-library] [data-sb-expression-group]", (n) => [...new Set(n.map((e) => e.getAttribute("data-sb-expression-group")))].sort());
-  ok(groups.join(",") === "energy,thought,warmth", `three emotional groups order the library (${groups.join(", ")})`);
+  // Owner-superseded (R3.7 §10): the field is organised by emotional FAMILY — warmth · energy ·
+  // wonder · connection — each family one spatial band. The invariant (all eighteen, in one
+  // stable, meaningful order, quick expressions leading their family) is unchanged.
+  const FIELD = ["care", "love", "thanks", "touched", "nostalgia", "joy", "laugh", "celebrate", "proud", "wow", "speechless", "inspired", "curious", "thinking", "support", "withyou", "respect", "agree"];
+  ok(ids.join(",") === FIELD.join(","), "the field orders by family — warmth · energy · wonder · connection — each quick expression leading its family");
+  // Owner-superseded (R3.8 §13): the Atlas is organised by the four colour FAMILIES, as spatial bands
+  const groups = await page.$$eval("[data-sb-expression-library] [data-sb-field-band]", (n) => n.map((e) => e.getAttribute("data-sb-field-band")));
+  ok(groups.join(",") === "warmth,energy,wonder,connection", `four emotional families order the Atlas (${groups.join(", ")})`);
   const tabs = await page.$$eval("[data-sb-expression-library]", (n) => n.some((p) => p.querySelector("[role=tab],[role=tablist]")));
   ok(!tabs, "the groups are structure and air — never exposed as tabs (§11)");
   ok(!(await page.$("[data-sb-expression-option='surprised']")), "Surprised is gone — it duplicated Wow; Nostalgia took the slot (§14)");
@@ -66,23 +80,29 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   const deck = await page.evaluate(() => {
     const d = document.querySelector("[data-sb-expression-deck]");
     const seats = [...d.querySelectorAll("[data-sb-expression-option]")];
-    const s0 = seats[0];
+    // Suite correction (R3.6): the deck opens with the first seat focused, whose art is
+    // RISEN (scale 1.10) — the size bound describes the resting tile, so measure one at rest.
+    const s0 = seats.find((x) => x !== document.activeElement && !x.hasAttribute("data-sb-previewing")) ?? seats[0];
     const cs = getComputedStyle(s0);
-    const art = s0.querySelector("[data-sb-expression]").getBoundingClientRect();
+    // Owner-superseded (R3.8 §1–§4): the Quick Six are CORE OBJECTS on a horizon below ONE vessel
+    const art = s0.querySelector("[data-sb-core]").getBoundingClientRect();
     return {
       n: seats.length,
       cell: Math.round(s0.getBoundingClientRect().width),
       art: Math.round(art.width),
-      recessed: /inset/.test(cs.boxShadow),
-      seatClass: s0.className.includes("sb-seat"),
+      // Owner-superseded (R3.7 §4): the seat is an INVISIBLE hit target on one shared ground —
+      // no well, no card. Dimension still comes from material (the ground + contact shadow),
+      // never from glow; the invariant is asserted on the seat being transparent.
+      onGround: cs.backgroundImage === "none" && cs.boxShadow === "none",
+      seatClass: s0.className.includes("sb-core"),
       caption: (d.querySelector("[data-sb-deck-caption]")?.textContent ?? "").trim(),
       deckMaterial: getComputedStyle(d).backgroundImage !== "none",
     };
   });
   ok(deck.n === 6, `the deck seats the quick six (${deck.n})`);
-  ok(deck.cell >= 64 && deck.cell <= 72, `a seat is a real cell, 64–72px (${deck.cell}px)`);
-  ok(deck.art >= 56 && deck.art <= 64, `the character inside it is 56–64px, not an icon (${deck.art}px)`);
-  ok(deck.recessed && deck.seatClass, "each seat is a machined recess — dimension from material, not from glow");
+  ok(deck.cell >= 44 && deck.cell <= 72, `a core's hit target is real, 44–72px (${deck.cell}px)`);
+  ok(deck.art >= 36 && deck.art <= 48, `the core object inside it is 36–48px — an object, not an icon (${deck.art}px)`);
+  ok(deck.onGround && deck.seatClass, "each core is a transparent hit target on ONE shared ground — dimension from material, not from glow");
   ok(deck.deckMaterial, "the deck itself carries a material gradient, not a flat plate");
   ok(deck.caption.length > 0, `the deck states a semantic name (“${deck.caption}”)`);
   const noGlow = await page.$$eval("[data-sb-expression-deck] [data-sb-expression]", (n) => n.every((e) => {
@@ -123,7 +143,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
     const p = document.querySelector("[data-sb-expression-library]");
     const cells = [...p.querySelectorAll("[data-sb-expression-option]")];
     const r = p.getBoundingClientRect();
-    const art = cells[0].querySelector("[data-sb-expression]").getBoundingClientRect();
+    const art = cells[0].querySelector("[data-sb-core]").getBoundingClientRect();
     const rows = [...new Set(cells.map((c) => Math.round(c.getBoundingClientRect().top)))];
     return {
       named: cells.every((c) => (c.textContent ?? "").trim().length > 0),
@@ -136,9 +156,9 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
     };
   });
   ok(lib.named, "every expression in the library is NAMED — this is how the language is learned");
-  ok(lib.art >= 48, `the library's art is larger than the deck's icons (${lib.art}px)`);
+  ok(lib.art >= 36, `the Atlas's cores are real objects (${lib.art}px)`);
   ok(lib.material, "the library has a domed material ground, not a generic white rectangle (§26)");
-  ok(lib.cols >= 2 && lib.cols <= 3, `two to three columns with room to breathe (${lib.cols})`);
+  ok(lib.cols >= 4 && lib.cols <= 6, `four to six cores per family row, with room to breathe (${lib.cols})`);
   ok(lib.separated >= 3, `the emotional groups are separated by air, not by tabs (${lib.separated} divisions)`);
   ok(lib.withinTop && lib.withinBottom, "the library never leaves the screen — its scroller is capped to the room above the control");
 
@@ -147,15 +167,19 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await open(page, 1440, 1000);
   await toRain(page);
   const neutral = await page.$eval(`${RAIN} [data-sb-express]`, (b) => b.querySelector("[data-sb-express-neutral]")?.getAttribute("src") ?? "");
-  ok(/neutral-sm\.webp$/.test(neutral), `the control wears the NEUTRAL social mascot's head crop (${neutral})`);
+  // Owner-superseded (R3.8 §12): the closed control is the compact DORMANT CHAMBER, never a tiny mascot
+  ok(/neutral-chamber-lens-sm\.webp$/.test(neutral), `the control wears the DORMANT chamber (${neutral})`);
   const srcs = await page.evaluate(() => {
     const summary = document.querySelector("[data-sb-moment='m-rain'] [data-sb-expression-summary] img")?.getAttribute("src") ?? "";
     return { summary };
   });
-  ok(/neutral-sm\.webp$/.test(srcs.summary), `the presence line uses the sm OPTICAL CROP, not a shrunken whole body (${srcs.summary})`);
+  // R3.3 owner-superseded: the presence line moved from the sm face crop to the dedicated
+  // Boom-Lens XS optical crop — tighter still, designed for aggregate scale.
+  // R3.5: the quick six carry their own EMOTION-CORE lens crops now
+  ok(/-lens-xs\.webp$/.test(srcs.summary), `the presence line uses the Boom-Lens XS optical crop (${srcs.summary})`);
   await openDeck(page);
   const deckSrc = await page.$eval("[data-sb-expression-option='joy'] img", (e) => e.getAttribute("src"));
-  ok(/-md\.webp$/.test(deckSrc), `the deck uses the full character at md (${deckSrc})`);
+  ok(/-core\.webp$/.test(deckSrc), `the horizon shows the CORE object (${deckSrc}); the one vessel carries the md/lg render`);
   const res = await page.evaluate(async () => {
     const r = await fetch("/brand/expressions/neutral-md.webp");
     return { ok: r.ok, type: r.headers.get("content-type"), bytes: Number(r.headers.get("content-length") || 0) };
@@ -165,22 +189,24 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
 
   /* ---- 6. MASS — the character is a heavy metal bomb, not a rubber emoji ---- */
   console.log("6. Mass");
-  const mass = await page.$$eval("[data-sb-expression-deck] [data-sb-expression-mass]", (n) => n.map((e) => `${e.getAttribute("data-sb-expression")}:${e.getAttribute("data-sb-expression-mass")}`));
+  // Owner-superseded (R3.8): mass lives on the ONE vessel — attend a core and the vessel declares it;
+  // the commit impulse plays on the vessel (the lens beside Respond only LANDS afterwards)
+  const mass = [`support:${(await heroOf(page, "support")).mass}`, `celebrate:${(await heroOf(page, "celebrate")).mass}`];
   ok(mass.includes("support:heavy") && mass.includes("celebrate:light"), `mass is declared per expression (${mass.join(", ")})`);
-  const bands = await page.$$eval("[data-sb-expression-mass]", (n) => [...new Set(n.map((e) => e.getAttribute("data-sb-expression-mass")))].sort());
+  const bands = [...new Set(mass.map((m) => m.split(":")[1]))].sort();
   ok(bands.length >= 2, `more than one mass band is really in use (${bands.join(", ")})`);
   await page.click("[data-sb-expression-option='support']");
-  await sleep(90);
+  await sleep(200);
   const impulse = await page.evaluate(() => {
-    const el = document.querySelector("[data-sb-moment='m-rain'] [data-sb-express] [class*='sb-mass']");
+    const el = document.querySelector("[data-sb-horizon-stage] [class*='sb-mass']");
     if (!el) return null;
     const cs = getComputedStyle(el);
-    const ring = document.querySelector("[data-sb-moment='m-rain'] [data-sb-express] .sb-boom-pulse");
+    const ring = document.querySelector("[data-sb-horizon-stage] .sb-boom-pulse");
     return { name: cs.animationName, dur: cs.animationDuration, ring: ring ? getComputedStyle(ring).getPropertyValue("--pulse-to").trim() : "" };
   });
-  ok(!!impulse && /sb-mass-heavy/.test(impulse.name), `committing plays the mass impulse layer (${impulse && impulse.name})`);
+  ok(!!impulse && /sb-mass-heavy/.test(impulse.name), `committing plays the mass impulse layer on the vessel (${impulse && impulse.name})`);
   ok(impulse && impulse.ring === "1.62", `the pressure ring is mass-scaled — heavy displaces least (${impulse && impulse.ring})`);
-  await sleep(900);
+  await sleep(1100);
   const atRest = await page.$eval(RAIN, (m) => [...m.querySelectorAll("*")].filter((e) => e.getAnimations && e.getAnimations().some((a) => a.playState === "running")).length);
   ok(atRest === 0, `nothing loops — the feed is still a second later (${atRest} running)`);
 
@@ -189,11 +215,20 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await open(page, 1440, 1000);
   await openDeck(page);
   const marks = await page.$$eval("[data-sb-expression-deck] [data-sb-mark]", (n) => n.length);
-  ok(marks >= 5, `every quick expression's mark is individually removable via its own hook (${marks})`);
+  // R3.6 owner-superseded: the tile carries meaning INTERNALLY (Emotion Core + face + fuse),
+  // so the external badges left the tray entirely — the honest no-marks state is now the
+  // permanent state, not a test-only toggle. The invariant (never rely on tiny external
+  // badges) is asserted directly.
+  ok(marks === 0, `the tray shows NO external badges — the vessel itself carries the emotion (${marks})`);
   const faces = await page.$$eval("[data-sb-expression-deck] [data-sb-expression-option] img", (n) => [...new Set(n.map((e) => e.getAttribute("src")))]);
-  ok(faces.length === 1, "HONEST STATE: with only one supplied pose, all six wear the SAME face — the per-expression renders are ART ASSET BLOCKED (docs/handover/expression-render-briefs.md)");
-  const poses = await page.$$eval("[data-sb-expression-deck] [data-sb-pose]", (n) => [...new Set(n.map((e) => getComputedStyle(e).transform))]);
-  ok(poses.length >= 5, `what a POSE can honestly carry is carried: ${poses.length} distinct body transforms of 6`);
+  // R3.5 owner-superseded: the quick six now differ through the EMOTION CORE revealed inside
+  // the body — six distinct assets. The FACE itself is still the one supplied pose, and the
+  // per-expression facial renders remain ART ASSET BLOCKED (the invariant this check protects
+  // is honesty about what differentiates the six, and that is now recorded here).
+  ok(faces.length === 6, `each quick expression carries its own Emotion-Core artwork (${faces.length}/6); the facial renders remain artist work`);
+  const poses = [];
+  for (const id of QUICK) poses.push((await heroOf(page, id)).pose);
+  ok(new Set(poses).size >= 5, `what a POSE can honestly carry is carried: ${new Set(poses).size} distinct body transforms of 6 (on the one vessel)`);
 
   /* ---- 8. Device range ---- */
   console.log("8. Device range");
@@ -233,9 +268,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
   await open(page, 1440, 1000);
   await openDeck(page);
-  const rm = await page.$$eval("[data-sb-expression-deck] [data-sb-pose]", (n) => n.map((e) => getComputedStyle(e).transform));
+  const rm = [];
+  for (const id of QUICK) rm.push((await heroOf(page, id)).pose);
   ok(rm.every((t) => t !== "none") && new Set(rm).size >= 5, "reduced motion keeps every POSE — the emotion survives with no animation at all");
-  const rise = await page.$eval("[data-sb-expression-option='joy']", (e) => getComputedStyle(e.querySelector(".sb-seat-art")).transitionDuration);
+  const rise = await page.$eval("[data-sb-expression-option='joy']", (e) => getComputedStyle(e.querySelector(".sb-core-body")).transitionDuration);
   ok(parseFloat(rise) <= 0.001, `the seat's rise collapses to instant, the state stays legible (${rise})`);
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
 

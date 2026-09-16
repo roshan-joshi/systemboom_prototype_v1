@@ -13,6 +13,15 @@ const ok = (c, label) => { if (c) { passed += 1; console.log(`  ✓ ${label}`); 
 
 const RAIN = "[data-sb-moment='m-rain']";
 const QUICK = ["care", "joy", "laugh", "wow", "celebrate", "support"];
+/** R3.8 — the picker has ONE vessel: attend a core and the vessel declares that expression
+    (pose · mass · energy · tier · render). Collect per id by hovering. */
+const heroOf = async (page, id) => {
+  const r = await page.evaluate((i) => { const b = document.querySelector(`[data-sb-expression-option='${i}']`).getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, id);
+  await page.mouse.move(r.x, r.y, { steps: 2 });
+  await sleep(160);
+  return page.$eval("[data-sb-horizon-stage] [data-sb-expression]", (e) => ({ pose: getComputedStyle(e.querySelector("[data-sb-pose]")).transform, mass: e.getAttribute("data-sb-expression-mass"), energy: e.getAttribute("data-sb-expression-energy"), tier: e.querySelector("[data-sb-pose-applied]")?.getAttribute("data-sb-pose-applied") ?? "", src: e.querySelector("img")?.getAttribute("src") ?? "" }));
+};
+
 /** R3.2 §16 — per-expression tempo. Guidance bands from the brief, not exact numbers. */
 const TEMPO_BAND = { care: [280, 420], joy: [260, 380], laugh: [320, 460], wow: [240, 360], celebrate: [360, 520], support: [300, 460] };
 
@@ -53,20 +62,24 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   ok(ids.join(",") === QUICK.join(","), `the deck is exactly Care · Joy · Laugh · Wow · Celebrate · Support (${ids.join(", ")})`);
   const named = await page.evaluate(() => [...document.querySelectorAll("[data-sb-expression-deck] [data-sb-expression-option]")].every((o) => (o.getAttribute("aria-label") ?? "").length > 3));
   ok(named, "each carries its own localized accessible name");
-  const distinctPose = await page.$$eval("[data-sb-expression-deck] [data-sb-pose]", (n) => new Set(n.map((e) => getComputedStyle(e).transform)).size);
+  // Owner-superseded (R3.8 §1): ONE vessel, six cores — the body language is read on the vessel per core
+  const heroes = {};
+  for (const id of QUICK) heroes[id] = await heroOf(page, id);
+  const distinctPose = new Set(Object.values(heroes).map((h) => h.pose)).size;
   ok(distinctPose === 6, `six genuinely different body poses, no repeats (${distinctPose}/6)`);
-  const masses = await page.$$eval("[data-sb-expression-deck] [data-sb-expression-mass]", (n) => [...new Set(n.map((e) => e.getAttribute("data-sb-expression-mass")))].sort());
+  const masses = [...new Set(Object.values(heroes).map((h) => h.mass))].sort();
   ok(masses.length >= 2, `more than one mass band across the six (${masses.join(", ")})`);
 
   /* ---- 2. Asset tiers (§52) ---- */
   console.log("2. Asset tiers");
   const deckSrc = await page.$$eval("[data-sb-expression-deck] [data-sb-expression-option] img", (n) => [...new Set(n.map((e) => e.getAttribute("src")))]);
-  ok(deckSrc.every((s) => /-md\.webp$/.test(s)), `the deck resolves the MD tier (${deckSrc.join(", ")})`);
-  ok(!deckSrc.some((s) => /-lg\.webp$/.test(s)), "no LG asset is ever loaded into a feed action row (§52)");
+  // Owner-superseded (R3.8): the horizon holds CORE objects; the one vessel carries the render
+  ok(deckSrc.every((s) => /-core\.webp$/.test(s)) && Object.values(heroes).every((h) => /-(md|lg)\.webp$/.test(h.src)), `six core objects on the horizon; the vessel renders md/lg (${deckSrc.length} cores)`);
+  ok(!deckSrc.some((s) => /-lg\.webp$/.test(s)), "no LG asset is ever loaded into a feed action row as a picker tile (§52)");
   const ctrlSrc = await page.$eval(`${RAIN} [data-sb-express] img`, (e) => e.getAttribute("src"));
   ok(/-sm\.webp$/.test(ctrlSrc), `the Moment action control resolves the SM optical crop (${ctrlSrc})`);
-  const tierFace = await page.$$eval("[data-sb-expression-deck] [data-sb-pose-applied]", (n) => [...new Set(n.map((e) => e.getAttribute("data-sb-pose-applied")))]);
-  ok(tierFace.join() === "body", "the deck's MD art carries the BODY pose — posture is part of the expression there");
+  const tierFace = [...new Set(Object.values(heroes).map((h) => h.tier))];
+  ok(tierFace.join() === "body", "the vessel's art carries the BODY pose — posture is part of the expression there");
   const budget = await page.evaluate(async () => {
     const out = {};
     for (const t of ["sm", "md", "lg"]) {
@@ -116,9 +129,11 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
       const group = deck.querySelector("[role=radiogroup]");
       const r = deck.getBoundingClientRect();
       const seats = [...deck.querySelectorAll("[data-sb-expression-option]")];
-      const art = seats.map((s) => Math.round(s.querySelector("[data-sb-expression]").getBoundingClientRect().width));
+      const art = seats.map((s) => Math.round(s.querySelector("[data-sb-core]").getBoundingClientRect().width));
       const boxes = seats.map((s) => s.getBoundingClientRect());
+      const heroEl = deck.querySelector("[data-sb-horizon-stage] [data-sb-expression], [data-sb-horizon-stage] [data-sb-vessel-dormant]");
       return {
+        hero: Math.round(heroEl.getBoundingClientRect().width),
         pattern: group.getAttribute("data-sb-deck-pattern"),
         n: seats.length,
         seat: Math.round(boxes[0].width),
@@ -129,9 +144,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
         scroller: ["visible", "clip"].includes(getComputedStyle(group).overflowX),
       };
     });
-    ok(d.pattern === "3x2", `${w}: the chosen phone pattern is 3×2, everywhere (${d.pattern})`);
-    ok(d.n === 6 && d.allVisible, `${w}: all six are visible at once — no seat scrolled out of sight`);
-    ok(d.art >= 56 && d.art <= 68, `${w}: the character is ${d.art}px — big enough to read as a face (§21)`);
+    // Owner-superseded (R3.8 §1, §22): ONE vessel + six cores on a horizon replaces the 3×2 of six mascots
+    ok(d.pattern === "horizon", `${w}: the one phone pattern is the Emotion Horizon (${d.pattern})`);
+    ok(d.n === 6 && d.allVisible, `${w}: all six cores are visible at once — nothing scrolled out of sight`);
+    ok(d.art >= 34 && d.art <= 48 && d.hero >= 84 && d.hero <= 110, `${w}: cores ${d.art}px under one ${d.hero}px vessel — big enough to read`);
     ok(d.seat >= 44, `${w}: the seat is a real touch target (${d.seat}px)`);
     ok(d.inFrame && (await noHScroll(page)), `${w}: the deck stays on screen with no page overflow`);
     ok(d.scroller, `${w}: the six are laid out, never parked behind a horizontal scroller`);
@@ -144,11 +160,14 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   const dd = await page.evaluate(() => {
     const deck = document.querySelector("[data-sb-expression-deck]");
     const r = deck.getBoundingClientRect();
-    const rows = new Set([...deck.querySelectorAll("[data-sb-expression-option]")].map((s) => Math.round(s.getBoundingClientRect().top)));
+    // Owner-superseded (R3.7 §4): the desktop six sit on a shallow ARC, so their tops differ by
+    // up to ~10px. The invariant — one horizontal row, no wrapping — is asserted directly.
+    const rects = [...deck.querySelectorAll("[data-sb-expression-option]")].map((s) => s.getBoundingClientRect());
+    const rows = { size: rects.every((r, i) => i === 0 || r.left > rects[i - 1].left) && Math.max(...rects.map((r) => r.top)) - Math.min(...rects.map((r) => r.top)) <= 14 ? 1 : 2 };
     const moment = document.querySelector("[data-sb-moment='m-rain']").getBoundingClientRect();
     return { pattern: deck.querySelector("[role=radiogroup]").getAttribute("data-sb-deck-pattern"), rows: rows.size, width: Math.round(r.width), nearMoment: r.left >= moment.left - 8 && r.right <= moment.right + 8 };
   });
-  ok(dd.pattern === "row" && dd.rows === 1, `desktop shows all six in one horizontal deck (${dd.rows} row)`);
+  ok(dd.pattern === "horizon" && dd.rows === 1, `desktop shows all six cores on one horizon (${dd.rows} row)`);
   ok(dd.width <= 520, `it stays a compact deck, not a giant floating palette (${dd.width}px)`);
   ok(dd.nearMoment, "it stays anchored to the Moment it belongs to (§48)");
 
@@ -164,7 +183,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   const mid = await page.evaluate(() => {
     const previewing = [...document.querySelectorAll("[data-sb-expression-option][data-sb-previewing]")].map((e) => e.getAttribute("data-sb-expression-option"));
     let keyframes = 0;
-    document.querySelectorAll("[data-sb-expression-deck] *").forEach((e) => (e.getAnimations ? e.getAnimations() : []).forEach((an) => { if (an.playState === "running" && !(an instanceof CSSTransition)) keyframes += 1; }));
+    // Owner-superseded (R3.7 §6–§7): a PREVIEW may wake the chamber (`sb-cw-*`, ≤140ms) and the
+    // dock's own reveal (`sb-rise-in`) may still be finishing; neither is the expression. The
+    // invariant — passing over a seat never plays the EXPRESSION — counts expression keyframes.
+    document.querySelectorAll("[data-sb-expression-deck] *").forEach((e) => (e.getAnimations ? e.getAnimations() : []).forEach((an) => { if (an.playState === "running" && !(an instanceof CSSTransition) && !/^sb-cw-|^sb-rise-in$|^sb-hero-preview$/.test(an.animationName ?? "")) keyframes += 1; }));
     return { previewing, keyframes, caption: document.querySelector("[data-sb-deck-caption]").textContent.trim() };
   });
   ok(mid.previewing.length === 1, `dragging previews the seat under the finger (${mid.previewing.join(",")})`);
@@ -182,22 +204,18 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   console.log("8. Motion");
   await open(page, 1440, 1000);
   await openDeck(page);
-  const wired = await page.evaluate((QUICK) => {
-    const out = {};
-    for (const id of QUICK) {
-      const root = document.querySelector(`[data-sb-expression-option='${id}'] [data-sb-expression]`);
-      out[id] = { mass: root.getAttribute("data-sb-expression-mass"), energy: root.getAttribute("data-sb-expression-energy") };
-    }
-    return out;
-  }, QUICK);
+  const wired = {};
+  for (const id of QUICK) wired[id] = await heroOf(page, id);
   ok(Object.values(wired).every((v) => v.mass && v.energy), "every Quick expression declares its mass and energy");
   for (const id of ["wow", "celebrate"]) {
     await openDeck(page);
     const p = await centre(page, `[data-sb-expression-option='${id}']`);
     await page.mouse.click(p.x, p.y);
-    await sleep(60);
+    // Owner-superseded (R3.8 §9): the performance happens on the VESSEL (after the core enters the
+    // chamber, ~120ms); the lens beside Respond only lands afterwards. Same names, same tempo.
+    await sleep(200);
     const m = await page.evaluate(() => {
-      const el = document.querySelector("[data-sb-moment='m-rain'] [data-sb-express]");
+      const el = document.querySelector("[data-sb-horizon-stage]");
       const names = [];
       let dur = 0;
       el.querySelectorAll("*").forEach((n) => {
@@ -213,7 +231,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
     ok(new RegExp(`sb-g-${id}`).test(m.names), `${id}: plays its own emotional gesture, not a shared one (${m.names.split(" ")[0]})`);
     ok(m.dur >= lo - 40 && m.dur <= hi + 40, `${id}: runs at its own tempo, inside the brief's band (${m.dur}ms in ${lo}–${hi})`);
     ok(/sb-boom-pulse/.test(m.names), `${id}: the Boom Pulse is part of the one-shot`);
-    await sleep(900);
+    await sleep(1100);
   }
   const atRest = await page.$eval(RAIN, (m) => [...m.querySelectorAll("*")].filter((e) => e.getAnimations && e.getAnimations().some((an) => an.playState === "running")).length);
   ok(atRest === 0, `the feed is completely calm a second later — no blink, breathe, bob or spark loop (${atRest} running) (§19)`);
@@ -231,11 +249,13 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   const sum = await page.evaluate(() => {
     const s = document.querySelector("[data-sb-moment='m-rain'] [data-sb-expression-summary]");
     const imgs = [...s.querySelectorAll("img")].map((i) => i.getAttribute("src"));
-    return { n: imgs.length, srcs: [...new Set(imgs)], marks: s.querySelectorAll("[data-sb-mark]").length, text: s.textContent.trim() };
+    return { n: imgs.length, srcs: [...new Set(imgs)], marks: s.querySelectorAll("[data-sb-mark]").length, lenses: s.querySelectorAll("[data-sb-lens]").length, lensMarks: s.querySelectorAll("[data-sb-lens-mark]").length, text: s.textContent.trim() };
   });
   ok(sum.n <= 3, `at most three distinct expression miniatures (${sum.n})`);
-  ok(sum.srcs.every((s) => /-sm\.webp$/.test(s)), "the miniatures are dedicated small optical crops, not a shrunken MD asset (§33)");
-  ok(sum.marks === 0, "no external symbols in the presence line — the faces and a quiet count (§32)");
+  // R3.3 owner-superseded: the miniatures are Boom Lenses on the dedicated XS optical crop;
+  // the ONE semantic mark per lens is seated IN the rim (§5 of R3.3) — floating marks stay banned.
+  ok(sum.srcs.every((s) => /-lens-xs\.webp$/.test(s)), "the miniatures are the Boom-Lens XS optical tier, never a shrunken MD asset");
+  ok(sum.marks === 0 && sum.lensMarks <= sum.lenses, "no floating symbols — at most one rim-integrated mark per lens");
   ok(!/%|top|trend|popular|score/i.test(sum.text), `no ranking or popularity language (“${sum.text}”)`);
 
   /* ---- 10. Health / Problem stay records (§40 context, R3 §17) ---- */
@@ -286,11 +306,13 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
   await open(page, 1440, 1000);
   await openDeck(page);
-  const rm = await page.$$eval("[data-sb-expression-deck] [data-sb-pose]", (n) => n.map((e) => getComputedStyle(e).transform));
-  ok(rm.every((t) => t !== "none") && new Set(rm).size === 6, "reduced motion: all six poses survive — the emotion is in the static state (§13, §57)");
+  const rm = [];
+  for (const id of QUICK) rm.push((await heroOf(page, id)).pose);
+  ok(rm.every((t) => t !== "none") && new Set(rm).size === 6, "reduced motion: all six poses survive on the vessel — the emotion is in the static state (§13, §57)");
   await page.mouse.click(...Object.values(await centre(page, "[data-sb-expression-option='care']")));
   await sleep(260);
-  const rmDur = await page.$eval(`${RAIN} [data-sb-express] [data-sb-expression]`, (e) => Math.max(...[...e.querySelectorAll("*")].map((c) => parseFloat(getComputedStyle(c).animationDuration) || 0)));
+  // R3.3: the committed control is the viewer's Boom Lens (§1B/§26)
+  const rmDur = await page.$eval(`${RAIN} [data-sb-express] [data-sb-lens]`, (e) => Math.max(...[...e.querySelectorAll("*")].map((c) => parseFloat(getComputedStyle(c).animationDuration) || 0)));
   ok(rmDur <= 0.001, `reduced motion replaces the animation with the immediate static state (${rmDur}s)`);
   ok((await mine(page)) === "care", "and the expression still commits, meaning complete");
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);

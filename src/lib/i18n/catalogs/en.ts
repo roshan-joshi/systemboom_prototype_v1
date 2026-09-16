@@ -314,6 +314,13 @@ const en: Record<string, string> = {
   "expr.touched": "Touched",
   "expr.withYou": "With you",
   "expr.more": "More",
+  // R3.3 §11/§38 — Human Pulse speaks PEOPLE, not reactions (names DRAFT pending native review)
+  "expr.peopleN": "{n} person|{n} people",
+  "expr.pulseAria": "{n} person expressed a feeling on this Moment|{n} people expressed feelings on this Moment",
+  "expr.spectrumTitle": "What people felt",
+  "expr.whoFor": "People who expressed {name}",
+  "expr.back": "Back",
+  "expr.showMorePeople": "Show more people",
   // R3.1 §54 — new expressions, names DRAFT pending native review
   "expr.love": "Love",
   "expr.proud": "Proud",

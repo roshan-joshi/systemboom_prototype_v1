@@ -23,6 +23,18 @@ const OUT = "/Users/roshan/SYSTEMBOOM_V2/public/brand/expressions";
  *  curve of the sphere — nothing above the rope, no empty canvas. */
 const FACE = { x0: 0.0, x1: 0.876, y0: 0.357, y1: 0.976 };
 
+/**
+ * R3.3 §3–§4 — the BOOM LENS optical windows. NOT the whole bomb shrunk down: each tier is
+ * its own crop of the most emotionally useful portion (brow · eye · mouth edge · a fuse cue),
+ * designed for the size it will actually be seen at. Tighter at XS, wider at MD.
+ */
+const LENS = {
+  xs: { x0: 0.04, x1: 0.56, y0: 0.44, y1: 0.83 }, // brow + eye + the grin corner
+  sm: { x0: 0.02, x1: 0.62, y0: 0.40, y1: 0.87 }, // adds more of the mouth edge
+  md: { x0: 0.00, x1: 0.68, y0: 0.32, y1: 0.91 }, // adds the collar (fuse cue)
+};
+const LENS_SIZE = { xs: 48, sm: 80, md: 112 };
+
 async function alphaBox(file) {
   const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let minX = info.width, minY = info.height, maxX = -1, maxY = -1;
@@ -70,8 +82,17 @@ async function square(file, region, size, pad = 0.03) {
   };
   console.log("face window", face);
 
+  const win = (w) => ({
+    left: Math.round(b.minX + b.w * w.x0),
+    top: Math.round(b.minY + b.h * w.y0),
+    width: Math.round(b.w * (w.x1 - w.x0)),
+    height: Math.round(b.h * (w.y1 - w.y0)),
+  });
   const files = {
     "neutral-sm.webp": await square(SRC, face, 72, 0.02),
+    "neutral-lens-xs.webp": await square(SRC, win(LENS.xs), LENS_SIZE.xs, 0.0),
+    "neutral-lens-sm.webp": await square(SRC, win(LENS.sm), LENS_SIZE.sm, 0.0),
+    "neutral-lens-md.webp": await square(SRC, win(LENS.md), LENS_SIZE.md, 0.0),
     "neutral-md.webp": await square(SRC, body, 128, 0.03),
     "neutral-lg.webp": await square(SRC, body, 256, 0.03),
     // the working reference an artist frames the per-expression faces against

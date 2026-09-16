@@ -45,7 +45,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   ok(!!(await page.$("[data-sb-expression-more]")), "a clear More affordance reveals the rest — eighteen are never dumped into one deck");
   await page.click("[data-sb-expression-more]"); await sleep(350);
   const all = await page.$$eval("[data-sb-expression-panel] [data-sb-expression-option]", (n) => n.map((o) => o.getAttribute("data-sb-expression-option")));
-  ok(all.join(",") === [...QUICK, ...EXTENDED].join(","), `the library carries all eighteen, grouped (${all.length})`);
+  // Owner-superseded (R3.7 §10): the field is grouped by FAMILY (warmth · energy · wonder ·
+  // connection) rather than quick-first-then-group. Still all eighteen, still one stable order.
+  const FIELD = ["care", "love", "thanks", "touched", "nostalgia", "joy", "laugh", "celebrate", "proud", "wow", "speechless", "inspired", "curious", "thinking", "support", "withyou", "respect", "agree"];
+  ok(all.join(",") === FIELD.join(",") && all.length === QUICK.length + EXTENDED.length, `the field carries all eighteen, grouped by family (${all.length})`);
   const labelled = await page.$$eval("[data-sb-expression-panel] [data-sb-expression-option]", (n) => n.every((o) => (o.textContent ?? "").trim().length > 0));
   ok(labelled, "every expression in the panel is NAMED — this is how the language is learned");
   const negatives = await page.$$eval("[data-sb-expression-option]", (n) => n.map((o) => o.getAttribute("aria-label") ?? "").join(" "));
@@ -53,11 +56,21 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
 
   /* ---- 2. The mascot carries the emotion — distinct pose per expression ---- */
   console.log("2. Mascot-borne emotion");
-  const poses = await page.$$eval("[data-sb-expression-panel] [data-sb-pose]", (n) => n.map((e) => ({ id: e.getAttribute("data-sb-pose"), t: getComputedStyle(e).transform })));
-  ok(poses.length === ALL && new Set(poses.map((p) => p.t)).size >= 14, `each expression carries its own body language (${new Set(poses.map((p) => p.t)).size} distinct poses of ${ALL})`);
+  // Owner-superseded (R3.8 §13): the Atlas has ONE preview vessel — attend a core and the vessel
+  // takes that expression's body language. Sampled across quick + extended.
+  const poses = [];
+  for (const id of [...QUICK, "love", "proud", "speechless", "respect", "thinking", "nostalgia"]) {
+    const c = await page.evaluate((i) => { const b = document.querySelector(`[data-sb-expression-option='${i}']`).getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }, id);
+    await page.mouse.move(c.x, c.y, { steps: 2 });
+    await sleep(150);
+    poses.push(await page.$eval("[data-sb-horizon-stage] [data-sb-expression]", (e) => ({ id: e.getAttribute("data-sb-expression"), t: getComputedStyle(e.querySelector("[data-sb-pose]")).transform, energy: e.getAttribute("data-sb-expression-energy") })));
+  }
+  ok(poses.length === 12 && new Set(poses.map((p) => p.t)).size >= 10, `each expression carries its own body language on the vessel (${new Set(poses.map((p) => p.t)).size} distinct poses of 12 sampled)`);
   ok(poses.every((p) => p.t !== "none"), "no expression falls back to an untransformed mascot");
-  const energies = await page.$$eval("[data-sb-expression-panel] [data-sb-expression-energy]", (n) => [...new Set(n.map((e) => e.getAttribute("data-sb-expression-energy")))]);
+  const energies = [...new Set(poses.map((p) => p.energy))];
   ok(energies.length === 3, `three energy families drive timing (${energies.sort().join(", ")})`);
+  await page.mouse.move(4, 4);
+  await sleep(150);
 
   /* ---- 3. One active per viewer, across the whole set ---- */
   console.log("3. Single-active invariant");
@@ -171,14 +184,21 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   console.log("9. Presence");
   await open(page, 1440, 1000);
   await toRain(page); await sleep(200);
-  const presence = await page.$eval(`${RAIN} [data-sb-presence]`, (e) => ({ heads: e.querySelectorAll("[data-sb-expression] img").length, text: e.textContent.replace(/\s+/g, " ").trim() }));
-  ok(presence.heads > 0 && presence.heads <= 3, `the summary shows at most three mascot expressions (${presence.heads})`);
+  // R3.3 owner-superseded: the presence miniatures are Boom Lenses now, never whole mascots.
+  const presence = await page.$eval(`${RAIN} [data-sb-presence]`, (e) => ({ heads: e.querySelectorAll("[data-sb-lens] img").length, text: e.textContent.replace(/\s+/g, " ").trim() }));
+  ok(presence.heads > 0 && presence.heads <= 3, `the summary shows at most three Boom Lenses (${presence.heads})`);
   ok(!/popular|top|trending|score|%/i.test(presence.text), `presence answers "are people here?", never "how popular is this?" (${presence.text})`);
-  await page.click(`${RAIN} [data-sb-expression-summary]`); await sleep(300);
-  const who = await page.$eval("[data-sb-expression-who]", (e) => ({ rows: e.querySelectorAll("li").length, rings: e.querySelectorAll("[data-sb-ring]").length, mascots: e.querySelectorAll("[data-sb-expression]").length, exact: /\d+y \d\dm \d\dd/.test(e.textContent) }));
-  ok(who.rows === 2 && who.rings === 2 && who.mascots === 2, "who expressed: real photo + Life Ring + name + the mascot feeling");
+  await page.click(`${RAIN} [data-sb-expression-summary]`); await sleep(380);
+  // R3.3 owner-superseded: the tap opens the Expression Spectrum (truthful per-feeling
+  // counts, canonical order); a feeling opens its people. Invariants unchanged.
+  const spec = await page.$$eval("[data-sb-spectrum-row]", (n) => n.map((r) => `${r.getAttribute("data-sb-spectrum-row")}:${r.getAttribute("data-sb-spectrum-count")}`));
+  ok(spec.join(",") === "care:1,joy:1", `the Spectrum shows each feeling with its truthful count (${spec.join(",")})`);
+  await page.click("[data-sb-spectrum-row='care']"); await sleep(380);
+  const who = await page.$eval("[data-sb-expression-who]", (e) => ({ rows: e.querySelectorAll("li").length, rings: e.querySelectorAll("[data-sb-ring]").length, lenses: e.querySelectorAll("[data-sb-lens]").length, exact: /\d+y \d\dm \d\dd/.test(e.textContent) }));
+  ok(who.rows === 1 && who.rings === 1 && who.lenses === 1, "who expressed: real photo + Life Ring + name + that person's Boom Lens");
   ok(!who.exact, "…and never another person's exact Life precision");
-  await page.keyboard.press("Escape"); await sleep(200);
+  await page.keyboard.press("Escape"); await sleep(250);
+  await page.keyboard.press("Escape"); await sleep(250);
 
   /* ---- 10. No passive animation anywhere ---- */
   console.log("10. Stillness");
@@ -191,7 +211,8 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await toRain(page);
   await openRail(page);
   await page.click(`${RAIN} [data-sb-expression-option='celebrate']`); await sleep(1000);
-  ok((await page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running").length)) === 0, "even the most energetic expression is one event — calm again inside a second");
+  // suite correction: the LifeCounter's accepted per-second `sb-roll` tick is excluded by name
+  ok((await page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && a.animationName !== "sb-roll").length)) === 0, "even the most energetic expression is one event — calm again inside a second");
   ok((await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.getTiming?.().iterations === Infinity).length)) === 0, "no infinite animation exists at all");
 
   /* ---- 11. Life + relationship invariants ---- */
@@ -250,7 +271,9 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await open(page, 1440, 1000);
   await toRain(page); await sleep(150);
   await openRail(page);
-  const rmPose = await page.$eval("[data-sb-expression-option='laugh'] [data-sb-pose]", (e) => getComputedStyle(e).transform);
+  // Owner-superseded (R3.8): the pose is read on the ONE vessel while attending the core
+  await page.hover("[data-sb-expression-option='laugh']"); await sleep(150);
+  const rmPose = await page.$eval("[data-sb-horizon-stage] [data-sb-pose]", (e) => getComputedStyle(e).transform);
   ok(rmPose !== "none", "reduced motion keeps the POSE — the emotion survives with no animation at all");
   await page.click("[data-sb-expression-option='laugh']"); await sleep(200);
   ok((await mine(page)) === "laugh", "reduced motion: the expression commits directly, meaning complete");

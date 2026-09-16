@@ -154,6 +154,61 @@ if (PEOPLE.krishna.name.length !== 40) throw new Error("seed: the 40-character n
  * People utility's own "Find someone" field started as two separate name-matching
  * implementations, a real drift risk. One filter, both callers.
  */
+/* ─────────────── R3.3 — HARNESS-ONLY Human Pulse scale fixtures (§31–§32) ───────────────
+ * Review fixtures for 1 → 1,000+ people expressing on one Moment. Synthetic people exist
+ * ONLY behind `sim-` ids the review harness generates (`?pulse=` on the style-lab route,
+ * never the product route); every name here is fictional. Deterministic throughout — the
+ * same id always resolves to the same person, so who-expressed lists are stable.
+ */
+const SYNTH_FIRST = ["Anil", "Sita", "Rohan", "Mina", "Kiran", "Laxmi", "Dipesh", "Puja", "Suman", "Rita", "Hari", "Gita", "Nabin", "Sarita", "Emma", "Liam", "Noah", "Ava", "Oliver", "Amelia", "Lucas", "Isla", "Ethan", "Freya"];
+const SYNTH_LAST = ["Shrestha", "Gurung", "Tamang", "Rai", "Thapa", "Magar", "Karki", "Adhikari", "Baker", "Hughes", "Turner", "Collins", "Ward", "Foster", "Murphy", "Reid"];
+const SYNTH_HOME = ["Kathmandu, Nepal", "Pokhara, Nepal", "Lalitpur, Nepal", "London, UK", "Bristol, UK", "Austin, USA", "Boston, USA", "Sydney, Australia"];
+const synthCache = new Map<string, Person>();
+export function synthPerson(id: string): Person {
+  const hit = synthCache.get(id);
+  if (hit) return hit;
+  const n = Number(id.replace(/\D/g, "")) || 1;
+  const person: Person = {
+    id,
+    name: `${SYNTH_FIRST[n % SYNTH_FIRST.length]} ${SYNTH_LAST[(n * 7 + 3) % SYNTH_LAST.length]}`,
+    birthDate: `${1958 + ((n * 13) % 48)}-${String(1 + ((n * 5) % 12)).padStart(2, "0")}-${String(1 + ((n * 11) % 28)).padStart(2, "0")}`,
+    birthTimeKnown: false,
+    home: SYNTH_HOME[(n * 3) % SYNTH_HOME.length],
+  };
+  synthCache.set(id, person);
+  return person;
+}
+
+/** The §31–§32 distributions. Real cast first (so small who-lists show real people), then sims. */
+export function simulateExpressions(spec: string): Record<string, string> | null {
+  const DIST: Record<string, [string, number][]> = {
+    "1": [["care", 1]],
+    "2": [["care", 1], ["joy", 1]],
+    "5": [["care", 2], ["joy", 1], ["support", 1], ["wow", 1]],
+    "20": [["care", 8], ["joy", 5], ["support", 4], ["wow", 3]],
+    "100same": [["care", 100]],
+    "90-10": [["care", 90], ["joy", 10]],
+    "100mixed": [["care", 50], ["joy", 25], ["support", 14], ["wow", 10]],
+    "1000mixed": [["care", 400], ["joy", 250], ["support", 150], ["wow", 80], ["laugh", 60], ["celebrate", 30], ["thanks", 20], ["respect", 9]],
+    "18mix": [["care", 18], ["joy", 15], ["laugh", 12], ["wow", 10], ["celebrate", 9], ["support", 8], ["proud", 7], ["speechless", 6], ["love", 5], ["thanks", 4], ["touched", 4], ["withyou", 3], ["respect", 3], ["inspired", 2], ["curious", 2], ["agree", 1], ["thinking", 1], ["nostalgia", 1]],
+  };
+  const dist = DIST[spec];
+  if (!dist) return null;
+  const real = Object.values(PEOPLE).map((p) => p.id).filter((id) => id !== PEOPLE.maya.id && id !== PEOPLE.m.id);
+  const out: Record<string, string> = {};
+  let i = 0;
+  for (const [expr, n] of dist) {
+    for (let k = 0; k < n; k++) {
+      out[i < real.length ? real[i] : `sim-${i - real.length + 1}`] = expr;
+      i += 1;
+    }
+  }
+  // §10 evidence — the mixed hundred and the mixed thousand include the VIEWER (Maya), so
+  // "viewer's expression first" is demonstrable: hers is Support, never the biggest count.
+  if (spec === "100mixed" || spec === "1000mixed") out[PEOPLE.maya.id] = "support";
+  return out;
+}
+
 export function matchPeople(term: string, excludeId?: string, limit?: number): Person[] {
   const t = term.trim().toLowerCase();
   if (!t) return [];

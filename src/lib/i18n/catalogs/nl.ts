@@ -298,6 +298,13 @@ const nl: Record<string, string> = {
   "expr.touched": "Ontroerd",
   "expr.withYou": "Bij je",
   "expr.more": "Meer",
+  // R3.3 §11/§38 — Human Pulse speaks PEOPLE, not reactions (names DRAFT pending native review)
+  "expr.peopleN": "{n} persoon|{n} mensen",
+  "expr.pulseAria": "{n} persoon uitte een gevoel bij dit moment|{n} mensen uitten gevoelens bij dit moment",
+  "expr.spectrumTitle": "Wat mensen voelden",
+  "expr.whoFor": "Mensen die {name} uitten",
+  "expr.back": "Terug",
+  "expr.showMorePeople": "Meer mensen tonen",
   // R3.1 §54 — new expressions, names DRAFT pending native review
   "expr.love": "Liefde",
   "expr.proud": "Trots",

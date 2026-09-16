@@ -65,16 +65,23 @@ const summary = (page) => page.$eval(`${RAIN} [data-sb-expression-summary]`, (e)
 
   /* ---- 3. Who expressed what — no ranking, real identity ---- */
   console.log("3. Who expressed");
-  await page.click(`${RAIN} [data-sb-expression-summary]`); await sleep(300);
-  const who = await page.$eval(`${RAIN} [data-sb-expression-who]`, (e) => ({
-    rows: e.querySelectorAll("li").length,
-    rings: e.querySelectorAll("[data-sb-ring]").length,
-    names: /Asha Gurung/.test(e.textContent) && /Bikash Shrestha/.test(e.textContent),
-    exact: /\d+y \d\dm \d\dd/.test(e.textContent),
-  }));
-  ok(who.rows === 2 && who.rings === 2 && who.names, "the detail lists real photo + Life Ring + name + feeling");
-  ok(!who.exact, "…and never another person's exact Life precision");
-  await page.keyboard.press("Escape"); await sleep(200);
+  await page.click(`${RAIN} [data-sb-expression-summary]`); await sleep(380);
+  // R3.3 owner-superseded: Human Pulse opens the EXPRESSION SPECTRUM first; each feeling
+  // opens ITS people. The invariant — real photo + Life Ring + name, never exact Life
+  // precision, never a ranking — is unchanged, asserted per feeling.
+  const spectrum = await page.$eval(`${RAIN} [data-sb-expression-spectrum]`, (e) => [...e.querySelectorAll("[data-sb-spectrum-row]")].map((r) => r.getAttribute("data-sb-spectrum-row")));
+  ok(spectrum.join(",") === "care,joy", `the Spectrum lists what was felt, canonical order (${spectrum.join(",")})`);
+  const readWho = async (id, name) => {
+    await page.click(`[data-sb-spectrum-row='${id}']`); await sleep(380);
+    const w = await page.$eval(`${RAIN} [data-sb-expression-who]`, (e) => ({ rows: e.querySelectorAll("li").length, rings: e.querySelectorAll("[data-sb-ring]").length, named: e.textContent.includes(name), exact: /\d+y \d\dm \d\dd/.test(e.textContent) }));
+    await page.click("[data-sb-who-back]"); await sleep(320);
+    return w;
+  };
+  const whoCare = await readWho("care", "Asha Gurung");
+  const whoJoy = await readWho("joy", "Bikash Shrestha");
+  ok(whoCare.rows === 1 && whoCare.rings === 1 && whoCare.named && whoJoy.rows === 1 && whoJoy.named, "each feeling opens ITS people — real photo + Life Ring + name");
+  ok(!whoCare.exact && !whoJoy.exact, "…and never another person's exact Life precision");
+  await page.keyboard.press("Escape"); await sleep(250);
 
   /* ---- 4. Health / Problem stay non-social ---- */
   console.log("4. Health / Problem");
@@ -156,7 +163,8 @@ const summary = (page) => page.$eval(`${RAIN} [data-sb-expression-summary]`, (e)
   await toRain(page); await sleep(150);
   await page.click(`${RAIN} [data-sb-express]`); await sleep(150);
   await page.click(`${RAIN} [data-sb-expression-option='care']`); await sleep(150);
-  ok(await page.$eval(`${RAIN} [data-sb-express] [data-sb-expression]`, (e) => getComputedStyle(e.querySelector("img")).opacity === "1"), "reduced motion: the Expression appears directly, meaning complete");
+  // R3.3 owner-superseded: the committed control is the viewer's Boom Lens now (§1B/§26).
+  ok(await page.$eval(`${RAIN} [data-sb-express] [data-sb-lens]`, (e) => getComputedStyle(e.querySelector("img")).opacity === "1"), "reduced motion: the Expression appears directly, meaning complete");
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
   await open(page, 1440, 1400);
   await page.evaluate(async () => { const h = document.documentElement.scrollHeight; for (let y = 0; y < h; y += 700) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 50)); } window.scrollTo(0, 0); });
@@ -165,8 +173,12 @@ const summary = (page) => page.$eval(`${RAIN} [data-sb-expression-summary]`, (e)
   ok(idle === 0, "several summaries on screen: NOTHING animates without interaction, no infinite animation");
   await toRain(page);
   await page.click(`${RAIN} [data-sb-express]`); await sleep(250);
-  await page.click(`${RAIN} [data-sb-expression-option='celebrate']`); await sleep(900);
-  const settled = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running").length);
+  // suite correction (R3.9): Celebrate's one-shot nominally ends ~885ms (event + lens landing);
+  // measuring at exactly 900ms failed under chain load from setTimeout jitter alone. Measure at
+  // 1150ms — the invariant (one event, then total calm) is unchanged.
+  await page.click(`${RAIN} [data-sb-expression-option='celebrate']`); await sleep(1150);
+  // suite correction: the LifeCounter's accepted per-second `sb-roll` tick is excluded by name
+  const settled = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && a.animationName !== "sb-roll").length);
   ok(settled === 0, "even Celebrate is one event — everything is calm again well under a second");
 
   /* ---- 10. Life Ring + relationship invariants ---- */

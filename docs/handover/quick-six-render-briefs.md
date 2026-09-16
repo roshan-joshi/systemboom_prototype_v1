@@ -1,5 +1,12 @@
 # SYSTEMBOOM — Quick Six render briefs (R3.2 §78)
 
+> **R3.5 note (2026-09-16).** Readability is now carried by the EMOTION CORE — a composited
+> cutaway chamber revealing an internal emotional energy source per quick expression
+> (`_build-emotion-cores.js`). This solves the no-label test at product scale; it does NOT
+> close this brief. The FACE is still the single supplied grin, and a true render should
+> carry BOTH the per-expression face specified below AND (ideally) the core chamber as real
+> modelled geometry. The composites are placeholders that a render replaces file-for-file.
+
 **Status: QUICK SIX FINAL ART — BLOCKED. Expression-specific 3D renders required.**
 
 Everything around the art is finished, tested and green: the Quick-Six registry, the 3×2
@@ -181,3 +188,20 @@ A delivered set is accepted when, with **every mark, label and symbol hidden**:
 | mass impulse + mass-scaled Boom Pulse | done, green |
 | asset tiers sm/md/lg with optical crops, on-idle warming, extended on demand | done, green |
 | reduced motion, high contrast, eight languages | done, green |
+
+## 6. R3.7 note — the chamber is not the face
+
+R3.7 made the Emotion Chamber physically convincing (a bore seen obliquely, the core under the
+wall) and made every scale carry the same object (chamber → Boom Lens). None of that closes
+this brief: the mouth is still the supplied grin on all six, and Care and Support still need a
+closed, non-grinning mouth that cannot be synthesised here. When the renders land, keep the
+chamber geometry (`_build-emotion-cores.js` `CHAMBER` / `OPENING`) so the composited cores and
+the lens windows stay valid, or render the chamber into the model and drop the compositor.
+
+## 7. R3.8 note — cores are not faces either
+
+R3.8 moved recognition to the EMOTION CORES (six lit objects, chosen and shown inside one
+vessel), which is why the picker no longer depends on six different faces. The brief above is
+unchanged: the vessel still wears the supplied grin for every expression, and Care/Support still
+need a closed mouth. When the renders land they replace `{id}-md/lg.webp` and the lens tiers; the
+core objects (`{id}-core.webp`) stay as the selectable emotions.

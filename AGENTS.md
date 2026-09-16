@@ -751,3 +751,294 @@ Documented R3.2 carryovers (NOT changed — and the reason this round is not vis
 - Extended (non-Quick) expressions keep provisional art by design (§35–§36); this is stated
   in the briefs rather than presented as final.
 - Life Ring, privacy, Moment data and the Respond/Responses/Reply vocabulary are untouched.
+
+# Social R3.3 — Human Pulse (owner-directed · 2026-09-16)
+
+R3.2's interaction architecture stands; the Quick-Six facial-art blocker stands. R3.3 solves
+the SCALING problem: how many people expressing feeling around one Moment is represented
+without repeating the mascot into visual noise — 1 → 100 → 10,000. Contract:
+`docs/handover/human-pulse-contract.md`; evidence:
+`prototype-evidence/social-r3-3-human-pulse/` (35 artifacts).
+
+Two primitives now exist: the **LIVING MASCOT** (choosing a feeling — deck/library,
+unchanged) and the **BOOM LENS** (summarising feeling — a tiny optical token: physical rim,
+dedicated half-face crops per tier, ONE rim-seated semantic mark, scarce Boom-red ownership
+segment; no glass, no blur, no glow). The feed aggregate is the **HUMAN PULSE**: ≤3 equal
+lenses + "{n} people" — 100 × Care is ONE Care lens + 100 people; no per-expression counts in
+the feed; the line is 36px tall at every scale; nothing animates passively. Tap → the
+**EXPRESSION SPECTRUM** (every type present, truthful counts, canonical order, no
+bars/percentages/ranking) → **people who expressed this** (40px identity, IDENTITY-ONLY,
+batched, deterministic micro-variants).
+
+Verified green: every accepted suite (counts below), **social-r3-3-human-pulse 92 (new)**;
+tsc + eslint(src) clean; `next build` passes; catalogs **319 keys × 8**, key-complete,
+English byte-identical outside the expression surfaces.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.3 §2–§5 | `social/expressions.tsx`, `SocialPreview.tsx` (SCOPED_CSS), `prototype-tests/_build-expression-assets.js`, `public/brand/expressions/neutral-lens-{xs,sm,md}.webp` | A whole bomb shrunk to 22px cannot summarise feeling | The **BoomLens** primitive + three dedicated optical windows cut from the mascot's alpha box (xs 1.5KB · sm 3.3KB · md 5.3KB), rim from inset shading per theme, rim-chip marks (dedicated micro-glyphs for the quick six, registry marks for extended), `data-sb-lens*` hooks, `RENDERED`-gated per-expression slots (`{id}-lens-{tier}.webp`) | `social-r3-3-human-pulse.js` §3; evidence 08 |
+| 2026-09-16 | R3.3 §6 | `social/expressions.tsx` (registry) | Eighteen unrelated accent hues | Four colour FAMILIES (warmth rose · energy amber · wonder blue · connection teal-green); every accent re-derived as a family shade; **Celebrate leaves Boom red** — red is the scarce ownership colour only. Marks now draw in `currentColor` so the palette lives in ONE field. New `ExpressionDef.family` (the library-ordering `group` is untouched) | `social-r3-3-human-pulse.js` §3 (4 families); deck/library suites green |
+| 2026-09-16 | R3.3 §7–§15, §25–§30 | `social/expressions.tsx` (`ExpressionSummary` rewritten as Human Pulse) | The R3 summary listed every person in one popover and could never scale | ≤3 equal XS lenses (viewer first — `owned` rim, never size), "{n} people" via `expr.peopleN` + `formatNumberLocale`; same 36px line from 1 to 1,000+; no per-expression counts in the feed; commit/change/remove update the total quietly and animate only the viewer's control; `data-sb-expression-summary` keeps its accepted attribute semantics | `social-r3-3-human-pulse.js` §1–§2, §6–§7 |
+| 2026-09-16 | R3.3 §16–§20 | `social/expressions.tsx` | Detail without analytics | The **Expression Spectrum** (canonical order, truthful counts, MD lenses, one 200ms `sb-spectrum-in` expansion, reduced-motion direct) and the per-type **who-expressed** panel (PersonIdentity 40px, name, that person's lens, 24-batch + Show more, Escape steps back, focus returns). The old who-popover is superseded | `social-r3-3-human-pulse.js` §4–§5, §10 |
+| 2026-09-16 | R3.3 §21–§23 | `social/expressions.tsx` (`lensVariant`) | Cloned-character repetition in people lists | Three presentation leans chosen deterministically from person·Moment·expression; same person = same variant on every open; the face never varies | `social-r3-3-human-pulse.js` §5 |
+| 2026-09-16 | R3.3 §1B/§26 | `social/expressions.tsx` (control) | The committed control was an ad-hoc face-crop + rim | It IS the viewer's Boom Lens (sm, owned) and plays the same one-shot (mass impulse + pressure ring) on commit — living mascot performs, settles into the lens | `social-r3-2` §3/§12 green via the lens; `social-r3-3` §6 |
+| 2026-09-16 | R3.3 §31–§32 (harness only) | `social/store.tsx` (`pulse-sim` action, `personOf` sim fallback), `social/data.ts` (`synthPerson`, `simulateExpressions`), `social/SocialPreview.tsx` (`?pulse=`) | 1/2/5/20/100/1,000/18-type states cannot come from the accepted fixtures | Review-only scale fixtures behind `?pulse=` on the style-lab route (never product): deterministic distributions, synthetic people behind `sim-` ids resolving to stable fictional identities; `100mixed`/`1000mixed` include the viewer so viewer-first ordering is demonstrable. No accepted fixture changed | `social-r3-3-human-pulse.js` §1; every count-contract suite green |
+
+**Owner-superseded assertions (recorded, never silent; no invariant weakened):**
+
+- **`social-r2-expression.js` §3** and **`social-r3-3d-expression.js` §who** — "tap the summary
+  → the who-list" becomes "tap the pulse → the Spectrum → a feeling → ITS people". The
+  invariants (real photo + Life Ring + name, never exact Life precision, never ranking) are
+  unchanged and now asserted per feeling, plus a new truthful-counts/canonical-order check.
+  42 → **43** and 79 → **80**.
+- **`social-r2-expression.js` §9** and **`social-r3-2-signature-expression.js` §12** — the
+  committed control's inner token is `[data-sb-lens]` (was `[data-sb-expression]`); same
+  reduced-motion and one-shot invariants.
+- **`social-r3-1-living-expression.js` §5** and **`social-r3-2-signature-expression.js` §9** —
+  the presence miniatures moved from the `sm` face crop to the dedicated **Boom-Lens XS**
+  optical tier; floating `[data-sb-mark]` symbols stay at zero, with at most one
+  rim-integrated `[data-sb-lens-mark]` per lens (§5 of R3.3). 69 and 92 unchanged in count.
+- **`social-2030.js` §4** — the dense people list sits one deliberate step deeper (via the
+  Spectrum); the IDENTITY-ONLY invariant it protects is unchanged. 31/31.
+
+Documented R3.3 carryovers (NOT changed):
+
+- **The per-expression FACES remain ART ASSET BLOCKED** (R3.2 §77 verdict stands). Every lens
+  wears the same neutral render today, stated on the evidence boards; the rim marks carry the
+  type at aggregate scale until `{id}-lens-{tier}.webp` renders land — a file drop + one line.
+- The R3.2 §54 idle warm of the Quick-Six MD is deliberately kept; it is the single MD on the
+  wire in a long feed and is asserted as exactly that.
+- Compact number forms ("1K") are NOT invented — the locale architecture has no truthful
+  compact formatter, so 1,000 renders as the full locale-grouped numeral (§40).
+- Life Ring, privacy, Moment data, Respond vocabulary, Health/Problem exclusion: untouched.
+
+# Social R3.5 — Emotion Core (owner-directed · 2026-09-16)
+
+Fixes the "all Expressions look too similar" problem WITHOUT touching Human Pulse, Spectrum,
+privacy, aggregation, devices or interaction logic. The mascot becomes an EMOTIONAL VESSEL:
+a precision cutaway chamber, machined into the smooth upper-right body panel of the owner's
+untouched render, reveals a large internal EMOTION CORE per quick expression — heart (Care) ·
+radiant sun (Joy) · laughter-waves + a real tear cue (Laugh) · blue starburst (Wow) ·
+orange-red firework (Celebrate) · teal cradle holding a warm orb (Support). Emotion now reads
+from INSIDE the mascot before any label; the rim-chip mark remains only as the small
+secondary cue. Evidence: `prototype-evidence/social-r3-5-emotion-core/` (14 artifacts,
+board 01 is the mandatory NO-LABEL test).
+
+**Honesty:** these are COMPOSITES — the owner render + a rendered chamber (headless-Chromium
+SVG over the source, real alpha), built by `prototype-tests/_build-emotion-cores.js`,
+repeatable and auditable. The FACE is untouched and the R3.2 per-expression facial-render
+blocker STANDS; true 3D renders replace these composites file-for-file. Two of the six lean
+on their cue rather than the face (Laugh's tear, Support's cradled orb) — recorded, and both
+still read within the set. The extended twelve stay on the neutral lens, stated plainly.
+
+Verified green: every accepted suite (chain below), **social-r3-5-emotion-core 20 (new)**;
+tsc + eslint(src) clean; `next build` passes. No catalog change (319 × 8 untouched).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.5 §CORE/§MATERIAL | `prototype-tests/_build-emotion-cores.js` (new), `public/brand/expressions/{six}-{sm,md,lg,lens-xs,lens-sm,lens-md}.webp`, `neutral-lens-*` reframed | The six differed only by pose + external badge | Chamber geometry (source ellipse cx 694 · cy 583 · rx 82 · ry 92, −10°): dark interior, per-core internal gradients whose light dies before the rim, inner-wall bevel consistent with the key light, machined lip with lit lower edge, one 10% crystal catch-light — no frosted glass, no neon, no HUD, no sticker. Every asset ≤ 7.2KB md / 1.8KB lens-xs | `social-r3-5-emotion-core.js` §1–§2; evidence 01–08 |
+| 2026-09-16 | R3.5 §BOOM LENS | `_build-emotion-cores.js` (lens windows), `social/expressions.tsx` (`RENDERED` + six) | The lens showed eye only; the core sat outside its crop | The lens windows widen to HALF FACE + CORE (x 0.03–0.93 · y 0.375–0.845 at XS, per-tier variants); the quick six resolve `{id}-lens-{tier}.webp` / `{id}-md/lg.webp` through the existing `RENDERED` gate — the drop-in slot design did its job, zero layout/motion/test plumbing changed. Neutral lens tiers reframed to the same window so extended lenses share the composition | `social-r3-5-emotion-core.js` §3; `social-r3-3-human-pulse.js` 102/102 |
+| 2026-09-16 | R3.5 §MOTION/§RULES 5–8 | `social/expressions.tsx` (BoomLens), `SocialPreview.tsx` (`sb-core-in`) | Selection needed core-activation, inside the vessel | On commit only: one ≤320ms internal energy swell (a radial accent light at the core's position, CLIPPED by the lens surface — light never leaves the mascot) → the existing mass impulse → Boom Pulse → static settle. Total stays inside each expression's R3.2 tempo band. Reduced motion: the final core is simply visible. No passive animation anywhere (asserted) | `social-r3-5-emotion-core.js` §5–§6 |
+
+**Owner-superseded assertions (recorded, never silent):**
+
+- **`social-r3-1-living-expression.js` §5/§7** — "all six wear the SAME face (ART ASSET
+  BLOCKED)" becomes "each quick expression carries its own Emotion-Core artwork (6 distinct
+  files) — and the facial renders remain artist work". The invariant was honesty about what
+  differentiates the six; it still says exactly that. The presence-line src check generalises
+  from `neutral-lens-xs` to the per-expression `-lens-xs` tier. 69/69.
+- **`social-r3-3-human-pulse.js` §9** — the documented idle warm now legitimately covers the
+  quick six's own MD deck art (six files ≤ 7.2KB each); LG still never loads. 102/102.
+
+Documented R3.5 carryovers (NOT changed): the R3.2 facial-art blocker and its briefs
+(`quick-six-render-briefs.md`) stand — the cores solve READABILITY, not the face; the neutral
+control still needs its own calm render; extended-twelve art remains provisional; Life Ring,
+privacy, Moment data, Human Pulse model and all counts untouched.
+
+# Social R3.6 — Premium Living Expressions (owner-directed · 2026-09-16)
+
+The polish round on the Emotion-Core system. Scope held to: quick tray · More panel ·
+selected state · compact readability · animation/delight · light+dark quality. Human Pulse,
+Spectrum, Who Expressed, privacy, Life Ring, feed logic and i18n untouched. Evidence:
+`prototype-evidence/social-r3-6-premium-expressions/` (18 artifacts; board 01 is the
+no-label test at large tile · tray scale · Boom-Lens scale).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.6 §CORE/§FACE | `_build-emotion-cores.js`, all six asset sets | The cores read; the face didn't participate, and the badges still hedged | Chamber grew (rx 90 · ry 99), cores scaled ×1.1; **FACE support**: a per-expression emotional catch-light on the pupil's edge; **fuse variation**: a subtle accent tinge over the spark. Additive light only — geometry untouched, the R3.2 facial blocker stands | evidence 01–07 |
+| 2026-09-16 | R3.6 §QUICK TRAY | `expressions.tsx`, `SocialPreview.tsx` | The tray read as a utility sheet | External badges REMOVED from tray and library — the vessel carries the emotion (marks stay only as the Boom-Lens rim chip). Desktop tile 56→60; caption leads at 13px semibold in text colour when naming; softer 22px seats; hover/preview brightens the vessel (transition-only anticipation) | `social-r3-6-premium-expressions.js` §1; evidence 08–09, 16–17 |
+| 2026-09-16 | R3.6 §MORE PANEL | `expressions.tsx`, `SocialPreview.tsx` | A flat grid | A real library: 62px tiles, names attached beneath at 12px semibold, wider panel (392/436), one staggered 240ms `sb-tile-in` arrival (≤16ms×n delay) then stillness; owned tile = inset expression ring + Boom notch | §4; evidence 10–11, 18 |
+| 2026-09-16 | R3.6 §SELECTED | `expressions.tsx` | The committed control was too quiet | The control wears a 2px ring in the expression's own shade around the owned seat + Boom rim + core lens; the owned tray seat gains the same inset ring. Shape+material+colour together, never colour alone | §2; evidence 12–13 |
+| 2026-09-16 | R3.6 §LIGHT | `SocialPreview.tsx` (SCOPED_CSS) | Light mode was the weakest surface | Dedicated warm-paper gradients for deck/library, crisper light wells, white hover state — designed light material, not the dark theme washed out | §3; evidence 08, 10, 12, 16 |
+| 2026-09-16 | R3.6 §ANIMATION | `SocialPreview.tsx` (sb-g-* keyframes) | The sequence lacked a real anticipation phase | All six signature gestures gain a scale-dip ANTICIPATION (0–~15%) before the expressive move; full commit = anticipation → core ignition (`sb-core-in`, clipped) → mass response → Boom Pulse → static settle, inside each tempo band. **Real bug found by the new suite:** reduced motion zeroed durations but not the stagger DELAYS, leaving library tiles invisible in their from-state — `animation-delay:0` under reduce fixes it | §5–§6 |
+
+**Owner-superseded assertions:** `social-r3-1-living-expression.js` §7 — "marks individually
+removable (≥5)" becomes "the tray shows NO external badges (0)"; the invariant (never rely on
+tiny external badges) is asserted directly. Suite correction (not a supersession): r3-1 §2
+was accidentally measuring the focus-RISEN first seat (art×1.10); it now measures a resting
+seat, same 56–64 bound. All other suites unchanged: r2 43 · r3 80 · r3-1 69 · r3-2 92 ·
+r3-3 102 · r3-5 20 · **r3-6 21 (new)**; tsc/eslint clean; `next build` passes; full chain
+green (run recorded below in this entry's verification).
+
+Carryovers: the facial-render blocker and briefs stand (composites remain placeholders);
+extended-twelve art provisional; neutral render still wanted.
+
+# Social R3.7 — Gravity Expressions (owner-directed · 2026-09-16)
+
+R3.6 behaviour is accepted; R3.7 fixes VISUAL / MOTION language only. Human Pulse, Spectrum,
+Who Expressed, privacy, Life, counts and expression semantics are untouched. Three ideas:
+the **EMOTION CHAMBER** (the core physically INSIDE the mascot — a bore seen obliquely, and a
+real second layer in the component), the **GRAVITY DOCK** (six characters on ONE shared
+ground, never six tiles), and a **five-state motion contract** (REVEAL · PREVIEW · COMMIT ·
+SETTLE · RETOUCH) with CORE → BOOM LENS continuity. Evidence:
+`prototype-evidence/social-r3-7-gravity-expressions/` (18 boards + 6 real-speed strips).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.7 §2–§3 | `prototype-tests/_build-emotion-cores.js`, all six asset sets, `neutral-lens-*` | The core looked inserted into a circular badge, not living inside the body | The chamber is a **bore seen obliquely**: the machined lip stays, the actual opening (r 84) is offset toward the lower-right inside it, so the shell wall reads thick upper-left / thin lower-right; the core is drawn deeper and ×1.3, partly UNDER the wall, with the wall's cast shadow across it and its own light reflecting on the lit far wall. `--layers` renders shell → aperture → core → assembled for board 06. **Lens windows are core-led** (XS/SM x .40–1.0 · y .35–.83; MD x .22–1.0): the chamber fills ~40% of the lens, brow/eye-edge/teeth still say SYSTEMBOOM. Face untouched — the R3.2 facial blocker stands | `social-r3-7-gravity-expressions.js` §2, §6; evidence 06, 16 |
+| 2026-09-16 | R3.7 §2, §14 | `social/expressions.tsx` (`MascotExpression`) | Depth had to be real in the component, not only in paint | `data-sb-core-layer`: the same artwork as a background span clipped to the opening (`OPENING_AT`), so on a pointer preview the shell rises 4px and the core lags ~1.5px (micro-parallax, transition-only, inside `prefers-reduced-motion: no-preference` — none under reduce). `preview` prop mounts a one-shot ~120ms **chamber wake** per expression (`sb-cw-*`: Care fills · Joy radiates · Laugh compresses/releases · Wow contracts→snaps · Celebrate rises · Support closes) — light inside the opening, never the expression | §3, §11 |
+| 2026-09-16 | R3.7 §4–§5, §11–§12 — **owner-superseded, see below** | `social/expressions.tsx`, `SocialPreview.tsx` (SCOPED_CSS) | Six machined wells read as six app tiles | **GRAVITY DOCK**: seats are transparent hit targets (68/84px) on ONE ground with one directional light (Deep Cosmos / Solar Observatory warm ground); desktop places the six on a shallow symmetric arc (`translate` 10/4/0/0/4/10px, a ±3° lean applied to the artwork via `--lean` so hit boxes stay axis-aligned); phone keeps the 3×2 spatial field. Contact shadows ground each character. The chosen one rests inside an **orbit ring** in its accent (inset 2px, direct child) + Boom notch. Caption row now carries More/Remove (still outside the seats). **REVEAL**: `sb-rise-in` 120ms, 12ms stagger, ≤180ms total | §1, §9–§10; evidence 01–03 |
+| 2026-09-16 | R3.7 §6, §8 | `social/expressions.tsx` (`commit`, `data-sb-core-flight`), `SocialPreview.tsx` | Commit shrank a whole mascot into the action row | **CORE → BOOM LENS**: the chamber's real position is measured before the dock lets go; a 220ms flight (the lens crop, `sb-core-flight`) converges on the control while the control's own lens + gesture + ignition + mass + pulse play (unchanged, inside the tempo band); the dock **fades 140ms, inert** (`data-sb-closing`) so the flight visibly leaves a body that is still there. Reduced motion: no flight, no fade, final state at once | §4, §11; evidence 07–15, rs-* |
+| 2026-09-16 | R3.7 §6 RETOUCH | `social/expressions.tsx`, `SocialPreview.tsx` | Tapping the committed control only opened the dock | The control answers with a 160ms core + rim response (`data-sb-retouch` → animation on the lens ROOT, never on the surface that carries the commit animations); the dock still opens. Never the full commit again | §5 |
+| 2026-09-16 | R3.7 §9 | `social/expressions.tsx` (control) | The selected state beside Respond was too small | Chamber-led SM lens at **36px** in a 40px (desktop) / 44px (phone) control, with the accent ring, owned material (`sb-ctrl-own`) and Boom rim | §6; evidence 16 |
+| 2026-09-16 | R3.7 §10 — **owner-superseded, see below** | `social/expressions.tsx` (field) | More resembled a settings/emoji grid | **EXPRESSION FIELD**: eighteen free-standing characters (no card, 62px, name beneath) in four **family bands** — warmth · energy · wonder · connection — each band's ground faintly warmed by its tone, separated by air + hairline, never tabs. `LIBRARY` (canonical order for the Spectrum) is unchanged. **Real defect fixed**: the panel was centred on the control and, at desktop, the Moments sheet clipped its left third (never captured at 1440 before) — it now hangs from the control and is frame-clamped like the dock | §7; `social-r3-1` §4, `social-r3-3d` §2; evidence 04–05 |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):**
+
+- **`social-r3-1-living-expression.js` §1** and **`social-r3-3d-expression.js` §2** — library order
+  "quick six first, then energy · warmth · thought" → "four family bands, warmth · energy ·
+  wonder · connection, each quick expression leading its family". Still all eighteen, one
+  stable order. 69/69 · 80/80.
+- **`social-r3-1-living-expression.js` §2** — "each seat is a machined recess (inset shadow)" →
+  "each seat is a transparent hit target on ONE shared ground". Dimension still from material
+  (ground + contact shadow), never glow. 69/69.
+- **`social-r3-2-signature-expression.js` §6** — "one row = identical tops" → "one row: x strictly
+  increasing, tops within a 14px band" (the desktop arc). 92/92.
+- **`social-r3-2-signature-expression.js` §7** — "zero keyframes while a finger crosses the deck"
+  → "zero EXPRESSION keyframes" (`sb-cw-*` chamber wake ≤140ms and the dock's own `sb-rise-in`
+  are preview/reveal, never the expression). 92/92.
+
+Suite note (not a supersession): `social-r3-7` excludes the LifeCounter's per-second digit
+roll (`sb-roll`) by name from its "nothing running" checks — it is the accepted Life
+instrument and outside R3.7.
+
+Verified green on final source: all prior suites unchanged in count, **social-r3-7-gravity-expressions 37 (new)**;
+tsc + eslint(src) clean; `next build` passes; catalogs untouched (319 × 8).
+
+Carryovers: the per-expression FACIAL renders remain ART ASSET BLOCKED (R3.2 §77; briefs in
+`quick-six-render-briefs.md`) — the chamber composites are the honest interim and true renders
+replace them file-for-file; extended-twelve art provisional; neutral render still wanted.
+
+# Social R3.8 — Emotion Horizon (owner-directed · 2026-09-16)
+
+R3.7 mechanics accepted; the owner's visual verdict on the picker: "still an old reaction menu —
+six repeated copies of the same mascot". R3.8 changes the INTERACTION CONCEPT: **ONE vessel
+mascot + six EMOTION CORES on a shallow horizon**; preview puts the core into the vessel; commit
+sends the core into the chamber, the vessel performs, and the chamber collapses into a
+chamber-shaped Boom Lens. "More" is the **Emotion Atlas** — the same vessel, eighteen cores in
+four family bands. Human Pulse / Spectrum / Who logic, privacy, Life, counts and expression
+semantics are untouched. Evidence: `prototype-evidence/social-r3-8-emotion-horizon/` (18 boards +
+6 real-speed strips; 01 is the R3.7 picker beside 02–03 for the owner's A/B).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.8 §3–§4 | `prototype-tests/_build-emotion-horizon.js` (new), `public/brand/expressions/{18}-core.webp`, `neutral-chamber-{md,lg,lens-xs,lens-sm,lens-md}.webp` | The emotions needed to be selectable OBJECTS, not mascot clones | Eighteen CORE OBJECTS rendered as lit translucent orbs (one key light upper-left, specular, dark inner rim, the emotion's form inside): the quick six from the bespoke R3.5 core drawings; the extended twelve as PROVISIONAL family-toned orbs carrying their registry glyph (stated as provisional). Plus the NEUTRAL DORMANT CHAMBER — the vessel with an empty bore — for the hero at rest and the closed control. `_build-emotion-cores.js` became an importable module (main guarded) | `social-r3-8-emotion-horizon.js` §1–§2; evidence 05 |
+| 2026-09-16 | R3.8 §11, §18 | `_build-emotion-cores.js` (LENS35), all lens tiers | At compact scale the core must dominate | Lens windows tightened onto the chamber (XS/SM x .55–1.0 · y .42–.76; MD x .40–1.0 · y .36–.82): the opening fills ~55% of the lens; lip, brushed body and lower teeth remain the SYSTEMBOOM cue | §5, §7; evidence 13, 16 |
+| 2026-09-16 | R3.8 §1–§2, §5–§8 — **owner-superseded, see below** | `social/expressions.tsx` (`ExpressionControl`), `SocialPreview.tsx` (SCOPED_CSS) | Six mascot seats read as a reaction menu | **EMOTION HORIZON**: a local field growing from the control (masked edges, no border, radius 18, one directional light; Solar Observatory warm in light) holding ONE vessel (100px desktop / 88px phone, contact shadow, dormant chamber until attended) and six core objects (44/36px in 56/46px hit targets) on a shallow horizon whose outer cores sit higher. PREVIEW (hover/focus/drag): the core rises and leans toward the chamber, the vessel renders that expression (chamber wake + a small `sb-hero-preview` gesture), the label names it. `data-sb-deck-pattern="horizon"` on every device; caption row keeps More/Remove | §1, §3, §9–§10; evidence 02–04, 06–09 |
+| 2026-09-16 | R3.8 §9–§10 | `social/expressions.tsx` (`commit`, `data-sb-core-flight`, `data-sb-lens-flight`, `data-sb-landing`), `SocialPreview.tsx` | The commit had to be one continuous object | Three stages, ≈300–500ms: the core ACCELERATES into the vessel's opening (120ms, ease-in) while the others recede → the shell LOCKS it (`sb-lock` + the expression's `sb-g-*`, ignition clipped to the opening, mass, fuse, Boom Pulse on the VESSEL) → at 120 + 0.4·tempo the activated chamber collapses into the lens beside Respond (200ms) while the field fades, inert; the control's lens stays hidden until it LANDS (`land`: a 220ms thump + one 240ms ring — the gesture already happened; the whole event is over inside ~820ms even for Celebrate). The store is true from the tap. A tap on the control mid-performance snaps to the final state. Reduced motion: final state at once | §4, §11; evidence 10–12, rs-* |
+| 2026-09-16 | R3.8 §11–§12, §21 | `social/expressions.tsx` (`BoomLens`, `LensShell`, `DormantLens`, `lensClip`) | The circular lens still read as a badge; the closed control showed a tiny mascot | The Boom Lens IS the oblique chamber aperture: a rotated ellipse (`clip-path: path()`, per px size) with a drawn metal SHELL FRAGMENT (thick upper-left, thin lower-right) and the Boom-red ownership segment on the lower rim; the same object at 22/28/36/40px, so Human Pulse, Spectrum and Who wear it with no logic change. Closed control: `DormantLens` (empty bore) before a choice, the selected core after — `data-sb-express-neutral` now points at `neutral-chamber-lens-sm.webp` | §5, §7; `social-r3-3-human-pulse.js` 102/102 |
+| 2026-09-16 | R3.8 §13 — **owner-superseded, see below** | `social/expressions.tsx` (Atlas) | The Field was eighteen repeated bombs | **EMOTION ATLAS**: the same vessel stays on stage; eighteen cores (40px, named beneath) in four family bands; attending any core previews it in the vessel; scroller capped to the room above the control minus the stage | §6; `social-r3-1` §1/§4, `social-r3-3d` §2; evidence 14–15 |
+| 2026-09-16 | R3.8 §22 (defect found by `social-r3-1` §8) | `social/expressions.tsx` | 6 × 48px hits + 24px padding overflowed a 320-wide frame | Phone cores 46px hits / 36px orbs with 16px field padding (297px ≤ the 304 available); desktop unchanged | `social-r3-1` §8, `social-r3-2` §5 (320/360/390/430) |
+| 2026-09-16 | R3.8 §8 (defect found by `social-r3-2` §7) | `social/expressions.tsx` (`seatAt`, drag move) | A finger between two cores (the horizon has gaps; the old 3×2 had none) previewed nothing: leaving a core into the gap fired its `pointerleave` (clearing the preview) and the move handler saw the same nearest core, so it never re-set it | Drag falls back to the nearest core within 12px inside the radiogroup and re-asserts the preview on every move — no dead zones on the horizon | `social-r3-2` §7 |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated on the one vessel):**
+
+- **`social-r3-1` §1** and **`social-r3-3d` §2** — library structure read from mascots
+  (`data-sb-expression-group`, per-tile poses/energies) → read from the Atlas's four family
+  bands and from the vessel while attending each core (12 sampled, ≥10 distinct poses, 3
+  energies). **§2** — six mascot seats (64–72px cells, 56–64px art) → six core hit targets
+  (44–72px) holding 36–48px core objects on one ground. **§4** — Atlas art ≥36px, 4–6 per row.
+  **§5** — the closed control wears the dormant chamber lens; the horizon shows `-core.webp`.
+  **§6/§7/§10** — mass, impulse, pose and reduced-motion pose checks move to the vessel (the
+  impulse plays on the vessel at ~+200ms; settle checked at +1100). 69/69.
+- **`social-r3-2` §1/§2/§8/§12** — distinct poses, masses, energies, tier and render are read from
+  the vessel per attended core; the commit's gesture/tempo/pulse are sampled on the vessel at
+  +200ms; "no LG in the action row" now reads "no LG as a picker tile" (the vessel legitimately
+  renders LG on desktop). **§5/§6** — `3x2` / `row` → `horizon`; per-option art 56–68 → cores
+  34–48 under one 84–110px vessel. **§7** — preview keyframes exclude `sb-hero-preview`. 92/92.
+- **`social-r3-5` §1/§5/§8** — six `-core.webp` on the horizon; ignition sampled on the vessel
+  (`data-sb-core-ignite`, clipped to the opening); the untouched Moment wears the dormant
+  chamber. 20/20.
+- **`social-r3-6` §1/§4/§5/§7** — tray art 60 → core 44; Atlas art ≥36; the commit sequence
+  sampled on the vessel at +200ms; 360 = one vessel + six 36px cores. 21/21.
+- **`social-r3-7` §1–§4/§10/§11** — dock → horizon (`.sb-core-body`, `translate` offsets, outer
+  cores HIGHER), the chamber layer/wake/parallax on the vessel, the flight is the core entering
+  the chamber, 360 cores 36px. 37/37.
+
+Suite corrections (not supersessions): the "nothing runs a second later" checks in
+`social-r2` §motion, `social-r3-3d` §motion, `social-r3-5` §5 and `social-r3-6` §5 now exclude
+the sidebar LifeCounter's per-second digit roll (`sb-roll`) by name — it is the accepted Life
+instrument, not the feed, and those checks had only ever missed it by timing luck (a 220ms tick
+every second). The invariant — no expression motion after the one-shot — is unchanged.
+
+Verified green on final source: every prior suite unchanged in count except the recorded
+supersessions above, **social-r3-8-emotion-horizon 34 (new)**; tsc + eslint(src) clean;
+`next build` passes; catalogs untouched (319 × 8).
+
+Carryovers: FACIAL renders remain ART ASSET BLOCKED (R3.2 §77) — the cores solve recognition
+without pretending to be faces; extended-twelve cores are provisional family orbs; neutral render
+still wanted.
+
+# Social R3.9 — Signature Emotion Engine (owner-directed · 2026-09-16)
+
+R3.8's architecture (one mascot · Emotion Horizon · cores · Boom Lens · Human Pulse · Spectrum)
+is accepted and NOT rebuilt. R3.9 makes committing an expression ONE local EMOTIONAL EVENT:
+CORE AWAKENS → CHARACTER RESPONDS → THE EMOTION ESCAPES INTO LOCAL SPACE → SHELL AND GROUND
+RECEIVE THE LIGHT → BOOM IMPULSE → COLLAPSE INTO THE LENS → COMPLETE STILLNESS (≤ ~900ms even
+for Celebrate). Plus WORLD LIGHT (a persistent theme-truthful ambient, distinct from the
+short-lived emotion light). Evidence: `prototype-evidence/social-r3-9-signature-emotion-engine/`
+(26 boards + 6 real-speed strips + `SIGNATURE-EMOTION-ENGINE.png`, the one-image filmstrip).
+
+**§2/§39 capability gate, honestly re-verified this round:** this environment has NO
+image-generation or image-edit capability (checked: no such tool exposed; no generative model on
+the host — sharp/PIL/Chromium are raster tools). The R3.2 experiment (2D warps fail visibly on
+the modelled mouth) stands, so the seven true facial renders remain **ART ASSET BLOCKED** and
+board 02 states it on its face. Nothing was faked to close it.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-16 | R3.9 §7–§13 | `prototype-tests/_build-emotion-events.js` (new), `public/brand/expressions/{care,joy,laugh,wow,celebrate,support}-energy.webp` + `joy-ray` / `laugh-wave` / `celebrate-ember` / `support-arc` | The feeling had to briefly ESCAPE the chamber as physical energy, never stickers | Ten free ENERGY forms — the chamber's own core drawings rendered standalone with a tight emission falloff and the key light baked into their gradients (a wrongly-lit form cannot happen); every file ≤ ~10KB WebP | `social-r3-9` §1, §11; board 26 |
+| 2026-09-16 | R3.9 §7–§17 | `social/expressions.tsx` (`EmotionEvent`, mounted on the stage only while performing), `SocialPreview.tsx` (`sb-ev-*` keyframes) | Commit was a state change with a flight, not an emotional event | Per-expression events in REAL DEPTH (bg pieces pass BEHIND the vessel z0 < vessel z1 < mg z2 < fg z3): **Care (hero)** — one large dimensional heart toward the viewer + two smaller at other depths; **Joy** — four controlled light rays + a warm sheen crossing the shell; **Laugh** — two rhythmic resonance waves + ONE transparent droplet; **Wow** — collapse → one restrained pressure ring toward the viewer + a cool reflection over the metal; **Celebrate** — five embers on believable gravity arcs; **Support** — two structures closing gently around the orb, energy settling DOWN. Every event: a shell light AT the chamber in the expression's accent + a restrained ground reflection (light has a source, §16); one-shot; unmounted with the field; never mounted under reduced motion. The collapse now starts at 120 + 0.7·tempo so the event owns the stage first | `social-r3-9` §1–§3, §9–§10; boards 03–13, rs-*, filmstrip |
+| 2026-09-16 | R3.9 §14–§16, §31–§32 | `SocialPreview.tsx` (`--wl`/`--wl-a` tokens, stage rim/ground application, `?worldlight=` harness param + frame attr) | The mascot had to belong to THIS person's World without the World changing any emotion's meaning | **WORLD LIGHT**: a persistent ambient tone — Deep Cosmos cool / Solar Observatory warm (the live seam is the World Wall's atmosphere token, which does not exist in this repo yet; the shipped truth source is the theme material, honestly documented) — applied at 10–14% opacity to the vessel's upper-left rim (screen blend), the contact-shadow tint and the ground pool ONLY. Emotion light is the second, short-lived system: a warm World still receives Wow's blue (asserted). Harness-only `?worldlight=warm\|cool` forces a tone for review | `social-r3-9` §4; boards 16–18 |
+| 2026-09-16 | R3.9 §18–§19 | `SocialPreview.tsx` (horizon chrome) | Screenshot test: the eye still met a rounded popup first | Radius 18→16, shadow halved, edge mask strengthened (dissolves to 22% at the rim) — mascot + cores lead | `social-r3-9` §6; boards 14–15 |
+| 2026-09-16 | R3.9 §34 | `social/expressions.tsx` | Motion must respect humans | Scrolling is never locked; a route change/unmount clears every timer; choosing another expression mid-event snaps the old commit to its final state first — events never stack (asserted ≤1 container) | `social-r3-9` §5 |
+
+**Owner-superseded assertions: none.** Two timing-constant suite corrections (invariants
+unchanged): `social-r3-8` §4's stage-3 sample time moved from 0.5·tempo to 0.7·tempo (the R3.9
+collapse timing), 34/34; `social-r2`'s Celebrate settle check measures at 1150ms instead of a
+knife-edge 900ms — the one-shot nominally ends ~885ms and chain-load setTimeout jitter alone
+pushed it over. 43/43.
+
+Critique loop (§48, run for real — 10 found → fixed, then 5 → fixed):
+1–3 (during build): the horizon fade began before Care/Wow's event finished (collapse 0.55→0.7·tempo);
+the Joy/Wow metal sheen escaped the vessel as a fog block over the Moment (now clipped to the
+vessel's silhouette bounds); Joy's rays were too small to read (0.34→0.52·px, longer travel).
+4: every screencast board showed the rest frame — the frame picker compared relative times against
+absolute CDP timestamps (capture bug, fixed). 5: the Care heart was washed out by its own halo
+(inner form 0.92→1.14, tighter halo, fg heart 0.52→0.66·px, duration ×1.15). 6: Support's arcs
+were unreadable at 42px (stroke 20→30, size 0.6·px). 7: "collapse" frames were picked after the
+fade (now +12ms into it). 8: the lens crop caught feed content above the control. 9: the ground
+reflection was imperceptible (opacity .5→.72, wider). 10: the passive board lacked the running-
+animation count (now printed on the board). Pass 2 (5): collapse depiction, Support arc legibility
+re-check, light-mode Care peak verified as strong as dark, lens-cell crops, filmstrip stage labels
+for pre-tap frames.
+
+Verified green on final source: every prior suite unchanged in count,
+**social-r3-9-signature-emotion-engine 31 (new)**; tsc + eslint(src) clean; `next build` passes;
+catalogs untouched (319 × 8); no new dependency, no WebGL, no particle engine, no persistent RAF.
+
+Carryovers: the seven true FACIAL renders remain ART ASSET BLOCKED (briefs stand; the chamber,
+cores and events carry meaning honestly until they land); extended-twelve cores provisional;
+the World-Wall atmosphere token is a documented live seam (`s5-s6`-style — theme fallback ships);
+a native haptic pattern could map to anticipation → core lock → Boom impulse (documented only, no
+web fake).

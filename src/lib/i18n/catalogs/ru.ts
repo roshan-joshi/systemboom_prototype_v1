@@ -299,6 +299,13 @@ const ru: Record<string, string> = {
   "expr.touched": "Тронут",
   "expr.withYou": "Я рядом",
   "expr.more": "Ещё",
+  // R3.3 §11/§38 — Human Pulse speaks PEOPLE, not reactions (names DRAFT pending native review)
+  "expr.peopleN": "{n} человек|{n} человека|{n} человек",
+  "expr.pulseAria": "{n} человек выразил чувство к этому моменту|{n} человека выразили чувства к этому моменту|{n} человек выразили чувства к этому моменту",
+  "expr.spectrumTitle": "Что почувствовали люди",
+  "expr.whoFor": "Люди, выразившие «{name}»",
+  "expr.back": "Назад",
+  "expr.showMorePeople": "Показать ещё людей",
   // R3.1 §54 — new expressions, names DRAFT pending native review
   "expr.love": "Любовь",
   "expr.proud": "Горжусь",

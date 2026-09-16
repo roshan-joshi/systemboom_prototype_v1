@@ -9,6 +9,7 @@ import { createContext, useCallback, useContext, useMemo, useReducer, type React
 import { now } from "@/lib/clock";
 import {
   PEOPLE,
+  synthPerson,
   SEED_MOMENTS,
   SEED_NOTIFICATIONS,
   type Moment,
@@ -58,6 +59,8 @@ type Action =
   | { type: "respond"; id: string }
   /** R2 — set / replace / remove the acting viewer's single Expression on a Moment. */
   | { type: "express"; id: string; expression: string | null }
+  // R3.3 harness-only (§31): the review route seeds Human Pulse scale fixtures with it
+  | { type: "pulse-sim"; id: string; expressions: Record<string, string> }
   | { type: "hide"; id: string }
   | { type: "note"; momentId: string; note: Note }
   | { type: "noteEdit"; momentId: string; noteId: string; text: string }
@@ -146,6 +149,9 @@ function reduce(s: State, a: Action): State {
         };
       });
     }
+    case "pulse-sim":
+      // harness fixture: replace one Moment's expression map wholesale (review route only)
+      return { ...s, moments: s.moments.map((m) => (m.id === a.id ? { ...m, expressions: a.expressions } : m)) };
     case "express": {
       const meId = actingPerson(s.viewer).id;
       return editMoment(a.id, (m) => {
@@ -224,7 +230,9 @@ export function SocialStore({ children }: { children: ReactNode }) {
   // modes — correct automatically for any future viewer mode (e.g. `prakashVisitor`, added to
   // exercise the seeded request-in relationship) without needing this line updated again.
   const isOwnerView = me.id === profile.id;
-  const personOf = useCallback((id: string) => Object.values(PEOPLE).find((p) => p.id === id) ?? PEOPLE.m, []);
+    // `sim-` ids exist only when the review harness seeds a Human Pulse scale fixture; they
+  // resolve to deterministic fictional people so who-expressed stays a real human surface.
+  const personOf = useCallback((id: string) => Object.values(PEOPLE).find((p) => p.id === id) ?? (id.startsWith("sim-") ? synthPerson(id) : PEOPLE.m), []);
   const newId = useCallback(() => `m-new-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`, []);
 
   const ordered = useMemo(() => orderFeed(state.moments, state.hidden, me.id), [state.moments, state.hidden, me.id]);
