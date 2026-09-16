@@ -506,7 +506,7 @@ function EmotionEvent({ id, px }: { id: ExpressionId; px: number }) {
   // shared: the shell receives the core's light AT the chamber; the ground a weaker reflection
   const shellLight = piece("shell-light", "sb-ev-light", px * 0.62, { animationDuration: `${Math.min(420, ms + 60)}ms`, transform: "translate(-50%,-50%)", background: `radial-gradient(circle at 42% 40%, ${def.accent} 0%, transparent 62%)`, opacity: 0 }, undefined, 2);
   const groundLight = (
-    <span key="ground" aria-hidden data-sb-ev="ground-light" className="sb-ev sb-ev-light" style={{ left: "50%", top: px * 0.99, width: px * 0.92, height: px * 0.24, zIndex: 0, transform: "translate(-50%,-50%)", animationDuration: `${ms + 120}ms`, background: `radial-gradient(closest-side, ${def.accent} 0%, transparent 68%)`, opacity: 0, filter: "opacity(.72)" }} />
+    <span key="ground" aria-hidden data-sb-ev="ground-light" className="sb-ev sb-ev-light" style={{ left: "50%", top: px * 0.99, width: px * 0.92, height: px * 0.24, zIndex: 0, transform: "translate(-50%,-50%)", animationDuration: `${Math.min(540, ms + 120)}ms`, background: `radial-gradient(closest-side, ${def.accent} 0%, transparent 68%)`, opacity: 0, filter: "opacity(.72)" }} />
   );
   // a light SWEEPING THE METAL is clipped to the vessel's own silhouette bounds — it must
   // never escape as a fog block over the Moment behind (critique pass 1, weakness #2)
