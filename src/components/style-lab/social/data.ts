@@ -91,6 +91,12 @@ export interface Moment {
    *  the reducer). Additive prototype field; the live contract is
    *  docs/handover/moment-expression-contract.md. Never present on Health/Problem. */
   expressions?: Record<string, string>;
+  /** Stage 23 — Celestial Resonance: viewer id → resonanceId. ONE per viewer (the invariant
+   *  lives in the reducer). A SIBLING of `expressions`, never a replacement: the same viewer
+   *  may hold one Boom Expression and one Celestial Resonance on the same Moment, and changing
+   *  either must leave the other byte-identical. Additive prototype field; the contract is
+   *  references/celestial-resonance-bible/22-DATA-CONTRACT.md. */
+  resonances?: Record<string, string>;
 }
 
 export interface Notification {
@@ -100,8 +106,12 @@ export interface Notification {
   at: string;
   unread: boolean;
   momentId?: string;
-  /** "request": a friend request — the row itself offers Accept / Decline. */
-  kind?: "request";
+  /** "request": a friend request — the row itself offers Accept / Decline.
+   *  "resonance": a Celestial Resonance on one of your Moments (Stage 23, Signal tier). */
+  kind?: "request" | "resonance";
+  /** Stage 23 — the resonanceId for a `kind: "resonance"` row. Semantic id only: never copy,
+   *  never any Life-derived field. */
+  resonanceId?: string;
 }
 
 /* ---------- people ---------- */

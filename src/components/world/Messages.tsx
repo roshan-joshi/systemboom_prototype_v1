@@ -23,6 +23,7 @@ import { PEOPLE } from "@/components/style-lab/social/data";
 import { useSocial } from "@/components/style-lab/social/store";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useWorld } from "./WorldProvider";
+import { ChatQuickResonance, ChatResonanceSeals } from "@/components/celestial/ChatQuickResonance";
 import type { Conversation } from "./model";
 
 const personOf = (id: string) => Object.values(PEOPLE).find((p) => p.id === id)!;
@@ -127,11 +128,13 @@ export function ConversationBody({ conversation, compact = false }: { conversati
       <div ref={listRef} role="log" aria-label={`Conversation with ${p.name}`} className={`flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-3 ${compact ? "py-2" : "py-3"}`} data-sb-chat-log>
         {conversation.messages.length === 0 && <p className="py-6 text-center text-[13px] text-muted">No messages in this conversation yet.</p>}
         {conversation.messages.map((m) => (
-          <div key={m.id} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
+          <div key={m.id} className={`flex flex-wrap items-end gap-1 ${m.from === "me" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[82%] rounded-[14px] px-3 py-1.5 text-[14px] leading-[1.45] ${m.from === "me" ? "rounded-br-[4px] bg-steel/20 text-text" : "rounded-bl-[4px] bg-steel/10 text-text"}`} data-sb-chat-msg={m.from === "me" ? "me" : "them"}>
               <span className="break-words whitespace-pre-line">{m.text}</span>
               <span className="ml-2 align-baseline text-[10px] text-muted tabular-nums">{m.at}</span>
+              <ChatResonanceSeals message={m} />
             </div>
+            <ChatQuickResonance personId={conversation.personId} message={m} />
           </div>
         ))}
       </div>

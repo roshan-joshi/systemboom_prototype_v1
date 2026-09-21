@@ -199,14 +199,17 @@ const mine = (page) => page.$eval(`${RAIN} [data-sb-express]`, (e) => e.getAttri
     const lens = e.querySelector("[data-sb-lens]");
     const hashes = [];
     for (const id of ["care", "joy", "laugh", "wow", "celebrate", "support"]) {
-      const buf = new Uint8Array(await (await fetch(`/brand/expressions/${id}-lens-sm.webp`)).arrayBuffer());
+      const buf = new Uint8Array(await (await fetch(`/brand/expressions/${id}-core.webp`)).arrayBuffer());
       let h = 0; for (let i = 0; i < buf.length; i += 5) h = (h * 31 + buf[i]) >>> 0;
       hashes.push(`${buf.length}:${h}`);
     }
     return { lens: Math.round(lens.getBoundingClientRect().width), ctrl: Math.round(e.getBoundingClientRect().width), src: lens.querySelector("img").getAttribute("src"), distinct: new Set(hashes).size, ring: getComputedStyle(e).boxShadow !== "none" };
   });
   ok(sel.lens >= 36 && sel.ctrl >= 40, `the selected lens is a real object beside Respond (${sel.lens}px in a ${sel.ctrl}px control)`);
-  ok(/-lens-sm\.webp$/.test(sel.src) && sel.distinct === 6 && sel.ring, "it is the chamber-led Boom Lens crop — six distinct — with the expression's ring");
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(/-core\.webp$/.test(sel.src) && sel.distinct === 6 && sel.ring, "it is the Emotion Signet — the touched core object in the aperture — six distinct — with the expression's ring");
 
   /* ---- 7. EXPRESSION FIELD — families as spatial bands, no cards ---- */
   console.log("7. Expression Field");

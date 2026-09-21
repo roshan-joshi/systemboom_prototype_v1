@@ -176,7 +176,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   // R3.3 owner-superseded: the presence line moved from the sm face crop to the dedicated
   // Boom-Lens XS optical crop — tighter still, designed for aggregate scale.
   // R3.5: the quick six carry their own EMOTION-CORE lens crops now
-  ok(/-lens-xs\.webp$/.test(srcs.summary), `the presence line uses the Boom-Lens XS optical crop (${srcs.summary})`);
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(/-core\.webp$/.test(srcs.summary), `the presence line uses the Emotion Signet's core object (${srcs.summary})`);
   await openDeck(page);
   const deckSrc = await page.$eval("[data-sb-expression-option='joy'] img", (e) => e.getAttribute("src"));
   ok(/-core\.webp$/.test(deckSrc), `the horizon shows the CORE object (${deckSrc}); the one vessel carries the md/lg render`);

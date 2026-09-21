@@ -7,6 +7,7 @@ import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import { RegionSuggestion } from "@/components/i18n/RegionSuggestion";
 import { resolveRequestLocale } from "@/lib/i18n/server";
 import { localeMeta } from "@/lib/i18n/config";
+import { CelestialFlagsProvider } from "@/lib/celestial/flags";
 
 export const metadata: Metadata = {
   title: "SYSTEMBOOM",
@@ -51,7 +52,12 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <script dangerouslySetInnerHTML={{ __html: localeBootScript }} />
         <LocaleProvider initialLocale={locale} initialSource={source} region={region}>
-          <IdentityProvider>{children}</IdentityProvider>
+          {/* Stage 23 — Celestial Resonance ships behind flags whose committed defaults are
+              ALL OFF (boomEnabled excepted, pinned true). With no local override this provider
+              changes nothing that renders. */}
+          <CelestialFlagsProvider>
+            <IdentityProvider>{children}</IdentityProvider>
+          </CelestialFlagsProvider>
           {/* S1 §58–§59: a quiet region-language suggestion (Keep / Switch), never an
               auto-switch, never a modal or a bell event. Self-hides unless a genuine region
               change maps to a different supported language. */}

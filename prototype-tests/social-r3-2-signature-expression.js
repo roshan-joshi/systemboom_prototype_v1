@@ -98,7 +98,9 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   ok((await mine(page)) === "laugh", "tapping a seat commits that expression");
   const own = await page.$eval(`${RAIN} [data-sb-express]`, (e) => ({ seat: e.className.includes("sb-seat-own"), rim: !!e.querySelector("[data-sb-own-mark]"), face: e.querySelector("img")?.getAttribute("src") ?? "" }));
   ok(own.seat && own.rim, "the control becomes an OWNED SEAT with a Boom rim, not a flat coloured circle (§30, §58)");
-  ok(/-sm\.webp$/.test(own.face), "the selected control shows a compact optical expression crop");
+  // Owner-superseded (R3.9.1 Emotion Signet): the compact state is the touched CORE OBJECT in
+  // the aperture ring — same invariant (a designed compact state, never a shrunken full mascot)
+  ok(/-core\.webp$/.test(own.face), "the selected control shows the expression's own core object in the signet");
   await openDeck(page);
   const checked = await page.$$eval("[data-sb-expression-deck] [data-sb-expression-option][aria-checked=true]", (n) => n.map((o) => o.getAttribute("data-sb-expression-option")));
   ok(checked.length === 1 && checked[0] === "laugh", `exactly one expression is active for this viewer (${checked.join(",")})`);
@@ -254,7 +256,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   ok(sum.n <= 3, `at most three distinct expression miniatures (${sum.n})`);
   // R3.3 owner-superseded: the miniatures are Boom Lenses on the dedicated XS optical crop;
   // the ONE semantic mark per lens is seated IN the rim (§5 of R3.3) — floating marks stay banned.
-  ok(sum.srcs.every((s) => /-lens-xs\.webp$/.test(s)), "the miniatures are the Boom-Lens XS optical tier, never a shrunken MD asset");
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(sum.srcs.every((s) => /-core\.webp$/.test(s)), "the miniatures are Emotion Signets — each person's own core object, never a shrunken MD asset");
   ok(sum.marks === 0 && sum.lensMarks <= sum.lenses, "no floating symbols — at most one rim-integrated mark per lens");
   ok(!/%|top|trend|popular|score/i.test(sum.text), `no ranking or popularity language (“${sum.text}”)`);
 

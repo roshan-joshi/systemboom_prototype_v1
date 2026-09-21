@@ -93,7 +93,10 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
       blur: (cs.backdropFilter ?? "none") === "none" && !/blur/.test(cs.filter ?? "none"),
     };
   });
-  ok(/-lens-xs\.webp$/.test(lens.src), `the feed uses the dedicated XS optical crop (${lens.src})`);
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(/-core\.webp$/.test(lens.src), `the feed signet carries the core object itself (${lens.src})`);
   ok(lens.rim, "a physical rim from real shading — material, not a flat badge");
   ok(lens.blur, "no glassmorphism: no backdrop blur, no glow filters (§2, §35)");
   ok(lens.marks <= 1 && lens.floating === 0, "ONE semantic mark, seated in the rim — never a floating sticker (§5)");
@@ -225,7 +228,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   // settles) so the deck opens instantly — that is a prefetch, not feed rendering, and it is
   // asserted as exactly that. LG never loads at all.
   const rendered = await page.$$eval("[data-sb-moment] img[src*='brand/expressions']", (n) => [...new Set(n.map((i) => i.getAttribute("src").split("/").pop()))]);
-  ok(rendered.every((a) => /-lens-(xs|sm)\.webp$|neutral-sm\.webp$/.test(a)), `a long feed RENDERS only the small optical tiers (${rendered.join(", ")})`);
+  ok(rendered.every((a) => /-core\.webp$|-lens-(xs|sm)\.webp$|neutral-sm\.webp$|neutral-chamber-lens-sm\.webp$/.test(a)), `a long feed RENDERS only the small signet/optical tiers (${rendered.join(", ")})`);
   const wire = await page.evaluate(() => [...new Set(performance.getEntriesByType("resource").filter((e) => /brand\/expressions/.test(e.name)).map((e) => e.name.split("/").pop()))]);
   const mdOnWire = wire.filter((a) => /-md\.webp$/.test(a) && !/-lens-md\.webp$/.test(a));
   // R3.5: the idle warm covers the quick six's own Emotion-Core deck art (six small files)

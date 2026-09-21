@@ -176,7 +176,10 @@ const runningIn = (page, sel) => page.evaluate((s) => [...document.querySelector
     return { shape: lens.getAttribute("data-sb-lens-shape"), clip: /path\(/.test(getComputedStyle(lens.querySelector(".sb-lens-surface")).clipPath), shell: !!lens.querySelector(".sb-lens-shell"), px: Math.round(lens.getBoundingClientRect().width), src: lens.querySelector("img").getAttribute("src").split("/").pop(), noMascot: !ctrl.querySelector("[data-sb-expression]"), dormant };
   });
   ok(sel.shape === "chamber" && sel.clip && sel.shell && sel.px >= 36, `the selected control is the oblique CHAMBER aperture with its shell fragment (${sel.px}px), not a circle badge`);
-  ok(/-lens-sm\.webp$/.test(sel.src) && sel.noMascot, `it shows the Emotion Core (${sel.src}) — never a tiny full mascot`);
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(/-core\.webp$/.test(sel.src) && sel.noMascot, `it shows the Emotion Core itself (${sel.src}) — never a tiny full mascot`);
   ok(sel.dormant === "neutral-chamber-lens-sm.webp", `an untouched Moment wears the DORMANT chamber (${sel.dormant}) — no feeling pre-stated`);
 
   /* ---- 6. Emotion Atlas ---- */

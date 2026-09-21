@@ -24,6 +24,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useTheme } from "@/lib/use-theme";
 import { now } from "@/lib/clock";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
+import { ResonanceNotificationMark } from "@/components/celestial/ResonateControl";
 import { matchPeople, PLACES, RECENT_SEARCHES, type Moment } from "./data";
 import { MenuItem, Popover } from "./Moment";
 import { dayLabel, dateKey, formatDate, formatTime, useSocial } from "./store";
@@ -539,6 +540,15 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
                       <PersonIdentity viewer={me} subject={who} at={new Date(n.at)} size={24} />
                       <span className="min-w-0 flex-1 text-[13px] leading-[1.4]">
                         <span className="font-medium text-text">{who.name}</span> <span className="text-text">{n.text}</span>
+                        {/* Stage 23 — Celestial notifications are SIGNAL tier: a static mark on
+                            the existing row. Never the Event renderer, never a second
+                            notifications architecture, and the actor identity above is the
+                            same privacy-safe PersonIdentity every other row already uses. */}
+                        {n.kind === "resonance" && n.resonanceId && (
+                          <span data-sb-notification-resonance={n.resonanceId} className="ml-1.5 inline-flex align-[-4px]">
+                            <ResonanceNotificationMark resonanceId={n.resonanceId} />
+                          </span>
+                        )}
                         {target?.at && (
                           <span className="block text-[12px] text-muted tabular-nums" data-sb-notification-coord>
                             {formatDate(target.at)}

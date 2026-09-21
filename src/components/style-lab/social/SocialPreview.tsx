@@ -33,6 +33,7 @@ import { Scrim, TransientSurface } from "@/components/world/TransientSurface";
 import { SocialStore, dateKey, localISO, useSocial, type Draft, type ViewerMode } from "./store";
 import { lifeViewFor, momentLifeFor, ringViewFor } from "./view-model";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { CelestialEnvironment } from "@/components/celestial/CelestialEnvironment";
 
 /**
  * "View as public" — Social Freeze Delta. A technical stand-in `viewer`, never rendered or
@@ -317,6 +318,10 @@ const SCOPED_CSS = `
 .sb-social .sb-hero-preview{animation:sb-hero-preview 140ms var(--ease-out) both;}
 /* CORES on the horizon: invisible hit targets, one small lit orb each, grounded */
 .sb-social .sb-core{background:none;box-shadow:none;}
+/* R3.9.1 — one selection language: the browser's rectangular focus outline is replaced by a
+   circular accent ring + soft halo (keyboard visibility preserved, form-control language gone) */
+.sb-social .sb-core:focus-visible{outline:none;border-radius:9999px;box-shadow:0 0 0 2px color-mix(in srgb,var(--focus) 80%,transparent),0 0 14px -2px var(--focus);}
+.sb-social .sb-lib-cell.sb-core:focus-visible{border-radius:14px;}
 .sb-social .sb-core-body{display:block;transition:translate 110ms var(--ease-out),opacity 160ms var(--ease-out),scale 160ms var(--ease-out);}
 .sb-social .sb-core-obj::after{content:"";position:absolute;left:50%;bottom:-3px;width:70%;height:12%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.42),transparent);pointer-events:none;transition:opacity 110ms var(--ease-out),transform 110ms var(--ease-out);}
 [data-theme="light"] .sb-social .sb-core-obj::after{background:radial-gradient(closest-side,rgba(30,25,20,.38),transparent);}
@@ -364,6 +369,14 @@ const SCOPED_CSS = `
    shell fragment (.sb-lens-shell) is drawn over it */
 .sb-social .sb-lens-shell{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35));}
 [data-theme="light"] .sb-social .sb-lens-shell{filter:drop-shadow(0 1px 1px rgba(15,21,32,.25));}
+/* R3.9.1 — SIGNET metal tokens: dark steel in Deep Cosmos, warm brass in Solar Observatory */
+.sb-social{--sig-lo:#0d0b0c;--sig-mid:#453a33;--sig-hi:#93765a;--sig-edge:rgba(0,0,0,.65);}
+[data-theme="light"] .sb-social{--sig-lo:#6d6355;--sig-mid:#b3a48d;--sig-hi:#efe3cd;--sig-edge:rgba(46,38,28,.5);}
+/* the signet SEAT: a shallow dark well the orb rests in, so the emotion pops in BOTH themes */
+.sb-social .sb-signet-seat{background:radial-gradient(120% 105% at 42% 34%,#20242e 0%,#0b0d13 74%);}
+[data-theme="light"] .sb-social .sb-signet-seat{background:radial-gradient(120% 105% at 42% 34%,#3a3f4c 0%,#141821 74%);}
+/* the orb sits IN the seat: a whisper of inset depth on the orb itself */
+.sb-social .sb-signet-orb{padding:9%;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5));}
 .sb-social .sb-lens-chip{background:var(--sheet-raised);box-shadow:0 0 0 1px var(--hair),0 1px 2px rgba(0,0,0,.28);}
 
 /* R3.3 §18 — the Expression Spectrum separates out of the Human Pulse cluster: one short
@@ -599,6 +612,7 @@ function Inner({ product = false }: { product?: boolean }) {
               test contract touched. */}
           <div data-sb-social-frame={frame} data-sb-worldlight={worldLight ?? undefined} className="sb-social @container relative min-h-[900px] text-text" style={{ width: FRAME_PX[frame], maxWidth: "100%", boxShadow: frame === "desktop" ? undefined : "0 0 0 1px var(--edge)", ["--frame-w" as string]: frame === "desktop" ? "100vw" : FRAME_PX[frame] }}>
             <style>{SCOPED_CSS}</style>
+            <CelestialEnvironment />
             <div data-sb-social-inner className="@2xl:[--gutter:40px] @2xl:[--rule-x:19px] @2xl:[--bleed:0px]">
               {/* The quiet ground under any open surface — below the bar, above My World. */}
               {anySurface && <Scrim onClose={closeSurfaces} />}

@@ -1042,3 +1042,31 @@ cores and events carry meaning honestly until they land); extended-twelve cores 
 the World-Wall atmosphere token is a documented live seam (`s5-s6`-style — theme fallback ships);
 a native haptic pattern could map to anticipation → core lock → Boom impulse (documented only, no
 web fake).
+
+# Social R3.9.1 — Emotion Signet (owner-directed · 2026-09-17)
+
+Owner audit of the shipped selected state (light mode screenshot): "after the user chooses, at
+last it only seems like a round." Verdict accepted — the resting Boom Lens was a 36px crop of
+the dark chamber: on a light page a dark hole with a fleck of core, a continuity break (the
+person touches a LUMINOUS ORB and receives a DARK DISC), an accent halo that read as a focus
+ring, and — worst on screen — the browser's rectangular focus outline around a spherical core.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-17 | R3.9.1 | `social/expressions.tsx` (`BoomLens`, `LensShell`), `SocialPreview.tsx` (`--sig-*` tokens, `.sb-signet-*`) | Emotion first, shell second — at rest, not only in the brief | **EMOTION SIGNET**: the resting lens is the EXACT core object the person touched (`{id}-core.webp`, ~82% of the disc) seated in the oblique chamber aperture (same `lensClip` ellipse at −12° — the chamber identity, never a circular badge) on a dark seat well, ringed by machined theme metal (`--sig-*`: dark steel in Deep Cosmos, warm brass in Solar Observatory) with the EMOTION'S LIGHT on the top arc (the rim lit by the core — §16 physics) and the scarce Boom-red segment machined into the lower rim for ownership. Perfect object permanence: horizon orb → chamber → the ORB ITSELF returns as the lens (the collapse flight now carries the core, not a chamber crop). Dormant control keeps the empty-aperture chamber crop (`neutral-chamber-lens-sm.webp`) in the same ring. Human Pulse, Spectrum and Who inherit automatically — architecture untouched | `social-r3-8` §5/§7, `social-r3-9` §10, boards below |
+| 2026-09-17 | R3.9.1 | `social/expressions.tsx` (LENS_MARK removed), `SocialPreview.tsx` | The rim chip was a second tiny symbol beside an orb that now IS the symbol | The rim-chip micro-glyphs are retired — redundancy, not information. The invariant (never a floating sticker; ≤1 rim-integrated mark) is unchanged and still asserted. `lensSrc` stays exported as the documented slot for the true facial renders (the compositor still builds the optical tiers) | `social-r3-3` §3 (`marks ≤ 1` holds at 0) |
+| 2026-09-17 | R3.9.1 | `SocialPreview.tsx` (`.sb-core:focus-visible`) | The browser's rectangular focus outline was the cheapest pixel on the page — form-control language around a spherical object, duplicating orbit + notch + caption | Custom circular focus: `outline:none` + a 2px accent ring with a soft halo (border-radius follows the core button; 14px on Atlas cells). Keyboard visibility preserved — one selection language | screenshot evidence; keyboard flow suites green |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):** every
+compact-lens SRC contract moves from the optical crops to the signet's core object —
+`social-r3-1` §5 (presence `-lens-xs` → `-core`), `social-r3-2` §9 (miniatures), `social-r3-3`
+§3 + asset audit (feed signet, long-feed tier list), `social-r3-5` §3/§4/§6/§7 (pulse/Spectrum/
+reduced/serious; **extended twelve now wear their provisional family-orb cores** — `respect-core.webp`
+instead of the neutral lens, stated provisional), `social-r3-6` §2, `social-r3-7` §6 (distinct-file
+hashes now over the cores), `social-r3-8` §5. The invariant in all of them — the compact state
+carries each expression's own distinct emotion, never a shrunken mascot, never colour alone — is
+asserted unchanged (shape `chamber`, `path()` clip, shell, inset rim all still checked).
+
+Verified green on final source: full chain (all 31 suites + devanagari) after the change;
+tsc + eslint(src) clean; `next build` passes. No new assets (the 18 core orbs already existed);
+no motion added at rest.

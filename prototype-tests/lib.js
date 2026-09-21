@@ -6,13 +6,15 @@ const EV =
   process.env.SB_EV || "/Users/roshan/SYSTEMBOOM_V2/prototype-evidence/phase-01-9a";
 fs.mkdirSync(EV, { recursive: true });
 
-const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME = process.env.SB_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 async function launch({ mobile = false } = {}) {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: "new",
-    args: ["--enable-gpu", "--use-angle=metal", "--hide-scrollbars"],
+    args: process.env.SB_CHROME
+      ? ["--hide-scrollbars", "--no-sandbox", "--disable-dev-shm-usage"]
+      : ["--enable-gpu", "--use-angle=metal", "--hide-scrollbars"],
   });
   const page = await browser.newPage();
   if (mobile) {

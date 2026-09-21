@@ -32,7 +32,7 @@
  * compositor-friendly; the feed never animates on its own (§36, §84, §107).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 /*
  * ── R3.7 GRAVITY EXPRESSIONS ─────────────────────────────────────────────────
  * The EMOTION CHAMBER is a bore seen obliquely (asset level, `_build-emotion-cores.js`),
@@ -247,19 +247,37 @@ export function lensClip(px: number) {
   const x1 = (cx + rx * c).toFixed(2), y1 = (cy + rx * sn).toFixed(2), x2 = (cx - rx * c).toFixed(2), y2 = (cy - rx * sn).toFixed(2);
   return `path("M ${x1} ${y1} A ${rx} ${ry} ${th} 1 1 ${x2} ${y2} A ${rx} ${ry} ${th} 1 1 ${x1} ${y1} Z")`;
 }
-/** The shell fragment around the aperture: thick wall upper-left, thin lower-right, one light. */
-function LensShell({ px, owned }: { px: number; owned: boolean }) {
-  const cx = px / 2, cy = px / 2, rx = px * 0.5, ry = px * 0.44, t = px * 0.055;
+/**
+ * R3.9.1 — the SIGNET RING. The aperture keeps its oblique chamber identity (an ellipse at
+ * −12°, never a generic circular badge), machined from theme metal (`--sig-*` tokens: warm
+ * brass on Solar Observatory, dark steel on Deep Cosmos), with the EMOTION'S OWN LIGHT on the
+ * top arc — the rim lit by the core seated inside (physics, not decoration) — and the scarce
+ * Boom-red segment on the lower rim for ownership.
+ */
+function LensShell({ px, owned, accent }: { px: number; owned: boolean; accent?: string }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const cx = px / 2, cy = px / 2, rx = px * 0.5 - 0.6, ry = px * 0.46 - 0.6;
+  const sw = Math.max(1.8, px * 0.075);
   return (
     <svg aria-hidden className="sb-lens-shell pointer-events-none absolute inset-0" width={px} height={px} viewBox={`0 0 ${px} ${px}`}>
       <defs>
-        <linearGradient id={`sbw${px}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#0b0809" /><stop offset="45%" stopColor="#2a2124" /><stop offset="80%" stopColor="#6a4a30" /><stop offset="100%" stopColor="#d9a468" /></linearGradient>
+        <linearGradient id={`m${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" style={{ stopColor: "var(--sig-lo)" }} />
+          <stop offset="52%" style={{ stopColor: "var(--sig-mid)" }} />
+          <stop offset="100%" style={{ stopColor: "var(--sig-hi)" }} />
+        </linearGradient>
       </defs>
       <g transform={`rotate(-12 ${cx} ${cy})`}>
-        <path fillRule="evenodd" fill={`url(#sbw${px})`} d={`M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 1 ${cx - rx} ${cy} Z M ${cx + t * 0.9 - (rx - t)} ${cy + t * 0.8} A ${rx - t} ${ry - t} 0 1 1 ${cx + t * 0.9 + (rx - t)} ${cy + t * 0.8} A ${rx - t} ${ry - t} 0 1 1 ${cx + t * 0.9 - (rx - t)} ${cy + t * 0.8} Z`} />
-        <ellipse cx={cx} cy={cy} rx={rx - 0.6} ry={ry - 0.6} fill="none" stroke="#000" strokeOpacity=".55" strokeWidth="1" />
-        {/* §28 — ownership stays the scarce Boom-red segment on the lower rim */}
-        {owned && <path data-sb-own-mark d={`M ${cx - rx * 0.55} ${cy + ry * 0.84} A ${rx} ${ry} 0 0 0 ${cx + rx * 0.55} ${cy + ry * 0.84}`} fill="none" stroke="var(--boom)" strokeWidth={Math.max(1.6, px * 0.07)} strokeLinecap="round" />}
+        {/* dark parting line seating the ring against the page */}
+        <ellipse cx={cx} cy={cy} rx={rx + 0.5} ry={ry + 0.5} fill="none" stroke="var(--sig-edge)" strokeWidth="1" />
+        {/* the machined metal ring */}
+        <ellipse cx={cx} cy={cy} rx={rx - sw / 2 + 0.5} ry={ry - sw / 2 + 0.5} fill="none" stroke={`url(#m${uid})`} strokeWidth={sw} />
+        {/* the emotion's light on the rim — brightest at the top, dying along the sides (§16) */}
+        {accent && (
+          <path data-sb-sig-light d={`M ${cx - rx * 0.62} ${cy - ry * 0.72} A ${rx - sw / 2} ${ry - sw / 2} 0 0 1 ${cx + rx * 0.62} ${cy - ry * 0.72}`} fill="none" stroke={accent} strokeOpacity=".9" strokeWidth={Math.max(1.3, sw * 0.62)} strokeLinecap="round" />
+        )}
+        {/* ownership: the scarce Boom-red segment, machined into the lower rim */}
+        {owned && <path data-sb-own-mark d={`M ${cx - rx * 0.42} ${cy + ry * 0.86} A ${rx - sw / 2} ${ry - sw / 2} 0 0 0 ${cx + rx * 0.42} ${cy + ry * 0.86}`} fill="none" stroke="var(--boom)" strokeWidth={Math.max(1.4, sw * 0.66)} strokeLinecap="round" />}
       </g>
     </svg>
   );
@@ -277,24 +295,16 @@ function LensShell({ px, owned }: { px: number; owned: boolean }) {
 export type LensTier = "xs" | "sm" | "md";
 const LENS_PX: Record<LensTier, number> = { xs: 22, sm: 28, md: 40 };
 
-/** Per-expression lens render once it exists; the neutral optical crop until then (§24). */
-function lensSrc(id: ExpressionId | undefined, tier: LensTier) {
+/** Per-expression lens render once it exists; the neutral optical crop until then (§24).
+    R3.9.1: the UI's resting lens is the Emotion Signet (coreSrc); these optical crops remain
+    the documented slot for the true facial renders and are still built by the compositor. */
+export function lensSrc(id: ExpressionId | undefined, tier: LensTier) {
   return id && RENDERED.has(id) ? `/brand/expressions/${id}-lens-${tier}.webp` : `/brand/expressions/neutral-lens-${tier}.webp`;
 }
 
-/**
- * §5 — the rim marks: one restrained semantic glyph per quick expression, drawn at chip
- * scale in the expression's own family shade. Extended expressions reuse their registry
- * mark, which already reads at this size. Supports emotion; never a floating sticker.
- */
-const LENS_MARK: Partial<Record<ExpressionId, (s: number) => React.ReactNode>> = {
-  care: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><path d="M5 8.2C2.9 6.7 1.9 5.6 1.9 4.4c0-.9.7-1.6 1.6-1.6.6 0 1.1.3 1.5.9.4-.6.9-.9 1.5-.9.9 0 1.6.7 1.6 1.6 0 1.2-1 2.3-3.1 3.8z" fill="currentColor" /></svg>),
-  joy: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><circle cx="5" cy="5" r="1.5" fill="currentColor" /><path d="M5 .9v1.5M5 7.6v1.5M.9 5h1.5M7.6 5h1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" /></svg>),
-  laugh: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><path d="M2.2 4c1.9 1.7 3.7 1.7 5.6 0M2.9 6.4c1.4 1.2 2.8 1.2 4.2 0" stroke="currentColor" strokeWidth="1.15" fill="none" strokeLinecap="round" /></svg>),
-  wow: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><path d="M5 1v1.7M5 7.3V9M1 5h1.7M7.3 5H9M2.2 2.2l1.2 1.2M7.8 2.2 6.6 3.4M2.2 7.8l1.2-1.2M7.8 7.8 6.6 6.6" stroke="currentColor" strokeWidth="1.05" strokeLinecap="round" /></svg>),
-  celebrate: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><circle cx="2.6" cy="6.8" r="1.1" fill="currentColor" /><circle cx="5.4" cy="2.8" r="1.3" fill="currentColor" /><circle cx="7.9" cy="6.2" r="0.95" fill="currentColor" /></svg>),
-  support: (s) => (<svg width={s} height={s} viewBox="0 0 10 10" aria-hidden><path d="M2.5 4.3c-.2 2.1 1.2 3.4 2.5 3.4s2.7-1.3 2.5-3.4" stroke="currentColor" strokeWidth="1.25" fill="none" strokeLinecap="round" /></svg>),
-};
+/* R3.9.1 — the rim chip micro-glyphs are retired: the SIGNET's orb IS the semantic object
+   at every scale, so a second tiny symbol beside it was redundancy (owner-superseded; the
+   invariant — never a floating sticker — is unchanged and still asserted). */
 
 /**
  * §21–§23 — deterministic MICRO-VARIANT. Three presentation leans per expression so a
@@ -317,17 +327,15 @@ export function BoomLens({ id, tier = "xs", size, owned = false, variant, pulse 
   variant?: 0 | 1 | 2;
   /** the full one-shot (entry + gesture + mass + ring) — R3.3 §26 */
   pulse?: boolean;
-  /** R3.8 §9–§10 — LANDING: the chamber has just arrived from the vessel; a thump + ring only */
+  /** R3.8 §9–§10 — LANDING: the orb has just arrived from the vessel; a thump + ring only */
   land?: boolean;
   className?: string;
 }) {
   const def = expressionDef(id)!;
   const px = size ?? LENS_PX[tier];
-  const chip = Math.max(9, Math.round(px * 0.40));
   const lean = variant === undefined ? 0 : VARIANT_LEAN[variant];
   const ms = durationOf(def);
   const pulseTo = def.mass === "heavy" ? 1.62 : def.mass === "light" ? 2.02 : 1.85;
-  const mark = LENS_MARK[def.id] ?? def.mark;
   const active = pulse || land;
   const anim = pulse ? `sb-expr-in ${def.quick ? `sb-g-${def.id}` : `sb-energy-${def.energy}`}` : land ? "sb-lens-land" : "";
   return (
@@ -344,25 +352,19 @@ export function BoomLens({ id, tier = "xs", size, owned = false, variant, pulse 
       {active && (
         <span aria-hidden className="sb-boom-pulse absolute inset-[-12%] rounded-full" style={{ border: `1.5px solid ${def.accent}`, animationDuration: `${land ? 240 : ms + 60}ms`, ["--pulse-to" as string]: pulseTo }} />
       )}
-      {/* R3.8 §11 — the surface IS the oblique aperture: the same rotated ellipse the chamber cuts
-          into the body, so Living Mascot → chamber → lens is one object at every scale */}
-      <span aria-hidden className={`sb-lens-surface relative block h-full w-full ${anim}`} style={{ clipPath: lensClip(px), animationDuration: active ? `${land ? 220 : ms}ms` : undefined }}>
+      {/* R3.9.1 EMOTION SIGNET — the resting lens is the EXACT core object the person touched
+          on the horizon, seated in the oblique chamber aperture: emotion first, shell second.
+          The seat keeps the aperture's clip and its inset machined shading; the orb sits IN it. */}
+      <span aria-hidden className={`sb-lens-surface sb-signet-seat relative block h-full w-full ${anim}`} style={{ clipPath: lensClip(px), animationDuration: active ? `${land ? 220 : ms}ms` : undefined }}>
         {active && RENDERED.has(id) && (
-          <span className="sb-core-in pointer-events-none absolute inset-0" style={{ animationDuration: `${land ? 200 : Math.min(320, ms)}ms`, background: `radial-gradient(circle at 56% 48%, ${def.accent} 0%, transparent 40%)` }} />
+          <span className="sb-core-in pointer-events-none absolute inset-0" style={{ animationDuration: `${land ? 200 : Math.min(320, ms)}ms`, background: `radial-gradient(circle at 50% 42%, ${def.accent} 0%, transparent 46%)` }} />
         )}
-        {/* landing caps the mass layer too — the thump is a landing, not the expression's own impulse */}
         <span className={`block h-full w-full ${active ? `sb-mass sb-mass-${def.mass}` : ""}`} style={land ? { animationDuration: "240ms" } : undefined}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lensSrc(id, tier)} alt="" draggable={false} decoding="async" width={px} height={px} className="block h-full w-full select-none object-cover" style={lean ? { transform: `rotate(${lean}deg) scale(1.04)` } : undefined} />
+          <img src={coreSrc(id)} alt="" draggable={false} decoding="async" width={px} height={px} className="sb-signet-orb block h-full w-full select-none object-contain" style={lean ? { transform: `rotate(${lean * 2.2}deg)` } : undefined} />
         </span>
       </span>
-      <LensShell px={px} owned={owned} />
-      {/* §5 — the semantic mark sits IN the rim, one per lens, family-shaded */}
-      {px >= 18 && mark && (
-        <span aria-hidden data-sb-lens-mark className="sb-lens-chip absolute flex items-center justify-center rounded-full" style={{ right: -Math.round(chip * 0.16), bottom: -Math.round(chip * 0.16), width: chip, height: chip }}>
-          {mark(Math.max(7, Math.round(chip * 0.64)))}
-        </span>
-      )}
+      <LensShell px={px} owned={owned} accent={def.accent} />
     </span>
   );
 }
@@ -374,7 +376,7 @@ export function DormantLens({ size }: { size: number }) {
     <span aria-hidden data-sb-lens-dormant data-sb-lens-shape="chamber" className="sb-lens relative inline-block shrink-0 align-middle" style={{ width: size, height: size }}>
       <span className="sb-lens-surface relative block h-full w-full" style={{ clipPath: lensClip(size) }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/expressions/neutral-chamber-lens-sm.webp" alt="" draggable={false} width={size} height={size} data-sb-express-neutral className="block h-full w-full select-none object-cover" />
+        <img src="/brand/expressions/neutral-chamber-lens-sm.webp" alt="" draggable={false} width={size} height={size} data-sb-express-neutral className="block h-full w-full select-none object-cover" style={{ opacity: 0.92 }} />
       </span>
       <LensShell px={size} owned={false} />
     </span>
@@ -899,7 +901,7 @@ export function ExpressionControl({ moment }: { moment: Moment }) {
         title={mineDef ? t(mineDef.labelKey) : t("expr.open")}
         onClick={openDeck}
         className={`sb-press relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border focus-visible:outline-[var(--focus)] ${mineDef ? "sb-seat sb-seat-own sb-ctrl-own border-transparent @2xl:h-10 @2xl:w-10" : "border-[var(--hair)] hover:border-steel/60 @2xl:h-10 @2xl:w-10"}`}
-        style={mineDef ? { ["--seat-accent" as string]: `color-mix(in srgb, ${mineDef.accent} 34%, transparent)`, boxShadow: `0 0 0 2px color-mix(in srgb, ${mineDef.accent} 55%, transparent)` } : undefined}
+        style={mineDef ? { ["--seat-accent" as string]: `color-mix(in srgb, ${mineDef.accent} 30%, transparent)`, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${mineDef.accent} 30%, transparent)` } : undefined}
         data-sb-express={mine ?? ""}
         data-sb-retouch={retouch ? "" : undefined}
         data-sb-landing={landing ? "" : undefined}
@@ -935,10 +937,11 @@ export function ExpressionControl({ moment }: { moment: Moment }) {
           aria-hidden
           data-sb-lens-flight={flight.id}
           className="sb-lens-flight pointer-events-none fixed z-40"
-          style={{ left: flight.x, top: flight.y, width: LENS_CTRL, height: LENS_CTRL, clipPath: lensClip(LENS_CTRL), ["--fdx" as string]: `${flight.dx}px`, ["--fdy" as string]: `${flight.dy}px`, ["--fs" as string]: flight.s }}
+          style={{ left: flight.x, top: flight.y, width: LENS_CTRL, height: LENS_CTRL, ["--fdx" as string]: `${flight.dx}px`, ["--fdy" as string]: `${flight.dy}px`, ["--fs" as string]: flight.s }}
           onAnimationEnd={() => setFlight(null)}
         >
-          <span className="block h-full w-full" style={{ backgroundImage: `url(${lensSrc(flight.id, "sm")})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+          {/* R3.9.1 — the ORB itself returns from the chamber into the aperture: one object */}
+          <span className="block h-full w-full" style={{ backgroundImage: `url(${coreSrc(flight.id)})`, backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center" }} />
         </span>
       )}
 

@@ -220,3 +220,16 @@ anticipation → core lock → Boom impulse (documented seam only — no web-fak
 
 **Facial art.** Still ART ASSET BLOCKED — re-verified this round: no image generation exists in
 this environment. The event system carries the emotion honestly until the renders land.
+
+
+## R3.9.1 — the Emotion Signet (the resting lens)
+
+The compact resting state is a SIGNET, not a picture of the chamber: the exact core object the
+person touched, seated in the oblique aperture (the chamber's own −12° ellipse) on a dark seat
+well, ringed by machined theme metal — dark steel in Deep Cosmos, warm brass in Solar
+Observatory — with the emotion's light on the top arc of the rim and the scarce Boom-red
+ownership segment machined into the lower rim. Object permanence is complete: the orb chosen on
+the horizon is the orb locked in the chamber is the orb that returns beside Respond. The dormant
+control is the same ring around the empty aperture. Focus is one circular accent ring — the
+rectangular browser outline is gone. The optical lens crops (`{id}-lens-*.webp`) remain built
+and exported as the slot for the true facial renders.

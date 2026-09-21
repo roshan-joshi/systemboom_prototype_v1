@@ -77,12 +77,15 @@ const openDeck = async (page) => {
   await open(page, 1440, 1000, { pulse: "100mixed" });
   await toRain(page);
   const pulseSrcs = await page.$$eval(`${RAIN} [data-sb-human-pulse] [data-sb-lens] img`, (n) => n.map((e) => e.getAttribute("src").split("/").pop()));
-  ok(pulseSrcs.join(",") === "support-lens-xs.webp,care-lens-xs.webp,joy-lens-xs.webp", `the XS lenses carry each expression's own core (${pulseSrcs.join(", ")})`);
+  // Owner-superseded (R3.9.1 Emotion Signet): the resting lens is the CORE OBJECT the person
+  // touched, seated in the aperture ring — object permanence over optical crops. The invariant
+  // (the compact state carries each expression's own distinct emotion) is unchanged.
+  ok(pulseSrcs.join(",") === "support-core.webp,care-core.webp,joy-core.webp", `the XS signets carry each expression's own core object (${pulseSrcs.join(", ")})`);
   const b = await centre(page, `${RAIN} [data-sb-human-pulse]`);
   await page.mouse.click(b.x, b.y);
   await sleep(400);
   const specSrcs = await page.$$eval("[data-sb-expression-spectrum] [data-sb-lens] img", (n) => n.map((e) => e.getAttribute("src").split("/").pop()));
-  ok(specSrcs.join(",") === "care-lens-md.webp,joy-lens-md.webp,wow-lens-md.webp,support-lens-md.webp", `the Spectrum's MD lenses do too (${specSrcs.join(", ")})`);
+  ok(specSrcs.join(",") === "care-core.webp,joy-core.webp,wow-core.webp,support-core.webp", `the Spectrum's MD lenses do too (${specSrcs.join(", ")})`);
   await page.keyboard.press("Escape");
   await sleep(250);
 
@@ -93,7 +96,8 @@ const openDeck = async (page) => {
   await page.mouse.click(bb.x, bb.y);
   await sleep(400);
   const respectSrc = await page.$eval("[data-sb-spectrum-row='respect'] img", (e) => e.getAttribute("src").split("/").pop());
-  ok(respectSrc === "neutral-lens-md.webp", `extended expressions keep the neutral lens until their renders land (${respectSrc})`);
+  // R3.9.1: the extended twelve wear their own PROVISIONAL family-orb cores (stated provisional)
+  ok(respectSrc === "respect-core.webp", `extended expressions wear their provisional core orb (${respectSrc})`);
   await page.keyboard.press("Escape");
   await sleep(250);
 
@@ -105,7 +109,7 @@ const openDeck = async (page) => {
     text: e.textContent.replace(/\s+/g, " ").trim(),
     lenses: [...e.querySelectorAll("[data-sb-lens] img")].map((i) => i.getAttribute("src").split("/").pop()),
   }));
-  ok(same.lenses.length === 1 && same.lenses[0] === "care-lens-xs.webp" && /^100\s/.test(same.text), `100 × Care is still ONE Care lens + "${same.text}"`);
+  ok(same.lenses.length === 1 && same.lenses[0] === "care-core.webp" && /^100\s/.test(same.text), `100 × Care is still ONE Care lens + "${same.text}"`);
   await open(page, 390, 844, { pulse: "100mixed" });
   await toRain(page);
   const widths = await page.$$eval(`${RAIN} [data-sb-human-pulse] [data-sb-lens]`, (n) => [...new Set(n.map((e) => Math.round(e.getBoundingClientRect().width)))]);
@@ -147,7 +151,7 @@ const openDeck = async (page) => {
   await page.mouse.click(...Object.values(await centre(page, "[data-sb-expression-option='care']")));
   await sleep(250);
   const rm = await page.$eval(`${RAIN} [data-sb-express] [data-sb-lens] img`, (e) => ({ src: e.getAttribute("src").split("/").pop(), opacity: getComputedStyle(e).opacity }));
-  ok(rm.src === "care-lens-sm.webp" && rm.opacity === "1", "reduced motion: the selected Emotion Core is simply there, fully visible");
+  ok(rm.src === "care-core.webp" && rm.opacity === "1", "reduced motion: the selected Emotion Core is simply there, fully visible");
   await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
 
   /* ---- 7. Serious Moment: Support's core on a reflective memory ---- */
@@ -161,7 +165,7 @@ const openDeck = async (page) => {
   await page.mouse.click(...Object.values(await centre(page, "[data-sb-expression-option='support']")));
   await sleep(600);
   const serious = await page.$eval("[data-sb-moment='m-1983'] [data-sb-express] img", (e) => e.getAttribute("src").split("/").pop());
-  ok(serious === "support-lens-sm.webp", "Support commits on a reflective Moment wearing its calm teal core");
+  ok(serious === "support-core.webp", "Support commits on a reflective Moment wearing its calm teal core");
 
   /* ---- 8. The neutral invitation is unchanged ---- */
   console.log("8. Neutral");

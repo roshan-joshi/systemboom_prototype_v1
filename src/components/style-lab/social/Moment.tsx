@@ -18,6 +18,7 @@ import { now } from "@/lib/clock";
 import type { Moment as MomentT, Note, Person, Privacy } from "./data";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
 import { ExpressionControl, ExpressionSummary } from "./expressions";
+import { ResonateControl, ResonanceSummary } from "@/components/celestial/ResonateControl";
 import { momentLifeFor, personViewFor } from "./view-model";
 import { MediaBlock } from "./Media";
 import { formatTime, isToday, localISO, useSocial } from "./store";
@@ -301,6 +302,7 @@ export function MomentEntry({ moment, showDate = true, onEdit }: { moment: Momen
           </button>
         )}
         {!quiet && <ExpressionControl moment={moment} />}
+        {!quiet && <ResonateControl moment={moment} />}
         <span className="ml-auto flex items-center gap-1">
           <button type="button" disabled aria-disabled="true" title={t("moments.viewInLifeLater")} className="hidden min-h-9 items-center gap-1.5 rounded-full px-2 text-muted opacity-60 @2xl:inline-flex">
             <span aria-hidden className="h-2.5 w-2.5 rounded-full border border-dashed border-steel" />
@@ -354,6 +356,10 @@ export function MomentEntry({ moment, showDate = true, onEdit }: { moment: Momen
           </span>
         </span>
       </div>
+      {/* Stage 23 — the Celestial Field mounts HERE, below the accepted action row, never
+          inside it: that row is `flex` with no wrap, so a full-width child is shrunk to zero.
+          One additive anchor; the row above is structurally unchanged. */}
+      {!quiet && <div data-sb-resonate-anchor={moment.id} />}
       {toast && (
         <p role="status" className="mt-1 pl-[var(--gutter)] text-[12px] text-muted">
           {toast}
@@ -364,6 +370,7 @@ export function MomentEntry({ moment, showDate = true, onEdit }: { moment: Momen
           much was said. It answers "are people here?" — never "how popular is this?" */}
       <div className="mt-2 flex items-center gap-2 pl-[var(--gutter)] text-[13px] leading-none tabular-nums" data-sb-presence>
         {!quiet && <ExpressionSummary moment={moment} />}
+        {!quiet && <ResonanceSummary moment={moment} />}
         <button
           type="button"
           aria-expanded={notesOpen}

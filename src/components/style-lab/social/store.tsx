@@ -59,6 +59,9 @@ type Action =
   | { type: "respond"; id: string }
   /** R2 — set / replace / remove the acting viewer's single Expression on a Moment. */
   | { type: "express"; id: string; expression: string | null }
+  /** Stage 23 — set / replace / remove the acting viewer's single Celestial Resonance.
+   *  Independent of `express` in both directions: neither reducer reads the other's field. */
+  | { type: "resonate"; id: string; resonance: string | null }
   // R3.3 harness-only (§31): the review route seeds Human Pulse scale fixtures with it
   | { type: "pulse-sim"; id: string; expressions: Record<string, string> }
   | { type: "hide"; id: string }
@@ -74,7 +77,7 @@ type Action =
   | { type: "simulateFailure"; on: boolean }
   | { type: "draft"; draft: Draft | null }
   | { type: "landed" }
-  | { type: "notifications"; mode: "seed" | "many" | "empty" };
+  | { type: "notifications"; mode: "seed" | "many" | "empty" | "celestial" };
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -161,6 +164,16 @@ function reduce(s: State, a: Action): State {
         return { ...m, expressions: Object.keys(expressions).length ? expressions : undefined };
       });
     }
+    case "resonate": {
+      const meId = actingPerson(s.viewer).id;
+      return editMoment(a.id, (m) => {
+        const resonances = { ...(m.resonances ?? {}) };
+        if (a.resonance) resonances[meId] = a.resonance; // replace = one Celestial per viewer
+        else delete resonances[meId];
+        // `m.expressions` is spread through untouched: a Celestial change never edits Boom.
+        return { ...m, resonances: Object.keys(resonances).length ? resonances : undefined };
+      });
+    }
     case "hide":
       return { ...s, hidden: [...s.hidden, a.id] };
     case "note":
@@ -195,6 +208,16 @@ function reduce(s: State, a: Action): State {
     case "notifications": {
       if (a.mode === "empty") return { ...s, notifications: [] };
       if (a.mode === "seed") return { ...s, notifications: clone(SEED_NOTIFICATIONS) };
+      if (a.mode === "celestial") {
+        // Harness-only (like "many"): every notification in this prototype is a fixture — none
+        // are generated at runtime — so the Celestial Signal row is exercised the same way.
+        const base = SEED_NOTIFICATIONS[0];
+        const rows: Notification[] = [
+          { ...base, id: "n-cel-1", kind: "resonance", resonanceId: "saturn-support", text: "resonated with your moment", unread: true },
+          { ...base, id: "n-cel-2", kind: "resonance", resonanceId: "mercury-curious", text: "resonated with your moment", unread: false },
+        ];
+        return { ...s, notifications: [...rows, ...clone(SEED_NOTIFICATIONS)] };
+      }
       const many: Notification[] = [];
       for (let i = 0; i < 26; i++) {
         const base = SEED_NOTIFICATIONS[i % SEED_NOTIFICATIONS.length];

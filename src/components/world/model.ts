@@ -57,6 +57,14 @@ export interface ChatMessage {
   at: string;
   /** Prototype-only: a send that could not complete keeps the text. */
   failed?: boolean;
+  /**
+   * Stage 23 — Celestial Quick Resonance, ACTOR-AWARE: personId → { resonanceId, at }.
+   * A Quick Resonance is performed BY A PERSON, so the person is the key. One active
+   * Resonance per person per message; several people may resonate to the same message
+   * independently, and one person changing theirs never touches another's.
+   * No Life data, no birth data, no age, no location — ever (22-PRIVACY-SECURITY-CONTRACT §2).
+   */
+  resonances?: Record<string, { resonanceId: string; at: string }>;
 }
 
 export interface Conversation {

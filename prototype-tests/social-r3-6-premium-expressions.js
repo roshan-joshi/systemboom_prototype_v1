@@ -62,7 +62,7 @@ const openDeck = async (page) => { await toRain(page); if (await page.$("[data-s
       ring: getComputedStyle(e).boxShadow !== "none",
       seat: e.className.includes("sb-seat-own"),
       rim: !!e.querySelector("[data-sb-own-mark]"),
-      lens: /-lens-sm\.webp$/.test(e.querySelector("img")?.getAttribute("src") ?? ""),
+      lens: /-core\.webp$|neutral-chamber-lens-sm\.webp$/.test(e.querySelector("img")?.getAttribute("src") ?? ""),
     }));
     ok(ctrl.ring && ctrl.seat && ctrl.rim && ctrl.lens, `${theme}: the committed control wears the expression's ring + owned seat + Boom rim + its core lens`);
     await openDeck(page);

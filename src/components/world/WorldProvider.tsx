@@ -14,6 +14,7 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, useState, type ReactNode } from "react";
 import { now } from "@/lib/clock";
 import { RELATIONSHIPS, SEED_CONVERSATIONS, connected, type ChatMessage, type Conversation, type Relationship } from "./model";
+import { applyChatResonance } from "@/lib/celestial/chat-resonance";
 
 interface WorldState {
   relationships: Record<string, Relationship>;
@@ -32,7 +33,10 @@ type Action =
   | { type: "closeMini" }
   | { type: "minimise"; on: boolean }
   | { type: "read"; id: string }
-  | { type: "send"; id: string; text: string };
+  | { type: "send"; id: string; text: string }
+  /** Stage 23 — one Celestial Quick Resonance per person per message. `personId` is the actor;
+   *  `resonance: null` clears only that person's own entry. */
+  | { type: "resonate"; id: string; messageId: string; personId: string; resonance: string | null };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const hhmm = () => {
@@ -71,6 +75,22 @@ function reduce(s: WorldState, a: Action): WorldState {
       const conversations = exists
         ? s.conversations.map((c) => (c.personId === a.id ? { ...c, messages: [...c.messages, msg] } : c))
         : [...s.conversations, { personId: a.id, messages: [msg], unread: 0 }];
+      return { ...s, conversations };
+    }
+    case "resonate": {
+      const conversations = s.conversations.map((c) =>
+        c.personId !== a.id
+          ? c
+          : {
+              ...c,
+              messages: c.messages.map((m) => {
+                if (m.id !== a.messageId) return m;
+                // Only this actor's own entry is written or removed — everyone else's stands.
+                // The rule is a pure function so it can be proven in isolation.
+                return { ...m, resonances: applyChatResonance(m.resonances, a.personId, a.resonance, hhmm()) };
+              }),
+            },
+      );
       return { ...s, conversations };
     }
   }
