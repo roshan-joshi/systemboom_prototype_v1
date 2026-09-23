@@ -30,7 +30,7 @@ import { PersonCard } from "@/components/world/PersonCard";
 import { MessagesPanel, MiniChat } from "@/components/world/Messages";
 import { PeoplePanel } from "@/components/world/People";
 import { Scrim, TransientSurface } from "@/components/world/TransientSurface";
-import { SocialStore, dateKey, localISO, useSocial, type Draft, type ViewerMode } from "./store";
+import { PreviewScope, SocialStore, dateKey, localISO, useSocial, type Draft, type ViewerMode } from "./store";
 import { lifeViewFor, momentLifeFor, ringViewFor } from "./view-model";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { CelestialEnvironment } from "@/components/celestial/CelestialEnvironment";
@@ -403,9 +403,9 @@ export function SocialPreview({ product = false }: { product?: boolean }) {
 }
 
 function Inner({ product = false }: { product?: boolean }) {
-  const { state, dispatch, me, profile, isOwnerView, feed, total, personOf } = useSocial();
+  const { state, dispatch, me, profile, isOwnerView, personOf } = useSocial();
   const world = useWorldMaybe();
-  const { t, tp } = useT();
+  const { t } = useT();
   const [frame, setFrame] = useState<Frame>("desktop");
   // S5/S6 — the utilities' transient surfaces: exactly one open at a time (Search included), all
   // hung from the bar, all over the same quiet scrim, all closed by Escape / the scrim / their own
@@ -500,7 +500,6 @@ function Inner({ product = false }: { product?: boolean }) {
   const editMoment = useCallback((m: Moment) => setComposer(draftFromMoment(m)), []);
   const closeComposer = useCallback(() => setComposer(null), []);
 
-  const posNow = momentLifeFor(me, me, now());
   // Person + Life Identity pass (§8–§9): a visiting friend/family sees documented-memory
   // density from Moments visible to them; a stranger's ring stays band-geometry only. Routed
   // through the SAME WorldProvider relationship PersonCard uses (self-critique correction: two
@@ -579,6 +578,9 @@ function Inner({ product = false }: { product?: boolean }) {
   // Dev hook: the keys a non-owner LifeView actually carries (the suite asserts nothing birth-derived is among them).
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
+      // Phase 4.4-A — the prototype store, read-only, so a suite can prove the public stand-in
+      // never became an author, a key or a relationship (it is a render-time viewer only).
+      (window as unknown as { __SB_SOCIAL_STATE?: typeof state }).__SB_SOCIAL_STATE = state;
       (window as unknown as { __SB_VM_OTHER_KEYS?: string[] }).__SB_VM_OTHER_KEYS = Object.keys(lifeViewFor(PEOPLE.bikash, PEOPLE.maya, now()));
       // Person + Life Identity pass: lets the suite probe ringViewFor's viewer-safe density
       // directly — which Moments actually feed a visitor's ring — without depending on SVG
@@ -587,7 +589,6 @@ function Inner({ product = false }: { product?: boolean }) {
       (window as unknown as { __SB_RING_DENSITY_SELF?: typeof ringDensitySelfProbe }).__SB_RING_DENSITY_SELF = ringDensitySelfProbe;
     }
   });
-  const endReached = feed.length >= total;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -597,7 +598,7 @@ function Inner({ product = false }: { product?: boolean }) {
           <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-4 gap-y-2">
             <Link href="/style-lab" className="flex items-center gap-2 text-muted hover:text-text"><SystemboomLogo height={14} /> <span>Style lab · Social final</span></Link>
             <Seg label="Width" value={frame} onChange={(v) => setFrame(v as Frame)} options={["360", "768", "desktop"]} />
-            <Seg label="Viewer" value={state.viewer} onChange={(v) => dispatch({ type: "viewer", viewer: v as ViewerMode })} options={["maya", "asha", "visitor", "ashaVisitor", "prakashVisitor"]} labels={{ maya: "Maya (owner)", asha: "Asha (no birth time)", visitor: "Bikash → Maya", ashaVisitor: "Asha → Maya", prakashVisitor: "Prakash → Maya" }} />
+            <Seg label="Viewer" value={state.viewer} onChange={(v) => dispatch({ type: "viewer", viewer: v as ViewerMode })} options={["maya", "asha", "visitor", "ashaVisitor", "prakashVisitor"]} labels={{ maya: "Giulia (owner)", asha: "Sofia (no birth time)", visitor: "Luca → Giulia", ashaVisitor: "Sofia → Giulia", prakashVisitor: "Chiara → Giulia" }} />
             <Seg label="Bell" value={state.notifications.length === 0 ? "empty" : state.notifications.length > 10 ? "many" : "seed"} onChange={(v) => dispatch({ type: "notifications", mode: v as "seed" | "many" | "empty" })} options={["seed", "many", "empty"]} />
             <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={state.simulateFailure} onChange={(e) => dispatch({ type: "simulateFailure", on: e.target.checked })} /> simulate failure</label>
             <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={noCover} onChange={(e) => setNoCover(e.target.checked)} /> no cover</label>
@@ -690,7 +691,7 @@ function Inner({ product = false }: { product?: boolean }) {
 
                 <div className="mt-4 grid gap-4 @5xl:grid-cols-[minmax(0,1fr)_300px] @5xl:items-start @5xl:gap-6">
                   {/* sidebar (order first on phone/tablet, right on desktop) */}
-                  <aside className="grid gap-4 @max-5xl:order-2 @5xl:sticky @5xl:top-20 @5xl:order-2" aria-label="Life instruments">
+                  <aside className="grid gap-4 @max-5xl:order-2 @5xl:sticky @5xl:top-20 @5xl:order-2" aria-label={t("life.instrumentsAria")}>
                     {/* C5.3: below desktop the hero carries the counter; the module exists only where there is a sidebar. */}
                     <section aria-labelledby="sb-counter-title" className="rounded-[24px] border border-[var(--card-edge)] bg-[var(--card)] px-4 py-5 shadow-[var(--card-shadow)] @max-5xl:hidden">
                       <h2 id="sb-counter-title" className="text-center text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">{t("life.myLifeIn")}</h2>
@@ -705,61 +706,13 @@ function Inner({ product = false }: { product?: boolean }) {
                     </section>
                   </aside>
 
-                  {/* the sheet
-                      Self-critique correction (Final Delta): `overflow-hidden` here — added to
-                      clip the Life Cursor's edge-to-edge bleed to the sheet's rounded corners —
-                      silently broke `position: sticky` on the cursor itself (any ancestor with a
-                      non-visible overflow becomes the sticky containing block; here that ancestor
-                      never independently scrolls, so the cursor just scrolled away with the page).
-                      The cursor's own background matches the sheet's exactly, so nothing needs
-                      clipping — it never carries content past the section's rounded edge. */}
-                  <section aria-label="Moments" className="min-w-0 rounded-[var(--sheet-radius)] bg-[var(--sheet)] shadow-[var(--sheet-shadow)] @max-5xl:order-1 @5xl:order-1" data-sb-sheet>
-                    <LifeCursor viewer={me} feed={feed} personOf={personOf} />
-                    {/* overflow-hidden here (not on an ancestor of the cursor above) clips exactly
-                        the mobile media bleed this div contains, at exactly the width it's live —
-                        see the frame-level comment above for why this scope matters. */}
-                    <div className="overflow-hidden px-4 pt-5 pb-6 @2xl:px-6">
-                      <div className="relative">
-                        {/* the vertical time rule — one line, the sheet's spine */}
-                        <span aria-hidden className="absolute top-0 bottom-0 w-px bg-[var(--rule)]" style={{ left: "var(--rule-x)" }} />
-                        {/* composer entry bar — hidden while previewing as public: no Composer for a stranger */}
-                        {isOwnerView && !previewPublic && (
-                          <div className="relative pl-[var(--gutter)]">
-                            <span className="absolute top-[18px] -translate-x-1/2 -translate-y-1/2" style={{ left: "var(--rule-x)" }}>
-                              <span className="block rounded-full bg-[var(--sheet-bg)] p-[2px]"><PersonIdentity viewer={me} subject={me} size={24} label={posNow.exact ?? ""} /></span>
-                            </span>
-                            <button type="button" onClick={openComposer} data-sb-open-composer className="sb-transition flex min-h-9 w-full items-center gap-3 pl-2 text-left text-[15px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">
-                              <span className="flex-1 truncate">{state.draft ? t("moments.draftKept") : t("moments.whatHappenedAt", { age: posNow.exact ?? "" })}</span>
-                            </button>
-                          </div>
-                        )}
-
-                        <div className={`${isOwnerView && !previewPublic ? "mt-8" : ""} flex flex-col gap-8`}>
-                          {feed.map((m, i) => {
-                            const prev = feed[i - 1];
-                            const showDate = !prev || dateKey(m.at) !== dateKey(prev.at);
-                            return (
-                              <div key={m.id} className={i > 0 ? "border-t border-[var(--hair)] pt-6" : ""}>
-                                <MomentEntry moment={m} showDate={showDate} onEdit={editMoment} />
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="mt-8 border-t border-[var(--hair)] pt-5 pl-[var(--gutter)] text-[13px]">
-                          {!endReached ? (
-                            // Social 2030 §1/§9: "Load more" is the generic wording of an
-                            // algorithmic feed; this is a chronological record, so the time leads.
-                            <button type="button" onClick={() => dispatch({ type: "loadMore" })} data-sb-load-more className="sb-transition inline-flex min-h-9 items-center rounded-full border border-[var(--hair)] px-3 font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">
-                              {tp("moments.earlierN", total - feed.length)} · {t("moments.loadMore")}
-                            </button>
-                          ) : (
-                            <p className="text-muted" data-sb-end>{t("moments.endOfFeed")}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </section>
+                  {/* the sheet — Phase 4.4-A: rendered inside PreviewScope, so while the owner views their
+                      World as public every Moment, conversation, menu and the Life Cursor render
+                      for the public stand-in (and cannot write). Outside the preview it is the
+                      owner's own sheet, exactly as before. */}
+                  <PreviewScope viewer={selfPreview ? PUBLIC_VIEWER : null}>
+                    <MomentsSheet onEdit={editMoment} onOpenComposer={openComposer} />
+                  </PreviewScope>
                 </div>
               </main>
 
@@ -770,6 +723,72 @@ function Inner({ product = false }: { product?: boolean }) {
         </div>
       </div>
     </MotionConfig>
+  );
+}
+
+/** The Moments sheet: the Life Cursor, the Almanac and its pagination. Reads the store it is
+ *  rendered in — the owner's own, or the read-only public stand-in inside <PreviewScope>. */
+function MomentsSheet({ onEdit, onOpenComposer }: { onEdit: (m: Moment) => void; onOpenComposer: () => void }) {
+  const { state, dispatch, me, isOwnerView, previewing, feed, total, personOf } = useSocial();
+  const { t, tp } = useT();
+  const posNow = momentLifeFor(me, me, now());
+  const endReached = feed.length >= total;
+  /* The sheet. Self-critique correction (Final Delta): `overflow-hidden` here — added to clip
+     the Life Cursor's edge-to-edge bleed to the sheet's rounded corners — silently broke
+     `position: sticky` on the cursor itself (any ancestor with a non-visible overflow becomes the
+     sticky containing block; here that ancestor never independently scrolls, so the cursor just
+     scrolled away with the page). The cursor's own background matches the sheet's exactly, so
+     nothing needs clipping — it never carries content past the section's rounded edge. */
+  return (
+    <section aria-label={t("moments.sectionAria")} data-sb-render-viewer={previewing ? "public" : "own"} className="min-w-0 rounded-[var(--sheet-radius)] bg-[var(--sheet)] shadow-[var(--sheet-shadow)] @max-5xl:order-1 @5xl:order-1" data-sb-sheet>
+      <LifeCursor viewer={me} feed={feed} personOf={personOf} />
+      {/* overflow-hidden here (not on an ancestor of the cursor above) clips exactly
+          the mobile media bleed this div contains, at exactly the width it's live —
+          see the frame-level comment above for why this scope matters. */}
+      <div className="overflow-hidden px-4 pt-5 pb-6 @2xl:px-6">
+        <div className="relative">
+          {/* the vertical time rule — one line, the sheet's spine */}
+          <span aria-hidden className="absolute top-0 bottom-0 w-px bg-[var(--rule)]" style={{ left: "var(--rule-x)" }} />
+          {/* composer entry bar — hidden while previewing as public: no Composer for a stranger */}
+          {isOwnerView && !previewing && (
+            <div className="relative pl-[var(--gutter)]">
+              <span className="absolute top-[18px] -translate-x-1/2 -translate-y-1/2" style={{ left: "var(--rule-x)" }}>
+                <span className="block rounded-full bg-[var(--sheet-bg)] p-[2px]"><PersonIdentity viewer={me} subject={me} size={24} label={posNow.exact ?? ""} /></span>
+              </span>
+              <button type="button" onClick={onOpenComposer} data-sb-open-composer className="sb-transition flex min-h-9 w-full items-center gap-3 pl-2 text-left text-[15px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">
+                <span className="flex-1 truncate">{state.draft ? t("moments.draftKept") : t("moments.whatHappenedAt", { age: posNow.exact ?? "" })}</span>
+              </button>
+            </div>
+          )}
+
+          {/* A preview writes nothing: said once, where the composer bar would be. */}
+          {previewing && <p className="relative pl-[var(--gutter)] text-[13px] text-muted" data-sb-preview-note>{t("moments.previewPaused")}</p>}
+          <div className={`${isOwnerView || previewing ? "mt-8" : ""} flex flex-col gap-8`}>
+            {feed.map((m, i) => {
+              const prev = feed[i - 1];
+              const showDate = !prev || dateKey(m.at) !== dateKey(prev.at);
+              return (
+                <div key={m.id} className={i > 0 ? "border-t border-[var(--hair)] pt-6" : ""}>
+                  <MomentEntry moment={m} showDate={showDate} onEdit={onEdit} />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 border-t border-[var(--hair)] pt-5 pl-[var(--gutter)] text-[13px]">
+            {!endReached ? (
+              // Social 2030 §1/§9: "Load more" is the generic wording of an
+              // algorithmic feed; this is a chronological record, so the time leads.
+              <button type="button" onClick={() => dispatch({ type: "loadMore" })} data-sb-load-more className="sb-transition inline-flex min-h-9 items-center rounded-full border border-[var(--hair)] px-3 font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">
+                {tp("moments.earlierN", total - feed.length)} · {t("moments.loadMore")}
+              </button>
+            ) : (
+              <p className="text-muted" data-sb-end>{t("moments.endOfFeed")}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

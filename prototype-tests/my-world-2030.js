@@ -52,7 +52,7 @@ async function open(page, path, { theme = "dark", w = "desktop", extra = {} } = 
       noOverlap: !ring || ring.getBoundingClientRect().top >= region.getBoundingClientRect().bottom - 1,
     };
   });
-  ok(cover.state === "set", "Maya's existing cover fixture is recognised, not left dormant");
+  ok(cover.state === "set", "Giulia's existing cover fixture is recognised, not left dormant");
   ok(cover.imgRendered && cover.imgNaturalOk, "the World Horizon is a real, loaded photograph");
   ok(cover.regionHeight > 60 && cover.regionHeight < 220, `the cover is meaningful but not a 2030-huge banner (${Math.round(cover.regionHeight)}px)`);
   ok(cover.noOverlap, "the identity never overlaps the cover — the Facebook avatar-overlap grammar stays rejected");
@@ -183,10 +183,19 @@ async function open(page, path, { theme = "dark", w = "desktop", extra = {} } = 
     await page.click("[data-sb-load-more]").catch(() => {});
     await sleep(300);
   }
-  await page.$eval("[data-sb-moment='m-1983']", (e) => { const top = e.getBoundingClientRect().top; window.scrollBy(0, top - 20); });
+  // Phase 4.4-A owner fixture add-on: m-1983 is re-dated and carries no photo, so the historical
+  // tail is shorter than this suite's 1200px-tall frame and the trigger line could never reach
+  // history at that height (the cursor is correctly silent over the current year). The check is
+  // made at a 900px-tall desktop frame, then the suite's frame is restored.
+  const vp8 = page.viewport();
+  await page.setViewport({ ...vp8, height: 900 });
+  await sleep(300);
+  await page.$eval("[data-sb-moment='m-wedding']", (e) => { const top = e.getBoundingClientRect().top; window.scrollBy(0, top - 20); });
   await sleep(400);
   ok(!!(await page.$("[data-sb-life-cursor]")), "the Life Cursor still activates over historical scroll with the new Hero");
   await shot(page, "13-life-cursor-desktop");
+  await page.setViewport(vp8);
+  await sleep(300);
   await page.evaluate(() => document.querySelector("[data-sb-sheet]")?.scrollIntoView({ block: "start" }));
 
   /* ---- 9. People / Search / Notifications stay compressed, no band-text overuse ---- */
@@ -194,7 +203,7 @@ async function open(page, path, { theme = "dark", w = "desktop", extra = {} } = 
   const searchRing = await page.evaluate(async () => {
     const i = document.querySelector("input[type=search]");
     i.focus();
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Krishna");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Federico");
     i.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 400));
     const row = document.querySelector("[data-sb-search-person]");

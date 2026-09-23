@@ -120,8 +120,8 @@ npm run dev -- -p 3210
 - `http://localhost:3210/life` — **LIFE** (the Circle of Life)
 - **`http://localhost:3210/style-lab/social` — the Social design reference** (a
   development alias of `/social` with the review harness; never product navigation).
-  Controls at the top: width 360 / 768 / desktop · Viewer (Maya owner · Asha,
-  no birth time · Bikash → Maya visitor · Asha → Maya visitor) · notifications
+  Controls at the top: width 360 / 768 / desktop · Viewer (Giulia owner · Sofia,
+  no birth time · Luca → Giulia visitor · Sofia → Giulia visitor · Chiara → Giulia) · notifications
   density · simulate failure · Reset · theme. Add `?harness=0` to hide the strip.
   Useful deep links: `?w=360&theme=light`, `?viewer=visitor`, `?bell=1`.
 - `http://localhost:3210/style-lab` — the Phase 0 visual system (tokens, materials)
@@ -479,7 +479,7 @@ useful here and wrong in production. Label, do not copy.
 
 | Prototype assumption | Where | What live does instead |
 |---|---|---|
-| Identity is a mock `Person` from `PEOPLE` (Maya, Asha, Bikash, …) selected by the harness `Viewer` control; `visitor` / `ashaVisitor` modes | `data.ts`, `store.tsx` (`ViewerMode`, `viewerPerson`, `profilePerson`, `actingPerson`) | the signed-in user from the existing auth; the profile subject from the route |
+| Identity is a mock `Person` from `PEOPLE` (Giulia, Sofia, Luca, … — the fictional Italian circle of the Phase 4.4-A owner fixture add-on; internal keys `maya`/`asha`/`bikash` and ids are unchanged) selected by the harness `Viewer` control; `visitor` / `ashaVisitor` modes | `data.ts`, `store.tsx` (`ViewerMode`, `viewerPerson`, `profilePerson`, `actingPerson`) | the signed-in user from the existing auth; the profile subject from the route |
 | The prototype's global identity gate stores a created identity in `localStorage` (`sb-identity`, `sb-session`) — **Social itself reads none of it** | `src/lib/identity/store.ts` (Phase 2) | existing session handling; nothing in Social touches storage |
 | All state is an in-memory reducer (`SocialStore`); posting, editing, notes, hide, respond, mark-read are local; Reset restores the seed | `store.tsx` | REST calls + optimistic updates; the reducer's action list is a good checklist of mutations |
 | Moment creation timestamps: `at = date + current clock time`; `sharedAt = now` when backdated; `id = m-new-<n>` | `Composer.tsx`, `store.tsx` | server assigns ids and `sharedAt`; see the open question on backdated time in `social-feature-parity.md` |

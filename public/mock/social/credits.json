@@ -47,7 +47,8 @@
   "source": "https://commons.wikimedia.org/wiki/File:Nepali_Woman_Smiles.jpg",
   "w": 1600,
   "h": 2399,
-  "bytes": 836280
+  "bytes": 836280,
+  "note": "Moment photograph (m-face). Not an avatar since Phase 4.4-A"
  },
  {
   "file": "durbar-square.jpg",
@@ -282,7 +283,8 @@
   "source": "https://commons.wikimedia.org/wiki/File:Nepali_Man_(114928635).jpeg",
   "w": 2048,
   "h": 1366,
-  "bytes": 594545
+  "bytes": 594545,
+  "note": "not used by any fixture since Phase 4.4-A — kept locally"
  },
  {
   "file": "cast-marcus.jpg",
@@ -293,8 +295,8 @@
   "w": 640,
   "h": 427,
   "bytes": 16217,
-  "persona": "Marcus Bell",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "not used by any persona since Phase 4.4-A (the circle is 20–35; this portrait reads older) — kept locally, CC0"
  },
  {
   "file": "cast-grace.jpg",
@@ -305,8 +307,8 @@
   "w": 640,
   "h": 427,
   "bytes": 24965,
-  "persona": "Grace Okafor",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/chiara-conti.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
  },
  {
   "file": "cast-theo.jpg",
@@ -317,8 +319,8 @@
   "w": 640,
   "h": 427,
   "bytes": 42611,
-  "persona": "Theo Adeyemi",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/luca-rinaldi.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
  },
  {
   "file": "cast-hannah.jpg",
@@ -329,8 +331,8 @@
   "w": 640,
   "h": 427,
   "bytes": 54408,
-  "persona": "Hannah Reyes",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/sofia-romano.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
  },
  {
   "file": "cast-rory.jpg",
@@ -341,8 +343,8 @@
   "w": 640,
   "h": 625,
   "bytes": 69342,
-  "persona": "Rory MacLeod",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/federico-castelbarco.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
  },
  {
   "file": "cast-nadia.jpg",
@@ -353,8 +355,8 @@
   "w": 640,
   "h": 425,
   "bytes": 35148,
-  "persona": "Nadia Haddad",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/giulia-bianchi.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
  },
  {
   "file": "cast-walt.jpg",
@@ -365,8 +367,8 @@
   "w": 640,
   "h": 426,
   "bytes": 40891,
-  "persona": "Walt Brennan",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "not used by any persona since Phase 4.4-A (the circle is 20–35; this portrait reads older) — kept locally, CC0"
  },
  {
   "file": "cast-sofia.jpg",
@@ -377,7 +379,127 @@
   "w": 640,
   "h": 470,
   "bytes": 27589,
-  "persona": "Sofia Marchetti",
-  "note": "fictional prototype identity; imagery is CC0, persona data is fictional"
+  "persona": null,
+  "note": "source of cast/elena-ricci.jpg (Phase 4.4-A); no longer a persona of its own — imagery is CC0"
+ },
+ {
+  "file": "cast/giulia-bianchi.jpg",
+  "title": "File:Brunette woman near brick wall (Unsplash).jpg",
+  "artist": "Martin Miranda martinmiranda",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Brunette_woman_near_brick_wall_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 12810,
+  "derivedFrom": "cast-nadia.jpg",
+  "crop": {
+   "left": 225,
+   "top": 210,
+   "size": 170,
+   "resizedTo": 400
+  },
+  "persona": "Giulia Bianchi (owner, u-demo-001)",
+  "fixtureId": "u-demo-001",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
+ },
+ {
+  "file": "cast/sofia-romano.jpg",
+  "title": "File:Brunette woman portrait (Unsplash).jpg",
+  "artist": "Christopher Campbell chrisjoelcampbell",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Brunette_woman_portrait_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 18675,
+  "derivedFrom": "cast-hannah.jpg",
+  "crop": {
+   "left": 245,
+   "top": 48,
+   "size": 170,
+   "resizedTo": 400
+  },
+  "persona": "Sofia Romano",
+  "fixtureId": "p-asha",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
+ },
+ {
+  "file": "cast/elena-ricci.jpg",
+  "title": "File:Dark-haired woman by a tree (Unsplash).jpg",
+  "artist": "Allef Vinicius seteales",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Dark-haired_woman_by_a_tree_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 14141,
+  "derivedFrom": "cast-sofia.jpg",
+  "crop": {
+   "left": 232,
+   "top": 72,
+   "size": 210,
+   "resizedTo": 400
+  },
+  "persona": "Elena Ricci",
+  "fixtureId": "p-sunita",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
+ },
+ {
+  "file": "cast/chiara-conti.jpg",
+  "title": "File:Mother Nature, Summer (Unsplash).jpg",
+  "artist": "Autumn Goodman auttgood",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Mother_Nature,_Summer_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 23846,
+  "derivedFrom": "cast-grace.jpg",
+  "crop": {
+   "left": 185,
+   "top": 112,
+   "size": 230,
+   "resizedTo": 400
+  },
+  "persona": "Chiara Conti",
+  "fixtureId": "p-prakash",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
+ },
+ {
+  "file": "cast/luca-rinaldi.jpg",
+  "title": "File:Stockholm man with headphones (Unsplash).jpg",
+  "artist": "Yingchou Han hyingchou",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Stockholm_man_with_headphones_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 20572,
+  "derivedFrom": "cast-theo.jpg",
+  "crop": {
+   "left": 98,
+   "top": 86,
+   "size": 200,
+   "resizedTo": 400
+  },
+  "persona": "Luca Rinaldi",
+  "fixtureId": "p-bikash",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
+ },
+ {
+  "file": "cast/federico-castelbarco.jpg",
+  "title": "File:Man vanguard glasses outdoors (Unsplash).jpg",
+  "artist": "Seth Doyle sethdoylee",
+  "license": "CC0",
+  "source": "https://commons.wikimedia.org/wiki/File:Man_vanguard_glasses_outdoors_(Unsplash).jpg",
+  "w": 400,
+  "h": 400,
+  "bytes": 24687,
+  "derivedFrom": "cast-rory.jpg",
+  "crop": {
+   "left": 200,
+   "top": 118,
+   "size": 250,
+   "resizedTo": 400
+  },
+  "persona": "Federico Alessandro Castelbarco Visconti",
+  "fixtureId": "p-krishna",
+  "note": "fictional prototype identity; the photographed person is not this persona. Imagery is CC0 (face-framed crop, pixels otherwise untouched); persona data is fictional"
  }
 ]

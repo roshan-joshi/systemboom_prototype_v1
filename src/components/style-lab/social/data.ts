@@ -20,6 +20,21 @@ export interface Person {
   phone?: string;
   email?: string;
   cover?: string;
+  /** Phase 4.4-A — set only on the neutral stand-in returned for an id that resolves to no known
+   *  person. Never on real people. Surfaces render it as unavailable, never as someone else. */
+  unavailable?: true;
+}
+
+/**
+ * Phase 4.4-A (A12) — the neutral identity for an id that resolves to no known person. It is NOT
+ * a fixture person, carries no life data (the view model renders it band-less) and is never
+ * listed among the people present. Before this, unknown ids resolved to the real fixture "M".
+ * Its id is deliberately NOT the requested id: a resolver contract (`personOf(pid).id === pid`)
+ * is how callers — the Celestial participation list among them — tell "this person" from
+ * "nobody we can show", so an unresolved id is counted, never rendered as a person.
+ */
+export function unavailablePerson(id: string): Person {
+  return { id: `unavailable:${id}`, name: "—", birthDate: "", birthTimeKnown: false, home: "", unavailable: true };
 }
 
 export type Kind = "moment" | "meal" | "activity" | "problem" | "health" | "project" | "meeting";
@@ -119,6 +134,17 @@ export interface Notification {
 const P = (p: Person) => p;
 
 export const PEOPLE: Record<string, Person> = {
+  // Phase 4.4-A owner fixture add-on — the ITALIAN SOCIAL CIRCLE. Every person here is a FICTIONAL
+  // prototype identity: names, cities, birth data, relationships, Moments and responses are
+  // invented fixture data and imply nothing about anyone photographed. Six real CC0 portraits
+  // (face-framed crops, public/mock/social/cast/, provenance in CREDITS.md + credits.json +
+  // docs/fixtures/photo-sources.md); everyone else deliberately has NO photo and exercises the
+  // initials fallback. Stable internal keys and ids are unchanged (`maya` / `u-demo-001` is
+  // Giulia; `asha` / `p-asha` is Sofia, …) — this is a fixture-content change, not a migration.
+  // Every adult is 20–35 in the prototype's Sept 2026; initials are unique across the circle.
+  // Story: a circle of friends from around Italy. Chiara lives in Boudha this year; Elena married
+  // into Ratmate (Nuwakot); in late Aug–Sept 2026 the others joined them in Nepal — which is why
+  // the recent Moments are Nepali places and the older, personal ones are Italian.
   maya: P({
     id: demoUser.id,
     name: demoUser.name,
@@ -126,35 +152,31 @@ export const PEOPLE: Record<string, Person> = {
     birthDate: demoUser.dateOfBirth,
     birthTime: demoUser.birthTime,
     birthTimeKnown: demoUser.birthTimeKnown,
-    home: "Kathmandu, Nepal",
+    home: demoUser.location,
     verified: true,
-    phone: "+977 9841 203 118",
-    email: "maya.rai@example.com",
+    phone: "+39 351 555 0142",
+    email: "giulia.bianchi@example.com",
     cover: "/mock/social/terraces.jpg",
   }),
-  asha: P({ id: "p-asha", name: "Asha Gurung", birthDate: "1994-03-12", birthTimeKnown: false, home: "Pokhara, Nepal", verified: true, phone: "+977 9806 552 190", email: "asha.gurung@example.com", cover: "/mock/social/phewa-dusk.jpg" }),
-  bikash: P({ id: "p-bikash", name: "Bikash Shrestha", birthDate: "1988-07-21", birthTimeKnown: false, home: "Bhaktapur, Nepal", cover: "/mock/social/nyatapola.jpg" }),
-  ramesh: P({ id: "p-ramesh", name: "Ramesh Karki", birthDate: "1988-07-21", birthTimeKnown: false, home: "Lalitpur, Nepal" }),
-  sunita: P({ id: "p-sunita", name: "Sunita Tamang", birthDate: "1979-11-02", birthTimeKnown: false, home: "Nuwakot, Nepal" }),
-  prakash: P({ id: "p-prakash", name: "Prakash Lama", birthDate: "2001-05-30", birthTimeKnown: false, home: "Boudha, Kathmandu" }),
-  krishna: P({ id: "p-krishna", name: "Krishna Bahadur Gurung Tamang Magar Rana", birthDate: "1966-01-15", birthTimeKnown: false, home: "Patan, Lalitpur", avatar: "/mock/social/face-portrait-man.jpg" }),
+  asha: P({ id: "p-asha", name: "Sofia Romano", avatar: "/mock/social/cast/sofia-romano.jpg", birthDate: "1994-03-12", birthTimeKnown: false, home: "Firenze, Italy", verified: true, phone: "+39 348 555 0190", email: "sofia.romano@example.com", cover: "/mock/social/phewa-dusk.jpg" }),
+  bikash: P({ id: "p-bikash", name: "Luca Rinaldi", avatar: "/mock/social/cast/luca-rinaldi.jpg", birthDate: "1995-07-21", birthTimeKnown: false, home: "Torino, Italy", cover: "/mock/social/nyatapola.jpg" }),
+  ramesh: P({ id: "p-ramesh", name: "Marco Bellini", birthDate: "1995-07-21", birthTimeKnown: false, home: "Milano, Italy" }),
+  sunita: P({ id: "p-sunita", name: "Elena Ricci", avatar: "/mock/social/cast/elena-ricci.jpg", birthDate: "1992-11-02", birthTimeKnown: false, home: "Napoli, Italy" }),
+  prakash: P({ id: "p-prakash", name: "Chiara Conti", avatar: "/mock/social/cast/chiara-conti.jpg", birthDate: "2001-05-30", birthTimeKnown: false, home: "Boudha, Kathmandu" }),
+  krishna: P({ id: "p-krishna", name: "Federico Alessandro Castelbarco Visconti", birthDate: "1993-01-15", birthTimeKnown: false, home: "Venezia, Italy", avatar: "/mock/social/cast/federico-castelbarco.jpg" }),
   m: P({ id: "p-m", name: "M", birthDate: "1999-12-31", birthTimeKnown: false, home: "" }),
 
-  // Social 2030 Final — the wider human network. Fictional prototype personas set in US/UK
-  // contexts, so People/Search/relationships read as one believable global network rather than a
-  // single-locale test set. Every photo is a real CC0 portrait of an adult (public/mock/social/
-  // CREDITS.md + docs/fixtures/photo-sources.md); the person's NAME, CITY, birth data,
-  // relationships and any Moments are fictional fixture data and imply nothing about the
-  // photographed individual. Real cover/World-Wall imagery is added where a persona's own World
-  // becomes navigable; until then these read through People/Search/Person surfaces.
-  marcus: P({ id: "p-marcus", name: "Marcus Bell", birthDate: "1980-07-19", birthTimeKnown: false, home: "New York, NY", avatar: "/mock/social/cast-marcus.jpg" }),
-  grace: P({ id: "p-grace", name: "Grace Okafor", birthDate: "1990-05-30", birthTimeKnown: false, home: "London, UK", avatar: "/mock/social/cast-grace.jpg" }),
-  theo: P({ id: "p-theo", name: "Theo Adeyemi", birthDate: "1994-03-11", birthTimeKnown: false, home: "Bristol, UK", avatar: "/mock/social/cast-theo.jpg" }),
-  hannah: P({ id: "p-hannah", name: "Hannah Reyes", birthDate: "1992-09-08", birthTimeKnown: false, home: "Boston, MA", avatar: "/mock/social/cast-hannah.jpg" }),
-  rory: P({ id: "p-rory", name: "Rory MacLeod", birthDate: "1987-01-26", birthTimeKnown: false, home: "Edinburgh, UK", avatar: "/mock/social/cast-rory.jpg" }),
-  nadia: P({ id: "p-nadia", name: "Nadia Haddad", birthDate: "1989-11-14", birthTimeKnown: false, home: "Manchester, UK", avatar: "/mock/social/cast-nadia.jpg" }),
-  walt: P({ id: "p-walt", name: "Walt Brennan", birthDate: "1955-04-02", birthTimeKnown: false, home: "Austin, TX", avatar: "/mock/social/cast-walt.jpg" }),
-  sofia: P({ id: "p-sofia", name: "Sofia Marchetti", birthDate: "1996-06-21", birthTimeKnown: false, home: "Brooklyn, NY", avatar: "/mock/social/cast-sofia.jpg" }),
+  // The wider circle — friends, strangers and pending requests around Giulia. No portrait is
+  // available locally for these (see docs/fixtures/photo-sources.md "still required"), so each
+  // renders the initials fallback until a licensed portrait is supplied.
+  marcus: P({ id: "p-marcus", name: "Matteo Gallo", birthDate: "1993-07-19", birthTimeKnown: false, home: "Bologna, Italy" }),
+  grace: P({ id: "p-grace", name: "Aurora Ferrari", birthDate: "1996-05-30", birthTimeKnown: false, home: "Roma, Italy" }),
+  theo: P({ id: "p-theo", name: "Andrea Costa", birthDate: "1994-03-11", birthTimeKnown: false, home: "Bari, Italy" }),
+  hannah: P({ id: "p-hannah", name: "Camilla Greco", birthDate: "1992-09-08", birthTimeKnown: false, home: "Palermo, Italy" }),
+  rory: P({ id: "p-rory", name: "Francesca Marino", birthDate: "1997-01-26", birthTimeKnown: false, home: "Genova, Italy" }),
+  nadia: P({ id: "p-nadia", name: "Martina Moretti", birthDate: "1998-11-14", birthTimeKnown: false, home: "Verona, Italy" }),
+  walt: P({ id: "p-walt", name: "Beatrice Esposito", birthDate: "2000-04-02", birthTimeKnown: false, home: "Napoli, Italy" }),
+  sofia: P({ id: "p-sofia", name: "Alice Lombardi", birthDate: "1996-06-21", birthTimeKnown: false, home: "Milano, Italy" }),
 };
 
 if (PEOPLE.krishna.name.length !== 40) throw new Error("seed: the 40-character name must be exactly 40 characters");
@@ -170,9 +192,9 @@ if (PEOPLE.krishna.name.length !== 40) throw new Error("seed: the 40-character n
  * never the product route); every name here is fictional. Deterministic throughout — the
  * same id always resolves to the same person, so who-expressed lists are stable.
  */
-const SYNTH_FIRST = ["Anil", "Sita", "Rohan", "Mina", "Kiran", "Laxmi", "Dipesh", "Puja", "Suman", "Rita", "Hari", "Gita", "Nabin", "Sarita", "Emma", "Liam", "Noah", "Ava", "Oliver", "Amelia", "Lucas", "Isla", "Ethan", "Freya"];
-const SYNTH_LAST = ["Shrestha", "Gurung", "Tamang", "Rai", "Thapa", "Magar", "Karki", "Adhikari", "Baker", "Hughes", "Turner", "Collins", "Ward", "Foster", "Murphy", "Reid"];
-const SYNTH_HOME = ["Kathmandu, Nepal", "Pokhara, Nepal", "Lalitpur, Nepal", "London, UK", "Bristol, UK", "Austin, USA", "Boston, USA", "Sydney, Australia"];
+const SYNTH_FIRST = ["Giorgia", "Lorenzo", "Sara", "Davide", "Noemi", "Pietro", "Irene", "Simone", "Ludovica", "Tommaso", "Greta", "Riccardo", "Anna", "Gabriele", "Viola", "Edoardo", "Bianca", "Nicolò", "Emma", "Leonardo", "Ginevra", "Filippo", "Arianna", "Samuele"];
+const SYNTH_LAST = ["Rossi", "Russo", "Colombo", "Bruno", "Ricciardi", "Galli", "Mancini", "Fontana", "Caruso", "Leone", "Santoro", "Longo", "Gentile", "Martinelli", "Vitale", "Serra"];
+const SYNTH_HOME = ["Bologna, Italy", "Milano, Italy", "Roma, Italy", "Torino, Italy", "Firenze, Italy", "Napoli, Italy", "Padova, Italy", "Trieste, Italy"];
 const synthCache = new Map<string, Person>();
 export function synthPerson(id: string): Person {
   const hit = synthCache.get(id);
@@ -181,7 +203,7 @@ export function synthPerson(id: string): Person {
   const person: Person = {
     id,
     name: `${SYNTH_FIRST[n % SYNTH_FIRST.length]} ${SYNTH_LAST[(n * 7 + 3) % SYNTH_LAST.length]}`,
-    birthDate: `${1958 + ((n * 13) % 48)}-${String(1 + ((n * 5) % 12)).padStart(2, "0")}-${String(1 + ((n * 11) % 28)).padStart(2, "0")}`,
+    birthDate: `${1991 + ((n * 13) % 15)}-${String(1 + ((n * 5) % 12)).padStart(2, "0")}-${String(1 + ((n * 11) % 28)).padStart(2, "0")}`,
     birthTimeKnown: false,
     home: SYNTH_HOME[(n * 3) % SYNTH_HOME.length],
   };
@@ -213,7 +235,7 @@ export function simulateExpressions(spec: string): Record<string, string> | null
       i += 1;
     }
   }
-  // §10 evidence — the mixed hundred and the mixed thousand include the VIEWER (Maya), so
+  // §10 evidence — the mixed hundred and the mixed thousand include the VIEWER (Giulia), so
   // "viewer's expression first" is demonstrable: hers is Support, never the biggest count.
   if (spec === "100mixed" || spec === "1000mixed") out[PEOPLE.maya.id] = "support";
   return out;
@@ -354,19 +376,19 @@ export const FEELINGS = ["calm", "grateful", "nostalgic", "tired", "proud", "anx
 
 const SIX_HUNDRED = `The window came down in three pieces on a Tuesday, which is not how the carpenter said it would happen. He said it would come down whole. It had held the east side of the house for a hundred and forty years by his count and by the lintel's, which has a date cut into it that nobody in the family can read any more, and when we finally worked the last peg free the middle rail simply let go of the uprights and sat down in the dust like something tired.
 
-I have been looking at this window my whole life without seeing it. It is the one above the kitchen, the one my grandmother leaned out of to call us in, the one with the carved peacock that has lost its head. Twelve struts, each a different bird or leaf, and the dark red paint that was never really paint but linseed and brick dust and time. When you are a child a thing like that is simply weather. It is there the way the hill is there.
+I have been drawing this window for a week without seeing it. It is the one above the kitchen, the one our host's grandmother leaned out of to call the children in, the one with the carved peacock that has lost its head. Twelve struts, each a different bird or leaf, and the dark red paint that was never really paint but linseed and brick dust and time. I studied windows like this in Torino, from photographs, and in a photograph a thing like that is simply weather. It is there the way the hill is there.
 
-The carpenter is younger than me. That surprised me and then it stopped surprising me; who else would still be learning this. He measured nothing. He put his thumb in the mortise of the fallen rail and closed his eyes and said the wood was sal, from before the earthquake of 1934, cut in the winter, and that the peacock had been carved by a left-handed man. I asked how he knew the last part and he showed me the direction of the chisel strokes on the feathers, which lean the wrong way, and I stood there holding a piece of my own house and understood that I had never once looked at the feathers.
+The carpenter is younger than me. That surprised me and then it stopped surprising me; who else would still be learning this. He measured nothing. He put his thumb in the mortise of the fallen rail and closed his eyes and said the wood was sal, from before the earthquake of 1934, cut in the winter, and that the peacock had been carved by a left-handed man. I asked how he knew the last part and he showed me the direction of the chisel strokes on the feathers, which lean the wrong way, and I stood there holding a piece of somebody else's house and understood that in all my drawings I had never once looked at the feathers.
 
-We laid the pieces on the courtyard stones in the order they came out. My daughter photographed everything, which is the reason I am writing this down at all: she asked what the window was for, and I started to say for light, and stopped, because that is not what it was for. It was for looking down into the square. It was for being seen from the square. Half the courtship in this neighbourhood happened between windows like this one, my grandmother said, and she said it with a face that made me not ask which half.
+We laid the pieces on the courtyard stones in the order they came out. Our host's daughter photographed everything, which is the reason I am writing this down at all: she asked me what the window was for, and I started to say for light, and stopped, because that is not what it was for. It was for looking down into the square. It was for being seen from the square. Half the courtship in this neighbourhood happened between windows like this one, our host says, and she says it with a face that made me not ask which half.
 
-The plan is this. The rails that can be saved will be saved. Two struts are gone past saving and will be recut by the same young man in the same sal, if sal can still be had, and if not, in the closest thing, and he will carve two new birds and he will carve them left-handed, he says, because the window has been left-handed for a hundred and forty years and it would be rude to change it now. The peacock will get its head back. I have found the head; it was in the tin with the wedding prints, which is where everything in this family ends up.
+The plan is this. The rails that can be saved will be saved. Two struts are gone past saving and will be recut by the same young man in the same sal, if sal can still be had, and if not, in the closest thing, and he will carve two new birds and he will carve them left-handed, he says, because the window has been left-handed for a hundred and forty years and it would be rude to change it now. The peacock will get its head back. We found the head; it was in a biscuit tin under the stairs, which is where everything in this house ends up.
 
-It will take the winter. I will put the pieces here as they go back, so there is a record somewhere that is not a tin. Today, the first day, nothing is fixed and the east side of the house is a hole with a sheet over it and the whole square can see straight into my kitchen, which my grandmother would have found hilarious.
+It will take the winter, and I will be home in Torino long before it is done. They have promised to send me the pieces as they go back, and I will put them here, so there is a record somewhere that is not a tin. Today, the first day, nothing is fixed and the east side of the house is a hole with a sheet over it and the whole square can see straight into the kitchen, which the old grandmother, they tell me, would have found hilarious.
 
-Three hundred and something days ago I would not have started this. I would have paid someone and gone to work. I do not know what changed except that the window did, and that I was standing in the courtyard when it did, and that my daughter asked me a question I could not answer with the first word that came.`;
+A year ago I would not have come. I would have drawn it from a photograph and gone back to work. I do not know what changed except that the window did, and that I was standing in the courtyard when it did, and that a nine-year-old asked me a question I could not answer with the first word that came.`;
 
-/* ---------- moments (feed order = sharedAt ?? at, newest first) ---------- */
+/* ---------- moments (feed order = the Moment's own `at`, newest first — see store.orderFeed) ---------- */
 
 const M = (m: Omit<Moment, "responders" | "notes"> & Partial<Pick<Moment, "responders" | "notes">>): Moment => ({
   responders: [],
@@ -394,23 +416,28 @@ export const SEED_MOMENTS: Moment[] = [
     id: "m-1983",
     authorId: "p-sunita",
     expressions: { "u-demo-001": "respect" },
-    at: "1983-02-06T12:00:00",
-    atPrecision: "day", // a scanned print: the day is known, the hour is not
+    // Owner fixture add-on — re-dated from 1983 (the id is kept stable): the author is now 20–35,
+    // and a Moment before its author's birth is exactly what the Composer refuses (and D-17,
+    // ancestral records, is an open owner decision). The boundary-map scan it used to carry is
+    // not an Italian school slip, so it carries no photo rather than a wrong one.
+    at: "1998-09-14T12:00:00",
+    atPrecision: "day", // a remembered first day: the day is known, the hour is not
     sharedAt: "2026-09-10T09:12:00",
-    place: "Ratmate, Nuwakot",
-    text: "First day of school. Aama kept the admission slip in the tin for forty-three years. I scanned it today.",
+    place: "Vomero, Napoli",
+    text: "First day of school. Mamma kept the admission slip in the tin for twenty-eight years. I found it today.",
     kind: "moment",
     privacy: "friends",
-    media: { kind: "photos", items: [lib("document")] },
     responses: 14,
     responders: ["u-demo-001", "p-bikash", "p-asha", "p-prakash", "p-krishna"],
-    notes: [n("n-1983-1", "u-demo-001", "The tin! Aama keeps everything.", "2026-09-10T09:40:00")],
+    notes: [n("n-1983-1", "u-demo-001", "The tin! Zia keeps everything.", "2026-09-10T09:40:00")],
   }),
   M({
     id: "m-meal",
     authorId: "p-bikash",
     at: "2026-09-10T12:15:00",
     place: "Bhaktapur Durbar Square",
+    // Owner fixture add-on — MOMENT B: a smaller multi-person Resonance, two meanings.
+    resonances: { "p-asha": "mercury-curious", "p-sunita": "comet-wow", "p-hannah": "mercury-curious" },
     text: "Dashain scaffolding is going up on the Nyatapola steps already. The whole square is holding its breath for the festival.",
     kind: "meal",
     fields: { what: "Newari khaja set", venue: "Nyatapola Café", with: ["p-ramesh", "p-prakash", "p-krishna"] },
@@ -428,7 +455,9 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-ramesh",
     at: "2026-09-10T12:20:00",
     place: "Patan Durbar Square",
-    text: "Across the valley from Bikash, same festival, same scaffolding, same birthday — we checked.",
+    text: "Across the valley from Luca, same festival, same scaffolding, same birthday — we checked.",
+    // Owner fixture add-on — MOMENT A: five people, four meanings, two people sharing one.
+    resonances: { "u-demo-001": "venus-love", "p-asha": "venus-love", "p-prakash": "moon-touched", "p-bikash": "saturn-support", "p-sunita": "sun-joy" },
     kind: "moment",
     privacy: "public",
     responses: 2,
@@ -440,6 +469,8 @@ export const SEED_MOMENTS: Moment[] = [
     at: "2026-09-10T06:05:00",
     place: "Sarangkot, Pokhara",
     text: "Up before the ridge; the thermals came early.",
+    // Owner fixture add-on — MOMENT D: exactly one person's Resonance.
+    resonances: { "p-bikash": "jupiter-celebrate" },
     kind: "activity",
     fields: { what: "Paragliding", measure: "1,240 m", duration: "28 min" },
     privacy: "public",
@@ -465,6 +496,8 @@ export const SEED_MOMENTS: Moment[] = [
     at: "2026-09-09T18:20:00",
     place: "Phewa Tal, Pokhara",
     text: "Boat back across Phewa as the light went.",
+    // Owner fixture add-on — MOMENT C: a broader constellation, eight people across six meanings.
+    resonances: { "u-demo-001": "venus-love", "p-bikash": "sun-joy", "p-prakash": "comet-wow", "p-sunita": "moon-touched", "p-krishna": "jupiter-celebrate", "p-ramesh": "sun-joy", "p-marcus": "meteor-laugh", "p-grace": "venus-love" },
     kind: "moment",
     privacy: "public",
     media: { kind: "video", poster: { src: "/mock/social/video-poster-9x16.jpg", w: 675, h: 1200, alt: "Dusk over Phewa lake, portrait video" }, duration: "1:24", caption: "9 SEP 2026 · Phewa Tal" },
@@ -480,9 +513,9 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-prakash",
     at: "2026-09-08T18:00:00",
     place: "Boudhanath, Kathmandu",
-    text: "Marigolds in, the bench next. Ama would have moved the bench twice by now.",
+    text: "Marigolds in, the bench next. Nonna would have moved the bench twice by now.",
     kind: "project",
-    fields: { name: "Ama's memorial garden", progress: [3, 8], since: "2026-06-12" },
+    fields: { name: "Nonna's garden", progress: [3, 8], since: "2026-06-12" },
     privacy: "friends",
     media: { kind: "photos", items: [lib("garden")] },
     responses: 8,
@@ -493,7 +526,7 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-prakash",
     at: "2026-09-08T21:30:00",
     place: "Boudhanath, Kathmandu",
-    text: "Butter lamps at Boudha for Ama's anniversary. Three kora, then momos at the usual place.",
+    text: "Butter lamps at Boudha for Nonna's anniversary. Three kora, then momos at the usual place.",
     kind: "moment",
     feeling: "grateful",
     privacy: "public",
@@ -506,7 +539,7 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-sunita",
     at: "2026-09-08T11:00:00",
     place: "Ratmate, Nuwakot",
-    text: "We agreed the roof before the monsoon returns. Bikash is drawing it; I am finding the tin.",
+    text: "We agreed the roof before the monsoon returns. Luca is drawing it; I am finding the tin.",
     kind: "meeting",
     fields: { with: ["u-demo-001", "p-bikash"], venue: "Ratmate school", duration: "1 h" },
     privacy: "friends",
@@ -532,7 +565,7 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-prakash",
     at: "2026-09-07T11:45:00",
     place: "Bhaktapur",
-    text: "Sano Ama, laughing at my Newari. Fair.",
+    text: "The tea-shop aama, laughing at my Newari. Fair.",
     kind: "moment",
     privacy: "friends",
     media: { kind: "photos", items: [lib("face")] },
@@ -575,13 +608,18 @@ export const SEED_MOMENTS: Moment[] = [
     media: { kind: "photos", items: [lib("swayambhu")] },
     responses: 9,
     responders: ["p-asha", "p-bikash", "p-krishna", "p-prakash"],
+    // Phase 4.4-A (A25) — the response notification nt5 already claims.
+    notes: [n("n-nepali-1-1", "p-krishna", "बिहानको स्वयम्भू — सबैभन्दा शान्त समय।", "2026-09-09T07:15:00")],
   }),
   M({
     id: "m-nepali-2",
     authorId: "p-krishna",
     at: "2026-09-05T17:30:00",
     place: "पाटन दरबार स्क्वायर",
-    text: "भदौ २० गते साँझ। कृष्ण मन्दिरको छहारीमा बसेर नातिनीलाई पुराना कथा सुनाएँ।",
+    // Devanagari script coverage is kept on purpose (social-devanagari-crops, i18n). Federico is
+    // learning Nepali for the trip: "Evening of Bhadau 20. In the shade of the Krishna temple, I
+    // listened to old stories of Patan."
+    text: "भदौ २० गते साँझ। कृष्ण मन्दिरको छहारीमा बसेर पाटनका पुराना कथा सुनें।",
     kind: "moment",
     privacy: "friends",
     media: { kind: "photos", items: [lib("durbar")] },
@@ -616,7 +654,7 @@ export const SEED_MOMENTS: Moment[] = [
     authorId: "p-asha",
     at: "2026-09-01T16:40:00",
     place: "Kathmandu Durbar Square",
-    text: "Forty of us for Sunita's fortieth-something. She refused to say which.",
+    text: "Forty of us to welcome Elena back to Kathmandu. She refused to make a speech.",
     kind: "moment",
     feeling: "proud",
     privacy: "public",
@@ -640,15 +678,19 @@ export const SEED_MOMENTS: Moment[] = [
   M({
     id: "m-panorama",
     authorId: "u-demo-001",
-    expressions: { "p-krishna": "wonder", "p-prakash": "celebrate", "p-asha": "joy" },
+    expressions: { "p-krishna": "wow", "p-prakash": "celebrate", "p-asha": "joy" },
     at: "2026-08-30T08:15:00",
     place: "Mustang",
     text: "The whole range in one breath. Nothing I own is this wide.",
+    // Owner fixture add-on — Giulia's own Moment, seen by others: six people, five meanings.
+    resonances: { "p-asha": "comet-wow", "p-bikash": "comet-wow", "p-sunita": "venus-love", "p-prakash": "mercury-curious", "p-krishna": "saturn-support", "p-hannah": "sun-joy" },
     kind: "moment",
     privacy: "public",
     media: { kind: "photos", items: [lib("panorama")] },
     responses: 16,
     responders: ["p-asha", "p-bikash", "p-sunita", "p-prakash", "p-krishna"],
+    // Phase 4.4-A (A25) — the response notification nt3 already claims.
+    notes: [n("n-panorama-1", "p-bikash", "Which pass was this from? I want that exact view.", "2026-09-10T10:30:00")],
   }),
   M({
     id: "m-snow",
@@ -662,6 +704,8 @@ export const SEED_MOMENTS: Moment[] = [
     media: { kind: "photos", items: [lib("snow")] },
     responses: 22,
     responders: ["p-asha", "p-bikash", "p-sunita", "p-prakash", "p-krishna", "p-ramesh"],
+    // Phase 4.4-A (A25) — the response notification nt8 already claims.
+    notes: [n("n-snow-1", "p-m", "Fourteen kilometres in that cold. Rest well.", "2026-09-07T22:40:00")],
   }),
   M({
     id: "m-wedding",
@@ -670,7 +714,7 @@ export const SEED_MOMENTS: Moment[] = [
     atPrecision: "day", // the prints carry the date, not the hour
     sharedAt: "2026-08-27T19:00:00",
     place: "Ratmate, Nuwakot",
-    text: "Our wedding day. Four years on, I finally scanned the prints Aama kept in the tin.",
+    text: "Our wedding day in Ratmate. Four years on, I finally scanned the prints Mamma kept in the tin.",
     kind: "moment",
     feeling: "nostalgic",
     privacy: "friends",
@@ -684,19 +728,27 @@ function n(id: string, authorId: string, text: string, at: string, parentId?: st
   return { id, authorId, text, at, parentId, responses: 0 };
 }
 
+/** `YYYY-MM-DDTHH:MM:SS` in local time — the fixtures' time grammar (store.localISO, without the
+ *  import cycle). A function declaration on purpose: SEED_MOMENTS calls fortyNotes() while this
+ *  module is still initialising, so nothing it uses may be a not-yet-initialised `const`. */
+function localWallClock(d: Date): string {
+  const p = (v: number) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 function fortyNotes(): Note[] {
   const authors = ["p-bikash", "p-sunita", "p-prakash", "p-krishna", "p-ramesh", "p-m", "u-demo-001", "p-asha"];
   const lines = [
     "Best evening in months.",
     "Who took the one of the momos?",
-    "The band was Krishna dai's nephew, apparently.",
+    "The band was our guide's nephew, apparently.",
     "I left my scarf at the café — anyone?",
-    "Sunita, you looked forty exactly.",
-    "Fifty-two, and thank you.",
+    "Elena, you look like you never left.",
+    "I never really did. Thank you.",
     "The scarf is with me.",
     "Next year at Patan?",
     "Only if the momos come too.",
-    "Ramesh promised a speech and delivered a song.",
+    "Marco promised a speech and delivered a song.",
     "It was a speech with notes.",
     "Send the group photo when you have it.",
     "Uploading tomorrow, the phone died.",
@@ -708,12 +760,12 @@ function fortyNotes(): Note[] {
     "He remembers the ones who don't pay.",
     "Speaking of which.",
     "Paid. Twice.",
-    "Long life, Sunita didi.",
-    "जिउँदो रहनुहोस्, दिदी।",
+    "Welcome back, Elena.",
+    "फेरि स्वागत छ, एलेना।",
     "What did she say?",
-    "Live long.",
+    "Welcome back.",
     "Same wish, two scripts.",
-    "Bring Aama next time.",
+    "Bring your mamma next time.",
     "She'll bring the tin.",
     "The tin comes to everything now.",
     "Home safe, all of you?",
@@ -735,7 +787,9 @@ function fortyNotes(): Note[] {
     const id = `n-forty-${i}`;
     // every third note is a reply to the previous top-level note
     const parent = i > 0 && i % 3 === 2 ? notes.filter((x) => !x.parentId).slice(-1)[0]?.id : undefined;
-    notes.push({ id, authorId: authors[i % authors.length], text: lines[i], at: new Date(t).toISOString().slice(0, 19), parentId: parent, responses: i % 5 === 0 ? 2 : 0 });
+    // Phase 4.4-A (A15) — local wall-clock time, like every other fixture. `toISOString()` wrote
+    // UTC as if it were local, so responses read as written before the Moment itself (11:18 under 16:40).
+    notes.push({ id, authorId: authors[i % authors.length], text: lines[i], at: localWallClock(new Date(t)), parentId: parent, responses: i % 5 === 0 ? 2 : 0 });
   }
   return notes;
 }
@@ -746,7 +800,7 @@ export const SEED_NOTIFICATIONS: Notification[] = [
   // The live system has friends; a request arrives as a notification and is
   // answered where it appears (complete-My-World pass, recorded exception).
   { id: "n-request", whoId: "p-prakash", text: "asked to be your friend", at: "2026-09-11T08:05:00", unread: true, kind: "request" },
-  { id: "nt1", whoId: "p-asha", text: "left a note on your Thamel moment", at: "2026-09-10T08:02:00", unread: true, momentId: "m-rain" },
+  { id: "nt1", whoId: "p-asha", text: "responded to your Thamel moment", at: "2026-09-10T08:02:00", unread: true, momentId: "m-rain" },
   { id: "nt2", whoId: "p-sunita", text: "shared a moment", at: "2026-09-10T09:12:00", unread: true, momentId: "m-1983" },
   { id: "nt3", whoId: "p-bikash", text: "responded to your Mustang panorama", at: "2026-09-10T10:30:00", unread: true, momentId: "m-panorama" },
   { id: "nt4", whoId: "p-prakash", text: "mentioned you in a note", at: "2026-09-09T20:30:00", unread: false, momentId: "m-video" },
@@ -756,4 +810,4 @@ export const SEED_NOTIFICATIONS: Notification[] = [
   { id: "nt8", whoId: "p-m", text: "responded to your snow trek", at: "2026-09-07T22:40:00", unread: false, momentId: "m-snow" },
 ];
 
-export const RECENT_SEARCHES = ["Boudha", "Sunita Tamang", "Mustang", "भदौ"];
+export const RECENT_SEARCHES = ["Boudha", "Elena Ricci", "Mustang", "भदौ"];

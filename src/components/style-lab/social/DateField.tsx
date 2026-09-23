@@ -11,7 +11,7 @@ import { CalendarDays } from "lucide-react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { sbDate } from "@/lib/i18n/format";
 
-export function DateField({ id, value, onChange, max, label, className = "", compact = false, quiet = false }: { id?: string; value: string; onChange: (v: string) => void; max?: string; label: string; className?: string; compact?: boolean; /** S6 — the date as a word in a sentence (the Composer's coordinate line): no chip border/fill, an underline on focus. Text and behaviour identical. */ quiet?: boolean }) {
+export function DateField({ id, value, onChange, min, max, label, className = "", compact = false, quiet = false }: { id?: string; value: string; onChange: (v: string) => void; /** Phase 4.4-A — the earliest selectable date (the owner's birth date in the Composer). */ min?: string; max?: string; label: string; className?: string; compact?: boolean; /** S6 — the date as a word in a sentence (the Composer's coordinate line): no chip border/fill, an underline on focus. Text and behaviour identical. */ quiet?: boolean }) {
   const { t, locale } = useT();
   // en is byte-identical to the product's "DD MON YYYY" grammar (accepted by circle/social-final);
   // other locales get the localized month via the S3 deterministic month tables.
@@ -27,6 +27,7 @@ export function DateField({ id, value, onChange, max, label, className = "", com
         id={id}
         type="date"
         value={value}
+        min={min}
         max={max}
         aria-label={label}
         onChange={(e) => onChange(e.target.value)}

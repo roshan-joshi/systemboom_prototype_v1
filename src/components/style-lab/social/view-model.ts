@@ -78,6 +78,9 @@ export function personViewFor(viewer: Person, subject: Person): PersonView {
 }
 
 function bandAt(subject: Person, at: Date): { band: string; bandIndex: number } {
+  // Phase 4.4-A (A12): an id that resolves to no known person renders band-less and neutral —
+  // never another person's life, never an invented band.
+  if (subject.unavailable) return { band: "—", bandIndex: -1 };
   const { at: birth } = birthInstant(subject);
   const years = computeLifeTime(birth, at).years;
   const bandIndex = currentBandIndex(years);
@@ -85,7 +88,7 @@ function bandAt(subject: Person, at: Date): { band: string; bandIndex: number } 
 }
 
 export function lifeViewFor(viewer: Person, subject: Person, at: Date): LifeView {
-  if (!isOwner(viewer, subject)) return { scope: "other", ...bandAt(subject, at) };
+  if (!isOwner(viewer, subject) || subject.unavailable) return { scope: "other", ...bandAt(subject, at) };
   const { at: birth, precision } = birthInstant(subject);
   const t = computeLifeTime(birth, at);
   const totalDays = Math.floor((at.getTime() - birth.getTime()) / DAY_MS);

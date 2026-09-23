@@ -25,7 +25,7 @@
  * layer fewer on a phone.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, ArrowRight, Image as ImageIcon, Link2, MapPin, Smile, Users, Video, X } from "lucide-react";
 import { useFocusTrap } from "@/components/identity/useFocusTrap";
@@ -33,7 +33,7 @@ import { now } from "@/lib/clock";
 import { easeOut } from "@/lib/motion";
 import { validateBirthDate } from "@/lib/identity/birth";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
-import { FEELINGS, LIBRARY, PEOPLE, PLACES, type Kind, type KindFields, type LibraryPhoto, type Moment, type Privacy } from "./data";
+import { FEELINGS, LIBRARY, PEOPLE, PLACES, type Kind, type KindFields, type LibraryPhoto, type Moment, type Person, type Privacy } from "./data";
 import { pad2 } from "./life";
 import { DateField } from "./DateField";
 import { momentLifeFor } from "./view-model";
@@ -116,7 +116,9 @@ export function emptyDraft(date: string, place: string): Draft {
 }
 
 export function draftFromMoment(m: Moment): Draft {
-  const photoIds = m.media?.kind === "photos" ? m.media.items.map((p) => LIBRARY.find((l) => l.src === p.src)?.id ?? "").filter(Boolean) : [];
+  // Phase 4.4-A (A3): a photo that is not in the mock library keeps its place as `orig-<i>`
+  // (resolved from the Moment being edited) instead of being silently dropped.
+  const photoIds = m.media?.kind === "photos" ? m.media.items.map((p, i) => LIBRARY.find((l) => l.src === p.src)?.id ?? `orig-${i}`) : [];
   return {
     text: m.text ?? "",
     kind: m.kind,
@@ -125,6 +127,7 @@ export function draftFromMoment(m: Moment): Draft {
     feeling: m.feeling,
     photoIds,
     video: m.media?.kind === "video",
+    videoCaption: m.media?.kind === "video" ? m.media.caption : undefined,
     link: m.media?.kind === "link" ? m.media.url : undefined,
     date: m.at.slice(0, 10),
     place: m.place ?? "",
@@ -150,7 +153,22 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
   const [picker, setPicker] = useState<"none" | "photos" | "feeling" | "privacy">("none");
   const [mediaTab, setMediaTab] = useState<"photos" | "video" | "link">("photos");
   const [linkState, setLinkState] = useState<"none" | "resolving" | "preview" | "plain">(initial.link ? "preview" : "none");
-  const [linkTitle, setLinkTitle] = useState("Boudha morning kora — field recording (12 min)");
+  // Phase 4.4-A (A3) — edit starts from the Moment's REAL media, never from mock constants.
+  const original = initial.editingId ? state.moments.find((m) => m.id === initial.editingId) : undefined;
+  const initialLinkTitle = original?.media?.kind === "link" ? original.media.title : "Boudha morning kora — field recording (12 min)";
+  const [linkTitle, setLinkTitle] = useState(initialLinkTitle);
+  // Phase 4.4-A (A4) — the one pending publication. Cleared on Discard, Cancel, Escape and
+  // unmount: nothing can publish after the person has let go of it.
+  const postTimer = useRef<number | null>(null);
+  // While Posting the body is inert, so focus must not be left inside it: it waits on the (busy)
+  // Post button, and a failure hands it to Retry.
+  const postBtn = useRef<HTMLButtonElement>(null);
+  const retryBtn = useRef<HTMLButtonElement>(null);
+  const cancelPosting = () => {
+    if (postTimer.current !== null) window.clearTimeout(postTimer.current);
+    postTimer.current = null;
+  };
+  useEffect(() => () => cancelPosting(), []);
   const [touched, setTouched] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -161,24 +179,43 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
   useFocusTrap(open, container, { initial: textRef, onEscape: () => (picker !== "none" ? setPicker("none") : requestClose()), returnTo });
 
   const today = localISO(now()).slice(0, 10);
-  const photos = d.photoIds.map((id) => LIBRARY.find((p) => p.id === id)!).filter(Boolean);
+  const originalPhotos: LibraryPhoto[] = original?.media?.kind === "photos" ? original.media.items.map((p, i) => ({ ...p, id: `orig-${i}` })) : [];
+  const photos = d.photoIds.map((id) => LIBRARY.find((p) => p.id === id) ?? originalPhotos.find((p) => p.id === id)).filter(Boolean) as LibraryPhoto[];
+  // Phase 4.4-A (A10) — one kind of media per Moment (the Media union and the API contract).
+  // The UI enforces it instead of silently keeping one on submit; D-20 governs any extension.
+  const mediaKindNow: "photos" | "video" | "link" | null = photos.length ? "photos" : d.video ? "video" : d.link ? "link" : null;
+  const blocks = (k: "photos" | "video" | "link") => mediaKindNow !== null && mediaKindNow !== k;
   const detected: LibraryPhoto | undefined = photos.find((p) => p.takenAt);
   const detectionActive = !!detected && !d.confirmedDetection && !editing;
   const effDate = detectionActive ? detected!.takenAt!.slice(0, 10) : d.date;
   const effPlace = detectionActive ? (detected!.takenPlace ?? d.place) : d.place;
   const dateProblem = validateBirthDate(effDate, now());
   const future = dateProblem === "future";
-  const posAt = momentLifeFor(me, me, new Date(`${effDate}T12:00:00`));
+  // Phase 4.4-A (A11) — the established Life rule: time before a person's birth belongs to the
+  // Ancestor context, not to their own record. Refused here exactly as the Circle's Jump to date
+  // refuses it; no negative age is ever shown. (D-17 covers only future ancestral records.)
+  const beforeBirth = !!effDate && !!me.birthDate && effDate < me.birthDate;
+  // A cleared or malformed date is not a date: it blocks posting and is never computed from.
+  const noDate = dateProblem === "empty" || dateProblem === "invalid";
+  const posAt = beforeBirth || noDate ? { exact: "—", band: "—" } : momentLifeFor(me, me, new Date(`${effDate}T12:00:00`));
   const backdated = effDate < today;
   const quiet = d.kind === "health" || d.kind === "problem";
   const over = d.text.length > TEXT_LIMIT;
   const requiredMissing = d.kind !== "moment" ? KIND_FIELDS[d.kind].filter((f) => f.required).filter((f) => !valueOf(d.fields, f)).map((f) => t(f.labelKey)) : [];
   const mediaRequiredMissing = d.kind === "moment" && touched && !d.text.trim() && photos.length === 0 && !d.video && !d.link;
   const hasContent = !!d.text.trim() || photos.length > 0 || d.video || !!d.link || requiredMissing.length < (d.kind !== "moment" ? KIND_FIELDS[d.kind].filter((f) => f.required).length : 0);
-  const canPost = !over && !future && !detectionActive && requiredMissing.length === 0 && (!!d.text.trim() || photos.length > 0 || !!d.video || !!d.link) && phase !== "posting";
+  const canPost = !over && !future && !beforeBirth && !noDate && !detectionActive && requiredMissing.length === 0 && (!!d.text.trim() || photos.length > 0 || !!d.video || !!d.link) && phase !== "posting";
+  // Phase 4.4-A (A14) — an edit with changes asks before it is let go.
+  const editChanged = editing && (JSON.stringify({ ...d, confirmedDetection: true }) !== JSON.stringify({ ...initial, confirmedDetection: true }) || linkTitle !== initialLinkTitle);
 
   const requestClose = () => {
-    if (hasContent && !editing) setPhase("discard");
+    // A4: letting go while Posting cancels the pending publication first — Discard can never be
+    // followed by the Moment appearing anyway.
+    if (phase === "posting") {
+      cancelPosting();
+      setPhase("idle");
+    }
+    if (editing ? editChanged : hasContent) setPhase("discard");
     else onClose();
   };
 
@@ -198,26 +235,66 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
     setTouched(true);
   };
 
+  // Phase 4.4-A (A3) — the media a submit writes. An edit keeps the Moment's own media object
+  // unless the person deliberately changed it; a kept video / link keeps its real poster,
+  // duration, description and image. Only brand-new media comes from the prototype's mocks.
+  const buildMedia = (): Moment["media"] => {
+    const photosUnchanged = JSON.stringify(d.photoIds) === JSON.stringify(initial.photoIds);
+    if (editing && original?.media?.kind === "photos" && photos.length && photosUnchanged) return original.media;
+    if (d.video) {
+      if (original?.media?.kind === "video") return { ...original.media, caption: d.videoCaption || undefined };
+      return { kind: "video", poster: { src: "/mock/social/video-poster-9x16.jpg", w: 675, h: 1200, alt: "Portrait video poster" }, duration: "0:42", caption: d.videoCaption || undefined };
+    }
+    if (d.link) {
+      if (original?.media?.kind === "link" && original.media.url === d.link) return { ...original.media, title: linkTitle };
+      return { kind: "link", url: d.link, title: linkTitle, description: "Bells, prayer wheels and the first buses on the ring road.", host: hostOf(d.link), image: LIBRARY[4] };
+    }
+    if (photos.length) return { kind: "photos", items: photos.map(({ src, w, h, alt }) => ({ src, w, h, alt })) };
+    return undefined;
+  };
+  // Phase 4.4-A (A9) — only the fields that belong to the posted kind travel with the Moment;
+  // an ordinary Moment carries none. (The draft may keep other values while the person explores
+  // kinds — composer-states.md — but they never leak into the record.)
+  const scopedFields = (): KindFields | undefined => {
+    if (d.kind === "moment") return undefined;
+    const out: KindFields = {};
+    for (const def of KIND_FIELDS[d.kind]) {
+      const v = d.fields[def.key];
+      if (v !== undefined) (out as Record<string, unknown>)[def.key] = v;
+    }
+    return out;
+  };
+
   const submit = () => {
     if (!canPost) return;
+    postBtn.current?.focus({ preventScroll: true });
+    // nothing chosen now could reach this post, so nothing stays open to choose from
+    setPicker("none");
     setPhase("posting");
-    setTimeout(() => {
+    cancelPosting();
+    postTimer.current = window.setTimeout(() => {
+      postTimer.current = null;
       if (state.simulateFailure) {
         setPhase("failed");
+        requestAnimationFrame(() => retryBtn.current?.focus({ preventScroll: true }));
         return;
       }
-      const media: Moment["media"] = d.video
-        ? { kind: "video", poster: { src: "/mock/social/video-poster-9x16.jpg", w: 675, h: 1200, alt: "Portrait video poster" }, duration: "0:42", caption: d.fields.title ?? undefined }
-        : d.link
-          ? { kind: "link", url: d.link, title: linkTitle, description: "Bells, prayer wheels and the first buses on the ring road.", host: hostOf(d.link), image: LIBRARY[4] }
-          : photos.length
-            ? { kind: "photos", items: photos.map(({ src, w, h, alt }) => ({ src, w, h, alt })) }
-            : undefined;
+      const media = buildMedia();
+      const fields = scopedFields();
       // Temporal honesty (Phase 5 §6): only a moment recorded for today carries the clock; a
       // backdated moment has DATE precision — noon is a sort anchor, never displayed as a time.
       const at = backdated ? `${effDate}T12:00:00` : `${effDate}T${localISO(now()).slice(11, 19)}`;
       if (editing) {
-        dispatch({ type: "edit", id: d.editingId!, patch: { text: d.text.trim() || undefined, kind: d.kind, fields: d.fields, privacy: d.privacy, feeling: d.feeling, place: effPlace || undefined, media, at: `${effDate}${d.date === initial.date ? initialTime(initial, d) : "T12:00:00"}` } });
+        // Phase 4.4-A (A2) — an edit never invents a clock time. The same date keeps the Moment's
+        // own instant and precision exactly; a deliberately moved date becomes DATE precision
+        // (noon is only the sort anchor, never shown) and the Moment keeps its sharing provenance.
+        const dateChanged = d.date !== initial.date;
+        const temporal: Partial<Moment> = dateChanged
+          ? { at: `${effDate}T12:00:00`, atPrecision: "day", sharedAt: original?.sharedAt ?? (original && original.atPrecision !== "day" ? original.at : undefined) }
+          : original
+            ? { at: original.at, atPrecision: original.atPrecision }
+            : {};
+        dispatch({ type: "edit", id: d.editingId!, patch: { text: d.text.trim() || undefined, kind: d.kind, fields, privacy: d.privacy, feeling: d.feeling, place: effPlace || undefined, media, ...temporal } });
       } else {
         dispatch({
           type: "post",
@@ -230,7 +307,7 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
             place: effPlace || undefined,
             text: d.text.trim() || undefined,
             kind: d.kind,
-            fields: d.kind === "moment" ? undefined : d.fields,
+            fields,
             feeling: d.feeling,
             privacy: d.privacy,
             media,
@@ -305,14 +382,14 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                   <span className="truncate">{me.name}</span>
                   <span aria-hidden>·</span>
                   <span className="relative">
-                    <button type="button" aria-haspopup="listbox" aria-expanded={picker === "privacy"} onClick={() => setPicker(picker === "privacy" ? "none" : "privacy")} className="sb-press -mx-1 inline-flex min-h-7 items-center gap-1 rounded-full px-1 text-[12px] font-medium text-muted hover:text-text focus-visible:outline-[var(--focus)]">
+                    <button type="button" aria-haspopup="listbox" aria-expanded={picker === "privacy"} disabled={phase === "posting"} onClick={() => setPicker(picker === "privacy" ? "none" : "privacy")} className="sb-press -mx-1 inline-flex min-h-7 items-center gap-1 rounded-full px-1 text-[12px] font-medium text-muted hover:text-text focus-visible:outline-[var(--focus)]">
                       {privacyWord(d.privacy)} <span aria-hidden className="text-[10px]">▾</span>
                     </button>
                     {picker === "privacy" && (
                       <ul role="listbox" aria-label={t("composer.whoCanSeeThis")} className="sb-surface-in absolute left-0 z-10 mt-1 min-w-44 rounded-[14px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-1 text-[13px] shadow-[0_12px_32px_-16px_rgba(0,0,0,.45)]">
                         {(["public", "friends", "onlyme"] as Privacy[]).map((p) => (
                           <li key={p}>
-                            <button type="button" role="option" aria-selected={d.privacy === p} onClick={() => { setD((x) => ({ ...x, privacy: p })); setPrivacyTouched(true); setPicker("none"); }} className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left text-text hover:bg-steel/12 focus-visible:outline-[var(--focus)]">
+                            <button type="button" role="option" aria-selected={d.privacy === p} disabled={phase === "posting"} onClick={() => { setD((x) => ({ ...x, privacy: p })); setPrivacyTouched(true); setPicker("none"); }} className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left text-text hover:bg-steel/12 focus-visible:outline-[var(--focus)]">
                               <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${d.privacy === p ? "bg-[var(--boom)]" : "border border-steel"}`} />
                               {privacyWord(p)}
                               <span className="ml-auto text-[11px] text-muted">{p === "public" ? t("composer.privacyAnyone") : p === "friends" ? t("composer.privacyYourPeople") : t("composer.privacyJustYou")}</span>
@@ -329,7 +406,8 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
               </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4 @2xl:px-5">
+            {/* A4 — while Posting, the body is inert: an edit made now could never reach this post */}
+            <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4 @2xl:px-5" inert={phase === "posting"}>
               {/* THE MEMORY — first, focused, the largest thing here */}
               <label htmlFor="sb-composer-text" className="sr-only">{t("moments.yourMoment")}</label>
               {/* Focus is shown as the notebook rule under the words turning focus-blue — not a
@@ -352,7 +430,7 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                   place are the instruments (the native picker is the disclosure); the life position
                   is read from them. Detected from a photo's file: the sentence is stated and asks to
                   be confirmed or changed, exactly as before. */}
-              <div role="group" aria-label={t("composer.contextAria")} className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted tabular-nums" data-sb-readout-state={detectionActive ? "detected" : future ? "future" : backdated ? "backdated" : "manual"}>
+              <div role="group" aria-label={t("composer.contextAria")} className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted tabular-nums" data-sb-readout-state={detectionActive ? "detected" : future ? "future" : beforeBirth ? "before-life" : backdated ? "backdated" : "manual"}>
                 <span className="sr-only">{detectionActive ? t("composer.fromThePhoto") : t("composer.whereThisSits")}</span>
                 {detectionActive ? (
                   <>
@@ -378,7 +456,7 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                         <Dot />
                       </>
                     )}
-                    <DateField quiet value={d.date} max={today} onChange={(v) => setD((x) => ({ ...x, date: v }))} label={t("composer.dateOfMoment")} />
+                    <DateField quiet value={d.date} min={me.birthDate || undefined} max={today} onChange={(v) => setD((x) => ({ ...x, date: v }))} label={t("composer.dateOfMoment")} />
                     <Dot />
                     <span className="text-text">
                       <span className="sr-only">{t("composer.willSitAt")} </span>
@@ -397,7 +475,8 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                 )}
               </div>
               {future && <p className="mt-1.5 text-[12px] text-[var(--danger)]">{t("composer.futureDate")}</p>}
-              {!future && backdated && !detectionActive && <p className="mt-1.5 text-[12px] text-muted">{t("composer.backdatedNote")}</p>}
+              {beforeBirth && <p className="mt-1.5 text-[12px] text-[var(--danger)]" data-sb-before-life>{t("composer.beforeLife")}</p>}
+              {!future && !beforeBirth && backdated && !detectionActive && <p className="mt-1.5 text-[12px] text-muted">{t("composer.backdatedNote")}</p>}
 
               {/* feeling · counter */}
               <div className="mt-2 flex items-center justify-between text-[12px] tabular-nums">
@@ -469,7 +548,8 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
               )}
               {picker === "photos" && mediaTab === "video" && (
                 <div className="sb-reveal mt-2 rounded-[14px] border border-[var(--hair)] p-3 text-[13px]">
-                  <label className="flex items-center gap-2 text-text"><input type="checkbox" checked={!!d.video} onChange={(e) => setD((x) => ({ ...x, video: e.target.checked }))} className="accent-[#d92a20]" aria-label={t("composer.mediaVideo")} /> {t("composer.attachVideo")} (0:42 · 9:16)</label>
+                  <label className="flex items-center gap-2 text-text"><input type="checkbox" checked={!!d.video} disabled={blocks("video")} onChange={(e) => setD((x) => ({ ...x, video: e.target.checked, videoCaption: e.target.checked ? x.videoCaption : undefined }))} className="accent-[#d92a20]" aria-label={t("composer.mediaVideo")} /> {t("composer.attachVideo")} (0:42 · 9:16)</label>
+                  {blocks("video") && <p className="mt-2 text-[12px] text-muted" data-sb-one-media>{t("composer.oneMediaKind")}</p>}
                 </div>
               )}
               {picker === "photos" && mediaTab === "link" && (
@@ -477,17 +557,19 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                   <label className="flex items-center gap-2 text-[13px] text-muted">
                     <Link2 size={14} aria-hidden />
                     <span className="sr-only">{t("composer.mediaLink")}</span>
-                    <input value={d.link ?? ""} onChange={(e) => resolveLink(e.target.value)} placeholder={t("composer.pasteLink")} className={`${FIELD} w-full`} />
+                    <input value={d.link ?? ""} disabled={blocks("link")} onChange={(e) => resolveLink(e.target.value)} placeholder={t("composer.pasteLink")} className={`${FIELD} w-full disabled:opacity-50`} />
                   </label>
+                  {blocks("link") && <p className="mt-2 text-[12px] text-muted" data-sb-one-media>{t("composer.oneMediaKind")}</p>}
                 </div>
               )}
               {picker === "photos" && mediaTab === "photos" && (
                 <div className="sb-reveal mt-2 rounded-[14px] border border-[var(--hair)] p-2" role="group" aria-label={t("composer.choosePhotos")}>
                   <p className="px-1 pb-2 text-[12px] text-muted tabular-nums">{t("composer.ofLimit", { n: d.photoIds.length, limit: PHOTO_LIMIT })}{d.photoIds.length >= PHOTO_LIMIT ? t("composer.removeOneToAdd") : ""}</p>
+                  {blocks("photos") && <p className="px-1 pb-2 text-[12px] text-muted" data-sb-one-media>{t("composer.oneMediaKind")}</p>}
                   <div className="grid grid-cols-4 gap-1.5 @2xl:grid-cols-6">
                     {LIBRARY.map((p) => {
                       const on = d.photoIds.includes(p.id);
-                      const full = !on && d.photoIds.length >= PHOTO_LIMIT;
+                      const full = !on && (d.photoIds.length >= PHOTO_LIMIT || blocks("photos"));
                       return (
                         <button key={p.id} type="button" aria-pressed={on} disabled={full} onClick={() => togglePhoto(p.id)} aria-label={p.alt} className={`sb-press relative aspect-square overflow-hidden rounded-[8px] bg-[var(--sheet-raised)] focus-visible:outline-[var(--focus)] disabled:opacity-40 ${on ? "ring-2 ring-[var(--boom)]" : ""}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -525,10 +607,10 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
                   <div className="text-[13px]">
                     <p className="text-text">{t("composer.mediaVideo")} · 0:42 · 9:16</p>
                     <label className="mt-1 flex items-center gap-2 text-muted">
-                      <input type="checkbox" checked={!!d.fields.title} onChange={(e) => setD((x) => ({ ...x, fields: { ...x.fields, title: e.target.checked ? `${sbDate(locale, effDate + "T00:00:00")} · ${effPlace || "—"}` : undefined } }))} className="accent-[#d92a20]" />
+                      <input type="checkbox" checked={!!d.videoCaption} onChange={(e) => setD((x) => ({ ...x, videoCaption: e.target.checked ? `${sbDate(locale, effDate + "T00:00:00")} · ${effPlace || "—"}` : undefined }))} className="accent-[#d92a20]" />
                       {t("composer.burnDatePlace")}
                     </label>
-                    {d.fields.title && <input value={d.fields.title} onChange={(e) => setD((x) => ({ ...x, fields: { ...x.fields, title: e.target.value } }))} aria-label={t("composer.caption")} className={`${FIELD} mt-1 w-full`} />}
+                    {d.videoCaption !== undefined && <input value={d.videoCaption} onChange={(e) => setD((x) => ({ ...x, videoCaption: e.target.value }))} aria-label={t("composer.caption")} className={`${FIELD} mt-1 w-full`} />}
                   </div>
                 </div>
               )}
@@ -554,15 +636,21 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
               {mediaRequiredMissing && picker === "photos" && <p className="mt-2 text-[12px] text-[var(--danger)]">{t("composer.addPhotoOrText")}</p>}
               {touched && requiredMissing.length > 0 && <p className="mt-2 text-[12px] text-muted">{t("composer.needed", { fields: requiredMissing.join(", ") })}</p>}
               {phase === "failed" && (
-                <p className="mt-3 text-[13px] text-text">
+                <p role="alert" className="mt-3 text-[13px] text-text">
                   {t("composer.postFailed")}{" "}
-                  <button type="button" onClick={submit} className="font-medium underline-offset-2 hover:underline focus-visible:outline-[var(--focus)]">{t("common.retry")}</button>
+                  <button ref={retryBtn} type="button" onClick={submit} className="font-medium underline-offset-2 hover:underline focus-visible:outline-[var(--focus)]">{t("common.retry")}</button>
                 </p>
               )}
             </div>
 
             <footer className="border-t border-[var(--hair)] px-4 py-3 pb-[max(0.75rem,calc(0.5rem+env(safe-area-inset-bottom,0px)))] @2xl:px-5 @2xl:pb-3">
-              {phase === "discard" ? (
+              {phase === "discard" && editing ? (
+                <div className="flex items-center gap-3 text-[13px]" data-sb-discard-edit>
+                  <span className="text-text">{t("composer.discardChangesQ")}</span>
+                  <button type="button" onClick={() => onClose()} className="sb-press rounded-full px-3 py-1.5 text-muted hover:text-text focus-visible:outline-[var(--focus)]">{t("composer.discardChanges")}</button>
+                  <button type="button" onClick={() => setPhase("idle")} className="sb-press ml-auto rounded-full border border-[var(--hair)] px-3 py-1.5 font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">{t("composer.keepEditing")}</button>
+                </div>
+              ) : phase === "discard" ? (
                 <div className="flex items-center gap-3 text-[13px]">
                   <span className="text-text">{t("composer.discardQ")}</span>
                   <button type="button" onClick={() => { dispatch({ type: "draft", draft: d }); onClose(); }} className="sb-press rounded-full border border-[var(--hair)] px-3 py-1.5 font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">{t("composer.keepDraft")}</button>
@@ -572,9 +660,13 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
               ) : (
                 <div className="flex items-center gap-2">
                   <button
+                    ref={postBtn}
                     type="button"
                     onClick={submit}
-                    disabled={!canPost}
+                    // while Posting it keeps focus (a disabled button would drop it); submit() itself
+                    // refuses a second post
+                    disabled={!canPost && phase !== "posting"}
+                    aria-disabled={phase === "posting" || undefined}
                     aria-busy={phase === "posting"}
                     className="sb-press relative inline-flex min-h-11 min-w-24 items-center justify-center overflow-hidden rounded-full bg-[var(--boom)] @2xl:min-h-10 px-5 text-[14px] font-semibold text-white hover:bg-[var(--boom-strong)] disabled:opacity-50 focus-visible:outline-[var(--focus)]"
                   >
@@ -593,9 +685,6 @@ export function Composer({ open, onClose, initial }: { open: boolean; onClose: (
   );
 }
 
-function initialTime(a: Draft, b: Draft) {
-  return a.date === b.date ? "T12:00:00" : "T12:00:00";
-}
 function hostOf(url: string) {
   try {
     return new URL(url).host;
@@ -610,8 +699,10 @@ function valueOf(f: KindFields, def: KindFieldDef): boolean {
   return !!v && String(v).trim().length > 0;
 }
 
-function KindField({ def, draft, setDraft, missing, personOf }: { def: KindFieldDef; draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; missing: boolean; personOf: (id: string) => { name: string } }) {
+function KindField({ def, draft, setDraft, missing, personOf }: { def: KindFieldDef; draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; missing: boolean; personOf: (id: string) => Person }) {
   const { t } = useT();
+  // Phase 4.4-A (A12) — names typed into "with" that match nobody are said out loud, never stored.
+  const [unmatched, setUnmatched] = useState<string[]>([]);
   const id = `sb-kf-${def.key}`;
   const labelText = t(def.labelKey);
   const ph = def.phKey ? t(def.phKey) : undefined;
@@ -658,7 +749,7 @@ function KindField({ def, draft, setDraft, missing, personOf }: { def: KindField
   }
   if (def.type === "people") {
     const ids = (draft.fields.with as string[]) ?? [];
-    const text = ids.map((x) => personOf(x).name).join(", ");
+    const text = ids.map((x) => personOf(x)).filter((p) => !p.unavailable).map((p) => p.name).join(", ");
     return (
       <div className="flex flex-col gap-1">
         {label}
@@ -670,14 +761,21 @@ function KindField({ def, draft, setDraft, missing, personOf }: { def: KindField
             defaultValue={text}
             onBlur={(e) => {
               const names = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-              const matched = names.map((nm) => Object.values(PEOPLE).find((p) => p.name.toLowerCase().startsWith(nm.toLowerCase()))?.id).filter(Boolean) as string[];
-              set(matched.length ? matched : names.length ? names : undefined);
+              const resolved = names.map((nm) => ({ nm, person: Object.values(PEOPLE).find((p) => p.name.toLowerCase().startsWith(nm.toLowerCase())) }));
+              // Only real, resolved people are recorded. An unmatched name is NEVER stored as though
+              // it were a person id (it used to be — and then rendered as the fixture person "M").
+              const matched = [...new Set(resolved.flatMap((r) => (r.person ? [r.person.id] : [])))];
+              set(matched.length ? matched : undefined);
+              setUnmatched(resolved.filter((r) => !r.person).map((r) => r.nm));
+              // The field now states exactly who was recorded.
+              e.target.value = matched.map((id) => personOf(id).name).join(", ");
             }}
             placeholder={ph}
             className={`${FIELD} w-full`}
           />
           <datalist id="sb-people">{Object.values(PEOPLE).map((p) => <option key={p.id} value={p.name} />)}</datalist>
         </div>
+        {unmatched.length > 0 && <p role="status" className="text-[12px] text-muted" data-sb-people-unmatched>{t("composer.peopleNotFound", { names: unmatched.join(", ") })}</p>}
       </div>
     );
   }

@@ -77,8 +77,8 @@ const summary = (page) => page.$eval(`${RAIN} [data-sb-expression-summary]`, (e)
     await page.click("[data-sb-who-back]"); await sleep(320);
     return w;
   };
-  const whoCare = await readWho("care", "Asha Gurung");
-  const whoJoy = await readWho("joy", "Bikash Shrestha");
+  const whoCare = await readWho("care", "Sofia Romano");
+  const whoJoy = await readWho("joy", "Luca Rinaldi");
   ok(whoCare.rows === 1 && whoCare.rings === 1 && whoCare.named && whoJoy.rows === 1 && whoJoy.named, "each feeling opens ITS people — real photo + Life Ring + name");
   ok(!whoCare.exact && !whoJoy.exact, "…and never another person's exact Life precision");
   await page.keyboard.press("Escape"); await sleep(250);
@@ -96,7 +96,7 @@ const summary = (page) => page.$eval(`${RAIN} [data-sb-expression-summary]`, (e)
   console.log("5. Visitor / preview");
   await open(page, 1440, 1000, { viewer: "visitor" });
   await toRain(page); await sleep(200);
-  ok((await mine(page)) === "joy", "a visitor's own seeded Expression is shown as theirs (Bikash → joy)");
+  ok((await mine(page)) === "joy", "a visitor's own seeded Expression is shown as theirs (Luca → joy)");
   await page.click(`${RAIN} [data-sb-express]`); await sleep(250);
   await page.click(`${RAIN} [data-sb-expression-option='support']`); await sleep(300);
   ok((await mine(page)) === "support" && (await summary(page)) === 2, "the visitor's change replaces their own — the count never inflates");

@@ -35,7 +35,7 @@ export const RELATIONSHIPS: Record<string, Relationship> = {
   [PEOPLE.ramesh.id]: "none",
   [PEOPLE.m.id]: "request-out",
   // Social 2030 Final — the wider network's relationships. Deliberately no second `request-in`:
-  // Prakash stays the single, obvious incoming request so that surface reads unambiguously.
+  // Chiara (p-prakash) stays the single, obvious incoming request so that surface reads unambiguously.
   [PEOPLE.marcus.id]: "friend",
   [PEOPLE.grace.id]: "friend",
   [PEOPLE.theo.id]: "friend",

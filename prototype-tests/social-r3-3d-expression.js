@@ -146,7 +146,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
     const s = document.querySelector("[data-sb-conversation-surface]");
     if (!s) return null;
     const r = s.querySelector("[role=dialog]").getBoundingClientRect();
-    return { notes: s.querySelectorAll("[data-sb-note]").length, composer: !!s.querySelector("[data-sb-response-composer]"), header: /Asha|Sunita|Maya|Bikash/.test(s.querySelector("header")?.textContent ?? ""), coord: /\d{2} [A-Z]{3} \d{4}/.test(s.querySelector("header")?.textContent ?? ""), inView: r.bottom <= window.innerHeight + 1 };
+    return { notes: s.querySelectorAll("[data-sb-note]").length, composer: !!s.querySelector("[data-sb-response-composer]"), header: /Sofia|Elena|Giulia|Luca/.test(s.querySelector("header")?.textContent ?? ""), coord: /\d{2} [A-Z]{3} \d{4}/.test(s.querySelector("header")?.textContent ?? ""), inView: r.bottom <= window.innerHeight + 1 };
   });
   ok(deep && deep.notes >= 20, `a deep conversation opens its own focused surface (${deep?.notes} responses)`);
   ok(deep && deep.header && deep.coord, "…carrying the memory it belongs to: person + date coordinate");

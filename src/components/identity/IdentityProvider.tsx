@@ -10,8 +10,8 @@
  * reads `open` and reports the explorer lock.
  *
  * Storage model: only a CREATED identity is ever persisted (sb-identity).
- * The Maya Rai demo identity is rebuilt from its seed on demand, so entering
- * as Maya never overwrites an identity the person created. The session
+ * The Giulia Bianchi demo identity is rebuilt from its seed on demand, so entering
+ * as Giulia never overwrites an identity the person created. The session
  * (sb-session) names which one is active.
  */
 

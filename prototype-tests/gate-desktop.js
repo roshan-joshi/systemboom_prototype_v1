@@ -171,12 +171,12 @@ const G = require("./gate-lib");
     text: document.querySelector("[role=dialog]").innerText,
   }));
   G.assert(afterSwitch.identity && afterSwitch.session === null && afterSwitch.view === "signin", "session cleared, identity kept, back to sign-in");
-  G.assert(afterSwitch.text.includes("Enter as Asha Gurung") && afterSwitch.text.includes("Enter as Maya Rai (demo identity)"), "created identity primary, Maya secondary");
+  G.assert(afterSwitch.text.includes("Enter as Asha Gurung") && afterSwitch.text.includes("Enter as Giulia Bianchi (demo identity)"), "created identity primary, Giulia secondary");
   await shot(page, "E-switch-identity");
-  await G.clickText(page, "Enter as Maya Rai");
+  await G.clickText(page, "Enter as Giulia Bianchi");
   await sleep(400);
-  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Maya activates the demo identity");
-  G.assert(!!(await page.evaluate(() => localStorage.getItem("sb-identity"))), "entering as Maya did not overwrite the created identity");
+  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Giulia activates the demo identity");
+  G.assert(!!(await page.evaluate(() => localStorage.getItem("sb-identity"))), "entering as Giulia did not overwrite the created identity");
   await page.keyboard.press("Escape");
   await G.expectClosed(page);
 

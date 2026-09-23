@@ -1,6 +1,6 @@
 /**
- * Demo-seed adapter — maps the fictional Maya Rai mock content onto the one
- * runtime PrototypeIdentity shape, so "Enter as Maya Rai (demo identity)"
+ * Demo-seed adapter — maps the fictional Giulia Bianchi mock content onto the one
+ * runtime PrototypeIdentity shape, so "Enter as Giulia Bianchi (demo identity)"
  * and "Create your identity" are indistinguishable to every consumer.
  */
 
@@ -33,7 +33,9 @@ export function identityFromDemoSeed(): PrototypeIdentity {
     birthDate: demoUser.dateOfBirth,
     birthTime: demoUser.birthTime,
     birthTimeKnown: demoUser.birthTimeKnown,
-    currentPlace: placeFromGeo("cy-kathmandu", demoUser.location, "NP"),
+    // Phase 4.4-A owner fixture add-on: the curated geography (frozen Phase 1) has no Italian
+    // city, so Bologna anchors on the curated Italy centroid — never a precise fix, by design.
+    currentPlace: placeFromGeo("cn-italy", demoUser.location, "IT"),
     createdAt: DEMO_SEED_CREATED_AT,
     source: "demo-seed",
   });

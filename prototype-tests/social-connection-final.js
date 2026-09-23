@@ -97,7 +97,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   await open(page, { theme: "light" });
   await page.click("[data-sb-people]");
   await sleep(400);
-  await page.type("[data-sb-people-find]", "Ramesh");
+  await page.type("[data-sb-people-find]", "Marco");
   await sleep(400);
   const found = await page.$$eval("[data-sb-people-row]", (els) => els.map((e) => e.getAttribute("data-sb-people-row")));
   ok(found.length === 1, `Find someone narrows to the matching person (${found.length})`);
@@ -150,10 +150,10 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   const ownerKicker = await page.$eval("[data-sb-world-context]", (e) => e.textContent.trim());
   ok(ownerBrand === ownerKicker && ownerBrand === "My World", `owner: brand and hero agree (${ownerBrand} / ${ownerKicker})`);
   await shot(page, "23-header-owner-context");
-  await setViewer(page, "Asha → Maya");
+  await setViewer(page, "Sofia → Giulia");
   const visBrand = await page.$eval("[data-sb-context]", (e) => e.textContent.trim());
   const visKicker = await page.$eval("[data-sb-world-context]", (e) => e.textContent.trim());
-  ok(visBrand === visKicker && /Maya/.test(visBrand), `visitor: brand and hero agree, and neither falsely says "My World" (${visBrand} / ${visKicker})`);
+  ok(visBrand === visKicker && /Giulia/.test(visBrand), `visitor: brand and hero agree, and neither falsely says "My World" (${visBrand} / ${visKicker})`);
   await shot(page, "24-header-visitor-context");
   await shot(page, "18-visitor-world-light");
   await open(page, { theme: "dark", extra: { viewer: "ashaVisitor" } });
@@ -193,7 +193,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   /* ---- 11. Relationship agreement across surfaces (Search / People / Notification / Person) ---- */
   console.log("11. Relationship agreement");
   await open(page, { theme: "light" });
-  await page.type("input[type=search]", "Krishna");
+  await page.type("input[type=search]", "Federico");
   await sleep(400);
   const searchRel = await page.$eval("[data-sb-search-life]", (e) => e.textContent);
   ok(/Family/.test(searchRel), `Search shows the real relationship (${searchRel})`);
@@ -209,7 +209,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   await shot(page, "25-moment-author-to-person");
   await page.keyboard.press("Escape");
   await sleep(200);
-  await page.type("input[type=search]", "Ramesh");
+  await page.type("input[type=search]", "Marco");
   await sleep(400);
   await page.click("[data-sb-search-person]");
   await sleep(400);
@@ -283,7 +283,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   // Bikash starts seeded as "friend" — remove him first (owner view), then switch to Bikash's
   // own viewer IN-PAGE (no reload) so the change survives, to reach a real "none" Hero to focus.
   await open(page, { theme: "light" });
-  await page.type("input[type=search]", "Bikash");
+  await page.type("input[type=search]", "Luca");
   await sleep(400);
   await page.click("[data-sb-search-person]");
   await sleep(300);
@@ -291,7 +291,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   await sleep(300);
   await page.keyboard.press("Escape");
   await sleep(200);
-  await setViewer(page, "Bikash → Maya");
+  await setViewer(page, "Luca → Giulia");
   await page.evaluate(() => { document.querySelector("[data-sb-hero-add-friend]")?.focus(); });
   const addFocused = await page.evaluate(() => !!document.activeElement?.hasAttribute("data-sb-hero-add-friend"));
   ok(addFocused, "Add Friend is keyboard-reachable on the Hero once the relationship is none");

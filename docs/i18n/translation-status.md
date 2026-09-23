@@ -14,14 +14,14 @@ run native review before any locale is presented to users as complete.
 
 | locale | native name | strings | plural forms | QA status |
 |--------|-------------|---------|--------------|-----------|
-| en | English | 319 | one \| other | **reference** (canonical source; byte-identical to product strings) |
-| es | Español | 319 | one \| other | draft |
-| it | Italiano | 319 | one \| other | draft |
-| nl | Nederlands | 319 | one \| other | draft |
-| ru | Русский | 319 | one \| few \| many | draft |
-| hi | हिन्दी | 319 | one \| other | draft |
-| ne | नेपाली | 319 | one \| other | draft |
-| zh-Hans | 简体中文 | 319 | other | draft |
+| en | English | 384 | one \| other | **reference** (canonical source; byte-identical to product strings) |
+| es | Español | 384 | one \| other | draft |
+| it | Italiano | 384 | one \| other | draft |
+| nl | Nederlands | 384 | one \| other | draft |
+| ru | Русский | 384 | one \| few \| many | draft |
+| hi | हिन्दी | 384 | one \| other | draft |
+| ne | नेपाली | 384 | one \| other | draft |
+| zh-Hans | 简体中文 | 384 | other | draft |
 
 All eight catalogs are **key-complete**: every catalog has exactly the same key set as
 English (0 missing, 0 extra), verified by the completeness check. Completeness is not

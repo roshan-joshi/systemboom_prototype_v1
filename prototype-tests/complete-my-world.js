@@ -38,7 +38,7 @@ async function enterIdentity(page) {
   await page.waitForSelector("[role=dialog]", { timeout: 12000 });
   await sleep(400);
   await page.evaluate(() => {
-    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Maya Rai/.test(x.textContent))?.click();
+    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Giulia Bianchi/.test(x.textContent))?.click();
   });
   await sleep(700);
 }
@@ -102,7 +102,7 @@ async function enterIdentity(page) {
     await page.evaluate(async () => {
       const i = document.querySelector("input[type=search]");
       i.focus();
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Ramesh");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Marco");
       i.dispatchEvent(new Event("input", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 400));
     });
@@ -130,7 +130,7 @@ async function enterIdentity(page) {
     await page.evaluate(async () => {
       const i = document.querySelector("input[type=search]");
       i.focus();
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Sunita");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Elena");
       i.dispatchEvent(new Event("input", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 400));
     });
@@ -309,7 +309,7 @@ async function enterIdentity(page) {
       await page.evaluate(async () => {
         const i = document.querySelector("input[type=search]");
         i.focus();
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Prakash");
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Chiara");
         i.dispatchEvent(new Event("input", { bubbles: true }));
         await new Promise((r) => setTimeout(r, 400));
       });
@@ -330,9 +330,11 @@ async function enterIdentity(page) {
     // media failure keeps the Moment's structure (the 404 is the point of the test)
     await open(page, "/world", { theme: "light" });
     probing = true;
-    await page.$eval("[data-sb-moment='m-meal'] img", (img) => { img.src = "/mock/social/broken-404.jpg"; });
+    await // Phase 4.4-A owner fixture add-on: the author now has a real portrait, so the MOMENT's photo is
+    // the image that is not the identity photo (the failure under test is the Moment media, as before).
+    await page.$eval("[data-sb-moment='m-meal'] img:not([data-sb-identity-photo])", (img) => { img.src = "/mock/social/broken-404.jpg"; });
     await sleep(600);
-    const fallback = await page.$eval("[data-sb-moment='m-meal']", (e) => ({ fb: !!e.querySelector("[data-sb-media-fallback]"), respond: /Respond/.test(e.textContent), who: /Bikash/.test(e.textContent) }));
+    const fallback = await page.$eval("[data-sb-moment='m-meal']", (e) => ({ fb: !!e.querySelector("[data-sb-media-fallback]"), respond: /Respond/.test(e.textContent), who: /Luca/.test(e.textContent) }));
     ok(fallback.fb && fallback.respond && fallback.who, "a failed photo keeps its place — person, words and actions survive");
     await page.$eval("[data-sb-moment='m-meal']", (e) => e.scrollIntoView({ block: "center" }));
     await sleep(300);

@@ -111,7 +111,7 @@ loads. A 1,000-person pulse under 6× CPU throttling opens its Spectrum immediat
 style-lab route seeds a Moment's expression map (reducer action `pulse-sim`; never on the
 product route). Synthetic people live behind `sim-` ids and resolve deterministically to
 fictional identities (`synthPerson` in `data.ts`). `100mixed`/`1000mixed` include the viewer
-(Maya → Support) so viewer-first ordering is demonstrable.
+(Giulia, `u-demo-001` → Support) so viewer-first ordering is demonstrable.
 
 ## 9. Live port seams (no backend invented)
 

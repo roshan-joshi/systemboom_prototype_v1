@@ -44,3 +44,19 @@ These are real photographs of adults, all released under **CC0 1.0 (public domai
 - `cast-nadia.jpg` (persona: Nadia Haddad, Manchester) — File:Brunette woman near brick wall (Unsplash).jpg — Martin Miranda — CC0 — https://commons.wikimedia.org/wiki/File:Brunette_woman_near_brick_wall_(Unsplash).jpg
 - `cast-walt.jpg` (persona: Walt Brennan, Austin) — File:Man with wrinkles and cap (Unsplash).jpg — Kahar Saidyhalam — CC0 — https://commons.wikimedia.org/wiki/File:Man_with_wrinkles_and_cap_(Unsplash).jpg
 - `cast-sofia.jpg` (persona: Sofia Marchetti, Brooklyn) — File:Dark-haired woman by a tree (Unsplash).jpg — Allef Vinicius — CC0 — https://commons.wikimedia.org/wiki/File:Dark-haired_woman_by_a_tree_(Unsplash).jpg
+
+## Phase 4.4-A — Italian social circle (face-framed crops of the CC0 portraits above)
+
+Owner fixture add-on. Each file below is a square, face-framed crop of one CC0 portrait listed above
+(crop box in the 640-px-wide source, then resized to 400×400; no other pixel changes). The personas are
+FICTIONAL prototype identities: the person photographed is not the persona, and the name, city, birth
+data, relationships and Moments imply nothing about them. The source portraits no longer carry the
+Social 2030 persona names listed above; `cast-marcus.jpg` and `cast-walt.jpg` are no longer used by any
+persona, `face-portrait.jpg` is now only a Moment photograph (m-face), and `face-portrait-man.jpg` is unused.
+
+- `cast/giulia-bianchi.jpg` (persona: Giulia Bianchi (owner, u-demo-001)) — crop [225, 210, 170] of `cast-nadia.jpg` — File:Brunette woman near brick wall (Unsplash).jpg — Martin Miranda martinmiranda — CC0 — https://commons.wikimedia.org/wiki/File:Brunette_woman_near_brick_wall_(Unsplash).jpg
+- `cast/sofia-romano.jpg` (persona: Sofia Romano) — crop [245, 48, 170] of `cast-hannah.jpg` — File:Brunette woman portrait (Unsplash).jpg — Christopher Campbell chrisjoelcampbell — CC0 — https://commons.wikimedia.org/wiki/File:Brunette_woman_portrait_(Unsplash).jpg
+- `cast/elena-ricci.jpg` (persona: Elena Ricci) — crop [232, 72, 210] of `cast-sofia.jpg` — File:Dark-haired woman by a tree (Unsplash).jpg — Allef Vinicius seteales — CC0 — https://commons.wikimedia.org/wiki/File:Dark-haired_woman_by_a_tree_(Unsplash).jpg
+- `cast/chiara-conti.jpg` (persona: Chiara Conti) — crop [185, 112, 230] of `cast-grace.jpg` — File:Mother Nature, Summer (Unsplash).jpg — Autumn Goodman auttgood — CC0 — https://commons.wikimedia.org/wiki/File:Mother_Nature,_Summer_(Unsplash).jpg
+- `cast/luca-rinaldi.jpg` (persona: Luca Rinaldi) — crop [98, 86, 200] of `cast-theo.jpg` — File:Stockholm man with headphones (Unsplash).jpg — Yingchou Han hyingchou — CC0 — https://commons.wikimedia.org/wiki/File:Stockholm_man_with_headphones_(Unsplash).jpg
+- `cast/federico-castelbarco.jpg` (persona: Federico Alessandro Castelbarco Visconti) — crop [200, 118, 250] of `cast-rory.jpg` — File:Man vanguard glasses outdoors (Unsplash).jpg — Seth Doyle sethdoylee — CC0 — https://commons.wikimedia.org/wiki/File:Man_vanguard_glasses_outdoors_(Unsplash).jpg

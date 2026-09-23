@@ -6,7 +6,7 @@
  * gutter at their own width; panoramas run the full column and stay short.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Play } from "lucide-react";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import type { Media as MediaT, Photo } from "./data";
@@ -40,6 +40,15 @@ function Frame({ photo, maxH = MAX_H, className = "" }: { photo: Photo; maxH?: n
 export function MediaBlock({ media, quiet = false }: { media: MediaT; quiet?: boolean }) {
   const { t, tp } = useT();
   const [expanded, setExpanded] = useState(false);
+  // The control the person used disappears when the grid changes (the "+N" tile becomes a photo,
+  // "Show fewer" goes away), so focus follows to its counterpart instead of falling to <body>.
+  const grid = useRef<HTMLDivElement>(null);
+  const moved = useRef(false);
+  useEffect(() => {
+    if (!moved.current) return;
+    moved.current = false;
+    grid.current?.querySelector<HTMLElement>(expanded ? "[data-sb-show-fewer]" : "[data-sb-show-more]")?.focus({ preventScroll: true });
+  }, [expanded]);
   const radius = quiet ? "rounded-[4px]" : "@2xl:rounded-[4px]";
 
   if (media.kind === "photos") {
@@ -48,27 +57,30 @@ export function MediaBlock({ media, quiet = false }: { media: MediaT; quiet?: bo
     const shown = expanded ? items : items.slice(0, 4);
     const extra = items.length - shown.length;
     return (
-      <div className={`overflow-hidden ${radius}`}>
+      <div ref={grid} className={`overflow-hidden ${radius}`}>
         <div className="grid grid-cols-2 gap-[2px]">
-          {shown.map((p, i) => (
-            <button
-              key={p.src + i}
-              type="button"
-              onClick={() => !expanded && extra > 0 && i === shown.length - 1 && setExpanded(true)}
-              aria-label={extra > 0 && i === shown.length - 1 ? tp("media.showMoreN", extra) : p.alt}
-              className="relative block overflow-hidden bg-[var(--sheet-raised)] focus-visible:outline-[var(--focus)]"
-              style={{ aspectRatio: `${p.w} / ${p.h}`, maxHeight: 320 }}
-            >
-              <SafeImg photo={p} />
-              {extra > 0 && i === shown.length - 1 && (
-                <span className="absolute inset-0 flex items-center justify-center bg-[rgba(10,13,20,0.55)] text-[18px] font-semibold text-white tabular-nums">+{extra}</span>
-              )}
-            </button>
-          ))}
+          {shown.map((p, i) => {
+            const style = { aspectRatio: `${p.w} / ${p.h}`, maxHeight: 320 };
+            // Phase 4.4-A (A23): only the "+N more" tile does something, so only it is a control.
+            // Every other tile is the photo itself — no button that promises an action it lacks.
+            if (extra > 0 && i === shown.length - 1) {
+              return (
+                <button key={p.src + i} type="button" onClick={() => { moved.current = true; setExpanded(true); }} aria-label={tp("media.showMoreN", extra)} className="relative block overflow-hidden bg-[var(--sheet-raised)] focus-visible:outline-[var(--focus)]" style={style} data-sb-show-more>
+                  <SafeImg photo={p} />
+                  <span className="absolute inset-0 flex items-center justify-center bg-[rgba(10,13,20,0.55)] text-[18px] font-semibold text-white tabular-nums">+{extra}</span>
+                </button>
+              );
+            }
+            return (
+              <figure key={p.src + i} className="relative m-0 block overflow-hidden bg-[var(--sheet-raised)]" style={style} data-sb-media-tile>
+                <SafeImg photo={p} />
+              </figure>
+            );
+          })}
         </div>
         {expanded && (
-          <button type="button" onClick={() => setExpanded(false)} className="mt-1 text-[13px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">
-            Show fewer
+          <button type="button" onClick={() => { moved.current = true; setExpanded(false); }} className="mt-1 text-[13px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-show-fewer>
+            {t("media.showFewer")}
           </button>
         )}
       </div>
@@ -81,7 +93,9 @@ export function MediaBlock({ media, quiet = false }: { media: MediaT; quiet?: bo
     return (
       <figure className={`sb-media relative max-w-full overflow-hidden bg-[var(--sheet-raised)] ${radius}`} style={{ aspectRatio: `${p.w} / ${p.h}`, maxHeight: MAX_H, width: ar < 1 ? Math.round(MAX_H * ar) : undefined }}>
         <SafeImg photo={p} />
-        <button type="button" aria-label={t("media.playVideo", { duration: media.duration })} className="absolute inset-0 flex items-center justify-center focus-visible:outline-[var(--focus)]">
+        {/* Phase 4.4-A (A23): playback is not built (D-20), so the play control says so — it is
+            disabled rather than a button that silently does nothing. */}
+        <button type="button" disabled aria-disabled="true" aria-label={t("media.playVideo", { duration: media.duration })} className="absolute inset-0 flex cursor-default items-center justify-center focus-visible:outline-[var(--focus)]" data-sb-video-play>
           <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/80 bg-[rgba(10,13,20,0.35)] text-white">
             <Play size={20} fill="currentColor" strokeWidth={0} className="ml-1" />
           </span>

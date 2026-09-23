@@ -161,16 +161,16 @@ async function contrastTable(page, theme) {
       await go(page, { viewer }, { theme, w });
       await loadAll(page);
       const leaked = await domHas(page);
-      ok(leaked.length === 0, `${viewer} ${theme} ${w}: Maya's birth-derived strings absent from the entire DOM${leaked.length ? " — FOUND " + leaked.join(", ") : ""}`);
+      ok(leaked.length === 0, `${viewer} ${theme} ${w}: Giulia's birth-derived strings absent from the entire DOM${leaked.length ? " — FOUND " + leaked.join(", ") : ""}`);
       ok(!(await page.$("[data-sb-contact]")), `${viewer} ${theme} ${w}: no contact pill`);
       ok(!(await page.$("[data-sb-hero] dt")), `${viewer} ${theme} ${w}: no Born row (no definition list in the hero)`);
       const heroRings = await page.$$eval("[data-sb-hero] [data-sb-ring]", (n) => n.map((x) => x.getAttribute("data-sb-ring")));
       ok(heroRings.length > 0 && heroRings.every((r) => r === "other"), `${viewer} ${theme} ${w}: hero ring is band-level (no tick): ${heroRings.join(",")}`);
-      ok(!(await page.$("[data-sb-hero] [data-sb-tick-angle]")), `${viewer} ${theme} ${w}: no red now-tick on Maya's ring`);
+      ok(!(await page.$("[data-sb-hero] [data-sb-tick-angle]")), `${viewer} ${theme} ${w}: no red now-tick on Giulia's ring`);
       const circle = await page.$eval("[data-sb-circle]", (e) => ({ kind: e.getAttribute("data-sb-circle"), text: e.textContent, tick: !!e.querySelector("[data-sb-tick-angle]") }));
       ok(circle.kind === "visitor" && !circle.tick && /band\s*30–45|30–45\s*band/.test(circle.text.replace(/\s+/g, " ")) && !/\d{1,3},\d{3}\s*days/i.test(circle.text), `${viewer} ${theme} ${w}: Circle module reads the band, no day count, no tick`);
-      const exactOnMaya = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].some((p) => p.textContent.includes("Maya Rai") && /\d+y \d+m \d+d/.test(p.textContent)));
-      ok(!exactOnMaya, `${viewer} ${theme} ${w}: no exact age on any of Maya's moments`);
+      const exactOnGiulia = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].some((p) => p.textContent.includes("Giulia Bianchi") && /\d+y \d+m \d+d/.test(p.textContent)));
+      ok(!exactOnGiulia, `${viewer} ${theme} ${w}: no exact age on any of Giulia's moments`);
       if (viewer === "visitor" && (w === "desktop" || w === "360")) await shot(page, `corrections/visitor-hero-${theme}-${w}`);
       if (viewer === "visitor" && theme === "light" && w === "desktop") { await page.$eval("[data-sb-circle]", (e) => e.scrollIntoView({ block: "center" })); await sleep(300); await shot(page, "corrections/visitor-circle-module"); }
     }
@@ -180,10 +180,10 @@ async function contrastTable(page, theme) {
   if (vm) ok(["birth", "birthDate", "birthTime", "precision", "exact", "years", "months", "days", "totalDays", "fraction", "bandYears"].every((k) => !vm.includes(k)), `non-owner LifeView carries only ${vm.join(", ")}`);
   // reverse coverage: Maya viewing Bikash's moments → band only
   await go(page, {}, { theme: "light", w: "desktop" });
-  const bikash = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].filter((p) => p.textContent.includes("Bikash Shrestha")).map((p) => p.textContent.replace(/\s+/g, " ")));
-  ok(bikash.length > 0 && bikash.every((t) => t.includes("30–45") && !/\d+y \d+m \d+d/.test(t)), `Maya sees Bikash's moments with band only (${bikash[0]?.slice(0, 60)})`);
-  const mayaOwn = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].filter((p) => p.textContent.includes("Maya Rai")).every((p) => /\d+y \d+m \d+d/.test(p.textContent)));
-  ok(mayaOwn, "Maya sees her own moments with the exact age");
+  const luca = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].filter((p) => p.textContent.includes("Luca Rinaldi")).map((p) => p.textContent.replace(/\s+/g, " ")));
+  ok(luca.length > 0 && luca.every((t) => t.includes("30–45") && !/\d+y \d+m \d+d/.test(t)), `Giulia sees Luca's moments with band only (${luca[0]?.slice(0, 60)})`);
+  const giuliaOwn = await page.evaluate(() => [...document.querySelectorAll("[data-sb-readout]")].filter((p) => p.textContent.includes("Giulia Bianchi")).every((p) => /\d+y \d+m \d+d/.test(p.textContent)));
+  ok(giuliaOwn, "Giulia sees her own moments with the exact age");
   for (const theme of ["light", "dark"]) {
     await go(page, { viewer: "asha" }, { theme, w: "desktop" });
     const units = await page.$eval("aside [data-sb-counter][data-sb-counter-units]", (e) => e.getAttribute("data-sb-counter-units"));
@@ -288,8 +288,10 @@ async function contrastTable(page, theme) {
   });
   await sleep(200);
   await clickText(page, "Edit", forty);
-  await setValue(page, `${forty} input[aria-label='Edit response']`, "Counting it as forty-two.");
-  await page.focus(`${forty} input[aria-label='Edit response']`);
+  // Phase 4.4-A owner-superseded (recorded in AGENTS.md): the edit field is a TEXTAREA so a
+  // response keeps its line breaks (A16). Enter still saves; the invariant is unchanged.
+  await setValue(page, `${forty} textarea[aria-label='Edit response']`, "Counting it as forty-two.");
+  await page.focus(`${forty} textarea[aria-label='Edit response']`);
   await page.keyboard.press("Enter");
   await sleep(300);
   ok(await page.evaluate(() => [...document.querySelectorAll("[data-sb-moment='m-forty'] [data-sb-note]")].some((x) => x.textContent.includes("forty-two") && x.textContent.includes("edited"))), "own note edits and shows 'edited'");
@@ -570,12 +572,12 @@ async function contrastTable(page, theme) {
   const order = await page.$$eval("[data-sb-moment]", (n) => n.map((x) => x.getAttribute("data-sb-moment")));
   const dates = await page.$$eval("[data-sb-moment] [data-sb-date-rule]", (n) => n.map((h) => h.textContent.replace(/\s+/g, " ").trim()));
   const atOrder = await page.evaluate(() => [...document.querySelectorAll("[data-sb-moment]")].map((m) => m.getAttribute("data-sb-at") || ""));
-  ok(order[order.length - 1] === "m-1983", `the 1983 moment sits at the bottom of the fully loaded ledger (last: ${order[order.length - 1]})`);
+  ok(order[order.length - 1] === "m-1983", `the oldest moment (m-1983, re-dated 1998) sits at the bottom of the fully loaded ledger (last: ${order[order.length - 1]})`);
   const uniqueDays = new Set(dates.map((d) => d.replace(/^TODAY\s*/, "").replace(/shared.*$/, "").trim()));
   ok(uniqueDays.size === dates.length, `one date rule per calendar day, never repeated (${dates.length} rules, ${uniqueDays.size} days)`);
   ok(atOrder.every((v, i, a) => i === 0 || a[i - 1] >= v), "entries are in strictly descending order of the moment's own date/time");
-  const shared1983 = dates.find((d) => d.includes("06 FEB 1983"));
-  ok(!!shared1983 && /shared/.test(shared1983), `backdated 1983 rule keeps 'shared' provenance: "${shared1983}"`);
+  const shared1983 = dates.find((d) => d.includes("14 SEP 1998"));
+  ok(!!shared1983 && /shared/.test(shared1983), `backdated 1998 rule keeps 'shared' provenance: "${shared1983}"`);
   // World
   // Final My World model (owner decision): the personal Home is MY WORLD; the
   // stream is MOMENTS; "Social" is capability vocabulary, never a user-facing

@@ -48,9 +48,9 @@ const tap = async (page, sel) => {
   await sleep(700);
   await shot(page, "M2-sheet-over-focused-earth");
   // Enter as Maya from the sheet, then close
-  await G.clickText(page, "Enter as Maya Rai");
+  await G.clickText(page, "Enter as Giulia Bianchi");
   await sleep(500);
-  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Maya works on mobile");
+  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Giulia works on mobile");
   await shot(page, "M3-signed-in-sheet");
   await G.clickText(page, "Back to the Cosmos");
   await G.expectClosed(page, "close on mobile");

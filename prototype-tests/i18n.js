@@ -62,8 +62,8 @@ async function ssr(locale) {
   console.log("2. human content untranslated");
   for (const loc of ["ne", "ru", "zh-Hans"]) {
     const html = await ssr(loc);
-    ok(html.includes("Maya Rai"), `${loc}: the person's name "Maya Rai" stays original`);
-    ok(html.includes("Kathmandu"), `${loc}: the place "Kathmandu" stays original`);
+    ok(html.includes("Giulia Bianchi"), `${loc}: the person's name "Giulia Bianchi" stays original`);
+    ok(html.includes("Bologna"), `${loc}: the place "Bologna" stays original`);
   }
 
   /* ---- 3. deterministic locale formatting (own tables; no ICU drift) ---- */
@@ -125,7 +125,7 @@ async function ssr(locale) {
   ok(urlAfter === urlBefore, `switching language did NOT change the route (${urlAfter.replace("http://localhost:3210", "")})`);
   ok(langAfter === "en", `after choosing English in place, <html lang> is "${langAfter}"`);
   const afterText = await page.evaluate(() => document.body.innerText);
-  ok(/Maya Rai/.test(afterText) && /Kathmandu/.test(afterText), "human content (name, place) is unchanged by the switch");
+  ok(/Giulia Bianchi/.test(afterText) && /Bologna/.test(afterText), "human content (name, place) is unchanged by the switch");
   await page.screenshot({ path: `${EV}/switch-to-en.png` });
   console.log("  shot switch-to-en");
 

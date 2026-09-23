@@ -184,7 +184,7 @@ const stripState = (page) =>
     ok(panel.groups.join(",") === CANON.join(","), "eight groups, canonical order");
     ok(new Set(panel.sealWs).size === 1, "equal Seals inside the stage too");
     ok(panel.people === 16, "every person present, resolved through the view model");
-    ok(panel.text.includes("Asha Gurung"), "real people, by name");
+    ok(panel.text.includes("Sofia Romano"), "real people, by name");
     ok(panel.role === "group", "an accessible group with the summary's own label");
     ok(!/top|winner|rank|most|#1/i.test(panel.text), "no ranking words in the stage");
     const tops = await page.$eval(`${RAIN} [data-sb-presence]`, (row) => [...row.children].map((k) => k.getBoundingClientRect().top));
@@ -392,7 +392,7 @@ const stripState = (page) =>
     await sleep(450);
     const vis = await page.$eval(`${RAIN} [data-sb-resonance-who-panel]`, (el) => {
       const rows = [...el.querySelectorAll("[data-sb-resonance-person]")];
-      const maya = rows.find((r) => /Maya Rai/.test(r.textContent ?? ""));
+      const maya = rows.find((r) => /Giulia Bianchi/.test(r.textContent ?? ""));
       const text = el.textContent ?? "";
       const attrs = [...el.querySelectorAll("*")].flatMap((n) => [...n.attributes].filter((a) => !/^(class|style|src)$/.test(a.name)).map((a) => a.value)).join(" ");
       // The visitor (Bikash) is himself one of the resonators: HIS own row may carry his own
@@ -410,8 +410,8 @@ const stripState = (page) =>
         contact: /\+977|9841|@example\.com/.test(el.innerHTML),
       };
     });
-    ok(vis.mayaPresent, "the visitor sees Maya among the people who resonated — by name");
-    ok(vis.mayaRing === "other" && !vis.mayaIsYou, "Maya's ring resolves to the visitor's band-only view, and her row is not 'You'");
+    ok(vis.mayaPresent, "the visitor sees Giulia among the people who resonated — by name");
+    ok(vis.mayaRing === "other" && !vis.mayaIsYou, "Giulia's ring resolves to the visitor's band-only view, and her row is not 'You'");
     ok(vis.othersBandOnly && vis.otherTicks === 0, "every other person's row is band-only with no owner-only Life tick (fraction)");
     ok(!vis.exactAge && !vis.dayCount, "no exact age and no day count, in text or attributes");
     ok(!vis.birth, "no birth date or birth time");

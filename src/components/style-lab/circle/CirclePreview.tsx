@@ -5,7 +5,7 @@
  *
  * Harness (not the design): ?w=360|390|768|desktop · ?theme=light|dark (layout boot
  * script) · ?viewer=maya|asha|visitor|ashaVisitor (the Social store's viewer modes —
- * visitor modes view Maya's Circle at band resolution) · ?entry=ring (start from the
+ * visitor modes view Giulia's Circle at band resolution) · ?entry=ring (start from the
  * compressed Life Ring and expand) · ?c=<coordinate> · ?harness=0.
  *
  * The Circle reads the accepted Social store (frozen) as its content source:
@@ -139,10 +139,10 @@ function Inner({ product = false }: { product?: boolean }) {
               <span className="ml-1 inline-flex overflow-hidden rounded-full border border-divider">
                 {(
                   [
-                    ["maya", "Maya (owner)"],
-                    ["asha", "Asha (no birth time)"],
-                    ["visitor", "Bikash → Maya"],
-                    ["ashaVisitor", "Asha → Maya"],
+                    ["maya", "Giulia (owner)"],
+                    ["asha", "Sofia (no birth time)"],
+                    ["visitor", "Luca → Giulia"],
+                    ["ashaVisitor", "Sofia → Giulia"],
                   ] as const
                 ).map(([v, label]) => (
                   <button key={v} type="button" onClick={() => dispatch({ type: "viewer", viewer: v })} aria-pressed={state.viewer === v} className={`px-2.5 py-1 ${state.viewer === v ? "bg-content text-text" : "text-muted hover:text-text"}`}>

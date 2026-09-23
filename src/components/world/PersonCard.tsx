@@ -53,6 +53,21 @@ export function PersonCard() {
       if (e.key === "Escape") {
         e.stopPropagation();
         world.closePerson();
+        return;
+      }
+      // Phase 4.4-A (A8) — an aria-modal dialog keeps Tab inside itself (it used to walk out into
+      // whatever lay behind, e.g. an open phone conversation).
+      if (e.key !== "Tab") return;
+      const dialog = el?.closest<HTMLElement>("[data-sb-person-card]");
+      const nodes = Array.from(dialog?.querySelectorAll<HTMLElement>("button:not([disabled]),a[href]") ?? []).filter((n) => n.getClientRects().length > 0 && n.getAttribute("tabindex") !== "-1");
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const cur = document.activeElement as HTMLElement | null;
+      const inside = !!cur && !!dialog?.contains(cur);
+      if (e.shiftKey ? !inside || cur === first : !inside || cur === last) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -79,7 +94,9 @@ export function PersonCard() {
   const quiet = "sb-press inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[var(--hair)] px-4 text-[13px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:px-3.5";
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:items-center" role="dialog" aria-modal="true" aria-label={t("person.dialogAria", { name: person.name })} data-sb-person-card={id} data-sb-person-rel={rel}>
+    // Phase 4.4-A (A7): z-[66] — above the phone conversation surface (z-[60]) it can be opened
+    // from, which used to paint over it; still below the language sheet (z-[70]).
+    <div className="fixed inset-0 z-[66] flex items-end justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:items-center" role="dialog" aria-modal="true" aria-label={t("person.dialogAria", { name: person.name })} data-sb-person-card={id} data-sb-person-rel={rel}>
       <button type="button" aria-label={t("common.close")} onClick={world.closePerson} className="sb-scrim-in absolute inset-0 bg-[var(--scrim)]" />
       <div ref={ref} className="sb-surface-in relative w-full max-w-[400px] rounded-[20px] border border-[var(--card-edge)] bg-[var(--sheet-raised,var(--content))] p-5 shadow-[0_24px_64px_-24px_rgba(0,0,0,.5)]">
         <button type="button" aria-label={t("common.close")} onClick={world.closePerson} className="sb-transition absolute top-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-steel/15 hover:text-text focus-visible:outline-[var(--focus)]">

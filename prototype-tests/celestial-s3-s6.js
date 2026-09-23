@@ -40,7 +40,7 @@ async function enterWorld(page, celestial = true) {
   await sleep(1400);
   await page.click("[data-sb-gate-opener]"); await sleep(600);
   await page.waitForSelector("[role=dialog]", { timeout: 45000 }); await sleep(500);
-  await page.evaluate(() => { [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Maya Rai/.test(x.textContent))?.click(); });
+  await page.evaluate(() => { [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Giulia Bianchi/.test(x.textContent))?.click(); });
   await sleep(800);
   await page.click("[data-sb-enter-world]");
   await page.waitForSelector("[data-sb-sheet]", { timeout: 45000 }); await sleep(1200);

@@ -33,7 +33,7 @@ async function enterIdentity(page) {
   await page.waitForSelector("[role=dialog]", { timeout: 12000 });
   await sleep(400);
   await page.evaluate(() => {
-    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Maya Rai/.test(x.textContent))?.click();
+    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Giulia Bianchi/.test(x.textContent))?.click();
   });
   await sleep(700);
 }
@@ -81,16 +81,21 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     console.log("1. Real photo preferred + fallback hierarchy");
     await open(page, SOCIAL, { theme: "dark" });
     const heroOwner = await identityOf(page, "[data-sb-hero]");
-    ok(heroOwner.photo === "/mock/social/face-portrait.jpg", `owner ProfileHero uses Maya's real photo (${heroOwner.photo})`);
+    ok(heroOwner.photo === "/mock/social/cast/giulia-bianchi.jpg", `owner ProfileHero uses Giulia's real photo (${heroOwner.photo})`);
     await shot(page, "01-owner-profile-real-photo-desktop");
     await open(page, SOCIAL, { theme: "dark", w: 360 });
     await shot(page, "02-owner-profile-real-photo-360");
 
     await open(page, SOCIAL, { theme: "dark" });
-    await typeSearch(page, "Krishna");
+    await typeSearch(page, "Federico");
     const krishnaRow = await searchRow(page, "p-krishna");
-    ok(krishnaRow.photo === "/mock/social/face-portrait-man.jpg", `Krishna's search row uses his real photo (${krishnaRow.photo})`);
-    for (const [id, term, initials] of [["p-asha", "Asha", "AG"], ["p-bikash", "Bikash", "BS"], ["p-ramesh", "Ramesh", "RK"], ["p-prakash", "Prakash", "PL"]]) {
+    ok(krishnaRow.photo === "/mock/social/cast/federico-castelbarco.jpg", `Federico's search row uses his real photo (${krishnaRow.photo})`);
+    for (const [id, term, photo] of [["p-asha", "Sofia", "/mock/social/cast/sofia-romano.jpg"], ["p-bikash", "Luca", "/mock/social/cast/luca-rinaldi.jpg"], ["p-prakash", "Chiara", "/mock/social/cast/chiara-conti.jpg"]]) {
+      await typeSearch(page, term);
+      const row = await searchRow(page, id);
+      ok(row.photo === photo && row.initials === null, `${term} has a licensed portrait — the real photo leads, no initials (${row.photo})`);
+    }
+    for (const [id, term, initials] of [["p-ramesh", "Marco", "MB"], ["p-marcus", "Matteo", "MG"], ["p-grace", "Aurora", "AF"]]) {
       await typeSearch(page, term);
       const row = await searchRow(page, id);
       ok(row.photo === null && row.initials === initials, `${term} has no photo fixture — falls back to initials (${row.initials})`);
@@ -116,27 +121,27 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     /* ---- 3. Same identity semantics across every context (Krishna) ---- */
     console.log("3. One identity system across contexts");
     await toWorld(page);
-    await typeSearch(page, "Krishna");
+    await typeSearch(page, "Federico");
     const searchKrishna = await searchRow(page, "p-krishna");
     await shot(page, "11-search-person-photo-ring");
     await page.click("[data-sb-search-person='p-krishna']");
     await sleep(400);
     const cardPhoto = (await identityOf(page, "[data-sb-person-card]")).photo;
-    ok(cardPhoto === "/mock/social/face-portrait-man.jpg", `PersonCard uses the same real photo (${cardPhoto})`);
+    ok(cardPhoto === "/mock/social/cast/federico-castelbarco.jpg", `PersonCard uses the same real photo (${cardPhoto})`);
     await shot(page, "12-friend-person-photo-ring");
     await page.click("[data-sb-message]");
     await page.waitForSelector("[data-sb-mini-chat='p-krishna']", { timeout: 8000 });
     const miniPhoto = (await identityOf(page, "[data-sb-mini-chat]")).photo;
-    ok(miniPhoto === "/mock/social/face-portrait-man.jpg", `mini chat header uses the same real photo (${miniPhoto})`);
+    ok(miniPhoto === "/mock/social/cast/federico-castelbarco.jpg", `mini chat header uses the same real photo (${miniPhoto})`);
     await shot(page, "14-mini-chat-photo-ring");
     await page.click("[data-sb-mini-expand]");
     await page.waitForSelector("[data-sb-chat-active='p-krishna']", { timeout: 8000 });
     const chatPhoto = (await identityOf(page, "[data-sb-chat-active]")).photo;
-    ok(chatPhoto === "/mock/social/face-portrait-man.jpg", `full Chat header uses the same real photo (${chatPhoto})`);
+    ok(chatPhoto === "/mock/social/cast/federico-castelbarco.jpg", `full Chat header uses the same real photo (${chatPhoto})`);
     await shot(page, "15-full-chat-photo-ring");
     ok(
-      [searchKrishna.photo, cardPhoto, miniPhoto, chatPhoto].every((p) => p === "/mock/social/face-portrait-man.jpg"),
-      "Krishna's identity is bit-for-bit the same photo in search, person card, mini chat and full Chat — one system, not several",
+      [searchKrishna.photo, cardPhoto, miniPhoto, chatPhoto].every((p) => p === "/mock/social/cast/federico-castelbarco.jpg"),
+      "Federico's identity is bit-for-bit the same photo in search, person card, mini chat and full Chat — one system, not several",
     );
     // Moment author, if his Moment is within the loaded window
     await open(page, "/world", { theme: "light" });
@@ -146,7 +151,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     }
     if (await page.$("[data-sb-moment] [data-sb-open-person='p-krishna']")) {
       const momentPhoto = await page.$eval("[data-sb-open-person='p-krishna']", (btn) => btn.closest("[data-sb-moment]")?.querySelector("[data-sb-identity-photo]")?.getAttribute("src") ?? null);
-      ok(momentPhoto === "/mock/social/face-portrait-man.jpg", `…and the Moment author row too (${momentPhoto})`);
+      ok(momentPhoto === "/mock/social/cast/federico-castelbarco.jpg", `…and the Moment author row too (${momentPhoto})`);
     }
     await shot(page, "10-moment-author-photo-ring");
 
@@ -208,13 +213,13 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     ok(total(mayaConnected) === total(mayaSelf) - 2, "exactly the two only-me Health/Problem Moments are excluded from a visitor's ring — nothing else (§9)");
     await open(page, SOCIAL, { theme: "dark" });
 
-    await typeSearch(page, "Bikash");
+    await typeSearch(page, "Luca");
     await page.click("[data-sb-search-person='p-bikash']");
     await sleep(400);
     await shot(page, "07-documented-band-sparse");
     await page.keyboard.press("Escape");
     await sleep(200);
-    await typeSearch(page, "Sunita");
+    await typeSearch(page, "Elena");
     await page.click("[data-sb-search-person='p-sunita']");
     await sleep(400);
     await shot(page, "08-documented-band-dense");
@@ -224,7 +229,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
 
     /* ---- 7. Ring never encodes relationship or presence ---- */
     console.log("7. Ring geometry stays Life-only");
-    for (const [id, term, rel] of [["p-bikash", "Bikash", "friend"], ["p-ramesh", "Ramesh", "none"], ["p-prakash", "Prakash", "request-in"]]) {
+    for (const [id, term, rel] of [["p-bikash", "Luca", "friend"], ["p-ramesh", "Marco", "none"], ["p-prakash", "Chiara", "request-in"]]) {
       await typeSearch(page, term);
       await page.click(`[data-sb-search-person='${id}']`);
       await sleep(400);
@@ -285,7 +290,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     await shot(page, "23-24px-ring");
     await open(page, SOCIAL, { theme: "dark" });
     await shot(page, "24-32px-ring"); // the composer's own preview ring
-    await typeSearch(page, "Krishna");
+    await typeSearch(page, "Federico");
     await page.click("[data-sb-search-person='p-krishna']");
     await sleep(400);
     await shot(page, "25-48px-ring"); // the person card's 56px ring — the first density-legible tier

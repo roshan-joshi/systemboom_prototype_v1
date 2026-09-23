@@ -119,6 +119,33 @@ Rules the front end depends on:
 - **Never invent a clock time.** A backdated Moment created from a date alone is
   `atPrecision: "day"`; only a Moment recorded for today, a trusted media capture time,
   or an explicit event time carries `"minute"`. Posting time is not the event time.
+- **Edit keeps temporal truth** (Phase 4.4-A). An edit that does not change the date
+  sends no `at` / `atPrecision` change at all — the Moment keeps its own instant and
+  precision exactly. An edit that deliberately moves the date sets `atPrecision: "day"`
+  (the clock part is a sort anchor, never displayed) and keeps sharing provenance:
+  `sharedAt` stays what it was, or becomes the Moment's original `at` if it had none.
+  *Live requirement:* the server applies the same rule and never rewrites a clock.
+- **Edit keeps media.** An edit carries the Moment's existing media object unchanged
+  unless the person changed that media (the link's title may be edited in place). The
+  client never substitutes placeholder media. *Live requirement:* partial updates must not
+  drop media fields the client did not send.
+- **A discarded Moment is never created.** The prototype cancels its pending publication
+  on Discard / Cancel / Escape and on unmount. *Live requirement:* a create request is sent
+  only after the person commits; if a request is in flight when they discard, the client
+  must cancel it or delete what it created — a discarded Moment must never appear.
+- **One media type per Moment** (`photos` | `video` | `link`, see D.2). The Composer
+  enforces it; extending it is owner decision D-20.
+- **No Moment before its author's birth.** The Composer refuses it with the Life rule's
+  sentence ("That date is before this life began."), as the Circle does. *Live requirement:*
+  the server refuses it too; time before birth belongs to the Ancestor context (D-17).
+- **"View as public" is a render-time preview** (Phase 4.4-A, part 1). The owner's
+  World renders through a technical public stand-in: no exact age, no owner tick, no
+  owner menus and no only-me Moment, and nothing can be written while previewing. The
+  stand-in is never persisted, never a relationship, never an author and never sent.
+  *Live requirement:* the preview must be computed from the same visitor payload a genuine
+  stranger receives (server-side), not by client filtering. Which audience `friends`
+  means (D-2) and whose Moments a World holds (D-4) are open owner decisions; until they
+  are decided the preview does not filter them (part 2, Phase 4.4-B).
 
 ### D.1 PersonRef (any author / responder / commenter)
 
@@ -160,6 +187,13 @@ note { id, momentId, parentId?, author: PersonRef, text (≤ 280 shown before "m
 ```
 Collapsed thread shows the first three top-level notes with their replies; the client
 asks for the rest on "View n more notes".
+
+Phase 4.4-A additions (the rest of this section still describes the retired Respond tap —
+correcting it to the R3 Response model is tracked separately):
+- `at` is a zone-bearing instant. The client shows `HH:MM` for a response from today and
+  `DD MON YYYY · HH:MM` otherwise (never relative time, never only a clock for an older day).
+- `text` keeps the person's own line breaks (the client renders them; edit is multi-line).
+- Replying from the phone's focused conversation writes `parentId` exactly as inline does.
 
 ## E. Owner life position (self only, server-derived per request)
 

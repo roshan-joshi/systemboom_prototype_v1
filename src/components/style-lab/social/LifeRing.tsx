@@ -73,6 +73,10 @@ export function LifeRing({ person, ring, size, stroke, positionLabel, interactiv
   const maxMoments = Math.max(1, ...(ring.momentsByBand ?? [1]));
   const uid = useId();
   const [hover, setHover] = useState<number | null>(null);
+  // Phase 4.4-A (A22): an empty position label means the ring is decorative — the person's name
+  // already sits beside it (PersonIdentity's documented contract). It used to announce
+  // "Name — " a second time.
+  const decorative = !interactive && positionLabel === "";
   const label = `${person.name} — ${positionLabel}`;
 
   const setBand = (i: number | null) => {
@@ -98,7 +102,7 @@ export function LifeRing({ person, ring, size, stroke, positionLabel, interactiv
   };
 
   return (
-    <span className={`relative inline-block shrink-0 ${className}`} style={{ width: size, height: size }} role={interactive ? undefined : "img"} aria-label={interactive ? undefined : label} data-sb-ring={own ? "own" : "other"} data-sb-ring-instrument={instrument ? "" : undefined}>
+    <span className={`relative inline-block shrink-0 ${className}`} style={{ width: size, height: size }} role={interactive || decorative ? undefined : "img"} aria-label={interactive || decorative ? undefined : label} aria-hidden={decorative || undefined} data-sb-ring={own ? "own" : "other"} data-sb-ring-instrument={instrument ? "" : undefined}>
       <svg
         viewBox={`0 0 ${size} ${size}`}
         width={size}

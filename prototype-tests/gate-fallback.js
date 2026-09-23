@@ -19,9 +19,9 @@ async function fallbackFlow(mobile) {
   const inert = await G.inertReport(page);
   G.assert(inert.prop && inert.focusRefused === true && inert.pointerBlocked, `inert effective on fallback (${inert.topAtCentre})`);
   await shot(page, `FB-${tag}-1-open`);
-  await G.clickText(page, "Enter as Maya Rai");
+  await G.clickText(page, "Enter as Giulia Bianchi");
   await sleep(500);
-  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Maya on fallback");
+  G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "Enter as Giulia on fallback");
   await shot(page, `FB-${tag}-2-signed-in`);
   await page.keyboard.press("Escape");
   await G.expectClosed(page, "fallback close");
@@ -50,7 +50,7 @@ async function storageBlocked() {
   const txt = await page.evaluate(() => document.querySelector("[role=dialog]").innerText);
   G.assert(txt.includes("can't remember an identity"), "honest memory-mode line shown in the gate");
   await shot(page, "SB-storage-blocked");
-  await G.clickText(page, "Enter as Maya Rai");
+  await G.clickText(page, "Enter as Giulia Bianchi");
   await sleep(400);
   G.assert((await G.identity(page)).activeIdentityId === "u-demo-001", "sign-in still works for the tab");
   G.assert(errors.length === 0, `zero page errors (${errors.length})`);

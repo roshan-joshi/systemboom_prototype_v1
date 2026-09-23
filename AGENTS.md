@@ -1070,3 +1070,163 @@ asserted unchanged (shape `chamber`, `path()` clip, shell, inset rim all still c
 Verified green on final source: full chain (all 31 suites + devanagari) after the change;
 tsc + eslint(src) clean; `next build` passes. No new assets (the 18 core orbs already existed);
 no motion added at rest.
+
+# Phase 4.4-A — Moment + Respond truth (owner-directed · 2026-09-23)
+
+A truth-restoration slice, not a redesign. It fixes places where the prototype published
+against the person's intent, corrupted a Moment, showed owner-only data under "View as public",
+broke the phone conversation, or claimed success it did not have. The baseline is the Phase 4.3
+audit (`references/social-bible-audit/phase-4.3/`); the IDs below (A1…A26, MC-/RS-/CO- rows,
+P0-3/4/5) are that package's.
+
+**Not in this slice (owner decisions stay open):** D-1 life position on other people's Moments,
+D-2 what `friends` means, D-3 Celestial's launch posture, D-4 whose Moments a World holds. The
+Life-position policy, visitor ring density, relationship architecture, notifications, Chat,
+Place, permalinks, View in Life and the Celestial phone row (P0-6) are untouched.
+`expressions.tsx` is byte-identical; no Celestial file was edited (the owner's uncommitted Light-mode work in them is untouched).
+
+**Prototype vs live.** Everything below is enforced in the client prototype only (reducers +
+fixtures, no server). The matching live requirements are written into
+`docs/handover/social-api-contract.md` §D / §D.4 and are NOT implemented by this repository.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-23 | 4.4-A (A2, P0-4) | `social/Composer.tsx` | Edit rewrote `at` to `T12:00:00` from both branches of a dead `initialTime` and never touched `atPrecision` (an edited 07:40 Moment read "12:00" and moved in the chronology) | Same date → the Moment's own `at` and `atPrecision` are kept exactly. A deliberately moved date → `atPrecision:"day"` (noon is only the sort anchor), and `sharedAt` keeps provenance (unchanged, or the original `at`). `initialTime` removed | `social-4-4a-truth.js` §1 |
+| 2026-09-23 | 4.4-A (A3, P0-4) | `social/Composer.tsx` | Edit rebuilt link and video media from mock constants and dropped any photo not in the mock library | An edit keeps the Moment's own media object unless the person changes it (a kept link keeps its description/image, a kept video its poster/duration/caption); photos outside the library keep their place as `orig-<i>` | §1 (photos, link, video byte-identical after edit) |
+| 2026-09-23 | 4.4-A (A4, P0-4) — **runtime-verified defect** | `social/Composer.tsx` | Discard during the 900 ms Posting window still published the Moment (default Public): the timer was never cleared | The one pending publication lives in a ref and is cleared on Discard, Cancel, Escape and unmount; Cancel/Escape while posting cancels first, then asks. The body is `inert` while posting (composer-states.md "every control disabled") so no edit can race the pending post | §2 (Cancel→Discard, Escape→Discard, Cancel→Keep draft; control: an uninterrupted Post publishes) |
+| 2026-09-23 | 4.4-A (A9) | `social/Composer.tsx`, `social/store.tsx` (`Draft.videoCaption`) | Kind fields leaked across kinds (a Meal's `with` posted on an Activity); the burned-in video caption rode on `fields.title`, the Problem kind's title | Only `KIND_FIELDS[kind]` keys are posted/edited; an ordinary Moment carries no `fields`. The video caption is its own draft field | §5 |
+| 2026-09-23 | 4.4-A (A10) | `social/Composer.tsx` | Photos, video and link could all be attached; submit silently kept one | The UI enforces the current one-type media contract: once one kind is attached the others are disabled with the reason stated (`composer.oneMediaKind`). D-20 governs any extension | §5 |
+| 2026-09-23 | 4.4-A (A11) | `social/Composer.tsx`, `social/DateField.tsx` (`min`) | Dates before the author's birth were accepted and showed a negative age, while the Circle refuses them | Refused with the Life rule's own sentence ("That date is before this life began."), Post disabled, no negative age, the date field starts at the birth date. This enforces the established rule; D-17 covers only future ancestral records | §5 |
+| 2026-09-23 | 4.4-A (A12) | `social/Composer.tsx`, `social/store.tsx` (`personOf`), `social/data.ts` (`Person.unavailable`, `unavailablePerson`), `social/view-model.ts` (guard) | An unmatched "with" name was stored as a person id and then resolved to the real fixture person "M" | Only resolved people are stored; unmatched names are said out loud (`composer.peopleNotFound`) and the field shows who was recorded. An unknown id resolves to a neutral "unavailable" identity (name "—", band-less via a one-line view-model guard, never listed among people present) — never to another person | §5 (+ unit check) |
+| 2026-09-23 | 4.4-A (A14) | `social/Composer.tsx` | Closing an edit with changes dropped them without asking | "Discard your changes?" with Discard changes / Keep editing | §1 |
+| 2026-09-23 | 4.4-A (A1, P0-3 part 1) | `social/store.tsx` (`PreviewScope`, `previewing`), `social/SocialPreview.tsx` (`MomentsSheet`), `social/Moment.tsx`, `social/LifeCursor.tsx` | "View as public" applied the public stand-in to the Hero and Circle only; the feed, conversations, menus and Life Cursor still rendered as the owner (exact ages, only-me Health/Problem) | The Moments sheet renders inside `PreviewScope`: `me` is the public stand-in for rendering, the feed is ordered for it (no only-me Moment), and every write dispatched inside is refused (only loadMore/reveal/landed pass). Boom and Resonate are wrapped `inert` there (no Celestial/Boom file touched); composers and person doorways are not rendered; a stranger's menu shows, paused; the pause is stated once. **Part 2 is not settled**: `friends` Moments and other authors' Moments are exactly as the owner view has them (D-2 / D-4, Phase 4.4-B) | §3 (incl. no stand-in in the store, storage or network; part-2 non-settlement checks) |
+| 2026-09-23 | 4.4-A (A5–A8, P0-5) — **runtime-verified defects** | `social/Moment.tsx` (`MomentConversation`) | Phone deep thread: Reply buttons did nothing (`onReply={() => {}}`), Respond focused the dialog instead of the composer, Escape on a menu/person closed the whole thread, focus fell to `<body>` on close, the page could scroll behind | Reply writes under its parent exactly as inline; Respond lands the cursor in the composer; Escape and Tab belong to the top-most layer (a Person card, a menu, a response being edited close first); Tab is trapped in the dialog; focus returns to the opener; wheel/touch on the header or scrim never scroll the page (the list still scrolls, overscroll contained); a just-sent response is revealed | §4 at 390 and 360 |
+| 2026-09-23 | 4.4-A (A7) — **runtime-verified defect** | `world/PersonCard.tsx` (not frozen) | Opened from the phone thread, the Person card painted BEHIND it (both z-60) while holding focus | `z-[66]` (above the thread, below the language sheet at z-70); Tab trapped inside the card | §4 (hit-test at three points) |
+| 2026-09-23 | 4.4-A (A13) | `social/Moment.tsx` (`kindLine`) | A Meeting named its people twice ("with Maya, Bikash … with 2" — the names of the time; the owner fixture add-on below renamed the cast) | Named once, in the one "with …" control that also opens them (`data-sb-moment-with` kept; a Meal still reads "with N") | §7 |
+| 2026-09-23 | 4.4-A (A15) | `social/Moment.tsx` (`NoteRow`), `social/data.ts` (`fortyNotes`) | Responses showed only `HH:MM`, never the day; the 40-response fixture wrote UTC as local, so responses read as written before their Moment (11:18 under 16:40) | `HH:MM` for today, `DD MON YYYY · HH:MM` otherwise, inside `<time dateTime>`; the fixture uses local wall-clock time (a hoisted helper — the seed calls it during module init) | §6 |
+| 2026-09-23 | 4.4-A (A16, A17) | `social/Moment.tsx` | A response's line breaks were not rendered and edit was a single-line input; Enter confirming an IME candidate could send a half-written response | Responses render `white-space: pre-line`; edit is a textarea (Enter saves, Shift+Enter breaks, Escape cancels, cursor at the end); Enter is ignored while composing (`isComposing` / 229) | §6 |
+| 2026-09-23 | 4.4-A (A18, A20) | `social/Moment.tsx` (`Popover`, entry) | "Write a response" at zero opened without focusing; menus returned no focus, had no arrow keys, and re-ran their effect on every parent render (snapping focus back to the first item); Hide/Delete left focus on `<body>` | Zero-response "Write a response" writes; `Popover` runs once per opening, returns focus to its trigger, and supports ↑ ↓ Home End; Hide/Delete move focus to the neighbouring Moment's readout and announce through one shared live region (`src/lib/announce.ts`, new); a deleted response leaves focus in its conversation | §6, §7 |
+| 2026-09-23 | 4.4-A (A19) | `social/Moment.tsx` | "Link copied." showed even when the copy failed | Confirmation only after `writeText` resolves; a failure says "Couldn't copy the link." (Whether Copy link should exist before permalinks is D-12) | §7 |
+| 2026-09-23 | 4.4-A (A21) | `social/Moment.tsx` | Reply and the response ⋯ were 28px targets on phones; the Moment ⋯ 36px | Phone-only 44×44 pointer targets for Reply and the response ⋯ via a pseudo-element hit area (layout unchanged; `@2xl` restores); the Moment ⋯ and the thread's Back are 44px on phones, desktop sizes unchanged | §4 (elementFromPoint across 44px) |
+| 2026-09-23 | 4.4-A (A22) | `social/LifeRing.tsx`, `social/Moment.tsx` | `label=""` was documented as "decorative" but LifeRing still announced "Name — " beside a name already read | An empty position label renders the ring `aria-hidden`, no `role=img` (affects every `label=""` call site — search rows, chat rows, who-lists — the same double announcement); the stray sr-only viewer-name spans in Notes are removed | §7 |
+| 2026-09-23 | 4.4-A (A23) | `social/Media.tsx` | Grid tiles 1–3 were buttons that did nothing; the video play button did nothing | Only the "+N more" tile is a button; the others are figures. The play control is disabled until playback exists (D-20); "Show fewer" localised | §7 |
+| 2026-09-23 | 4.4-A (A24) | `social/Moment.tsx`, `social/Media.tsx`, `social/LifeCursor.tsx`, `social/SocialPreview.tsx`, 8 catalogs | Hard-coded English in the Moment chrome | 21 new keys × 8 locales (384 each, key-complete); English byte-identical ("more", "less", "(you)", "More", "Show fewer", "Life {band}", …) | §8, `i18n.js` |
+| 2026-09-23 | 4.4-A (A25) | `social/data.ts` | Fixture untruths: `m-panorama` carried the retired `wonder` id (silently dropped); nt3/nt5/nt8 said "responded to your …" about Moments nobody had responded to; nt1 used the retired word "note" | `wonder` → `wow`; the three responses those notifications already claim are added (`p-bikash` on m-panorama 10 SEP 10:30, `p-krishna` on m-nepali-1 09 SEP 07:15, `p-m` on m-snow 07 SEP 22:40); nt1 reads "responded to your Thamel moment". nt4 ("mentioned you") is left for D-24 | §6/§7 + fleet |
+| 2026-09-23 | 4.4-A (A26) | `social/Composer.tsx`, `social/Moment.tsx` | Failures were shown but not announced | A failed post is `role=alert`; a failed response send is in a polite live region | §7 |
+| 2026-09-23 | 4.4-A (independent review fixes) | `social/Moment.tsx`, `social/Composer.tsx`, `social/Media.tsx`, `src/lib/announce.ts` | A four-lens read-only review of this slice's own diff found focus and state gaps it had introduced or left | The delete confirmation is a labelled group of menu items and focus lands on Keep; the ⋯ menu resets its confirmation when it closes. The phone thread keeps Tab trapped while a menu or an edit is open (they own only Escape; the edit form owns Escape at form level). Opened to read, focus is on the responses list itself (keys scroll it, not the page). The wheel/touch guard falls back from a non-scrolling textarea to the list, and conversation textareas contain their overscroll. A reply sent from a thread returns focus to that response's Reply. Hit areas no longer cover the words above (8px above the meta row on phones). `announce()` speaks inside an open aria-modal dialog. The with-people list uses menu roles and returns focus to its "with …" trigger. "Show N more" / "Show fewer" hand focus to each other. Post closes the privacy menu and its options are disabled while posting (a choice made then could not reach the post); focus waits on the busy Post button and moves to Retry on failure. A cleared or malformed date blocks Post (no NaN age). An unavailable author is never a clickable doorway | `social-4-4a-truth.js` §2, §4, §5, §7 |
+| 2026-09-23 | 4.4-A (MC-20 stale landing) | `social/Chrome.tsx` (`NotificationsPanel.goToMoment`) | A notification whose Moment had since been deleted or hidden closed the panel onto nothing | It announces "That Moment is no longer available." and the panel stays. (Which Moments a viewer may be taken to is the audience rule — 4.4-B/C) | §7 |
+
+**Owner-superseded assertion (recorded, never silent; no invariant weakened):**
+
+- **`social-final.js` §5** — the own-response edit field is selected as
+  `textarea[aria-label='Edit response']` (was `input[…]`): the field is a textarea so a response
+  keeps its line breaks (A16). Enter still saves; "own note edits and shows 'edited'" is
+  asserted exactly as before. 180/180.
+
+**Documented carryovers (NOT changed):** the per-response author ring is still drawn at the
+response's time (D-1 hardening, 4.4-B); response delete still cascades and has no confirm (D-9);
+Report is still toast-only (D-10); Copy link still copies an unresolvable `systemboom.example`
+URL (D-12); Celestial's phone action row still loses ⋯ at ≤390 with the flag on (P0-6, D-3/D-5);
+the retired `respond {count, byViewer}` is still described in `social-api-contract.md` §D.4
+(tracked as RS-40).
+
+## Phase 4.4-A — owner fixture add-on: the Italian social circle + multi-person Celestial Resonance (2026-09-23)
+
+Owner-requested demo-data change, applied after the truth fixes above and before the final
+screenshots. **Fixture/data/asset content only** — no rendering, layout, interaction or privacy
+logic changed, **no Celestial file was edited** (`src/components/celestial/**`, `src/lib/celestial/**`
+untouched; the owner's uncommitted Light-mode work in them is untouched), `expressions.tsx` is
+byte-identical, and the Celestial flag's committed default stays OFF (D-3 is not decided: the
+owner/dev enable path `?celestial=1` on the normal `/world` page, stored locally, shows it).
+
+**Cast.** The Nepali core and the US/UK wider cast are replaced by one fictional ITALIAN circle of
+adults aged 20–35 (mostly women), keeping every stable internal key and id (`maya`/`u-demo-001`
+is Giulia Bianchi; `asha`/`p-asha` Sofia Romano; `bikash` Luca Rinaldi; `ramesh` Marco Bellini
+(the same-DOB pair with Luca is kept); `sunita` Elena Ricci; `prakash` Chiara Conti; `krishna`
+Federico Alessandro Castelbarco Visconti (the exactly-40-character name fixture); `m` stays
+"M"; `marcus`/`grace`/`theo`/`hannah`/`rory`/`nadia`/`walt`/`sofia` are Matteo Gallo, Aurora
+Ferrari, Andrea Costa, Camilla Greco, Francesca Marino, Martina Moretti, Beatrice Esposito, Alice
+Lombardi). Relationships (`world/model.ts`), conversations and notification kinds are unchanged
+by id. Initials are unique; no first name is a substring of another (Search matches substrings).
+Giulia keeps Maya's birth data (34 — inside 20–35; the owner suggested "late 20s", but her exact
+birth instant drives accepted Life/Circle/tick/day-count assertions, so it is kept and the choice
+documented). Six real CC0 portraits (face-framed crops, `public/mock/social/cast/`) — every other
+person deliberately renders the initials fallback; the nine portraits still required are listed
+in `docs/fixtures/photo-sources.md`. Nothing was downloaded.
+
+**Story, so the content is coherent.** Chiara lives in Boudha this year and Elena married into
+Ratmate (Nuwakot); in late Aug–Sept 2026 the others joined them in Nepal — so the recent Moments
+keep their Nepali places (and every place-driven assertion), while the personal ones became
+Italian. The Devanagari fixtures are kept for script coverage (Giulia and Federico write Nepali on
+the trip).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-23 | 4.4-A fixture add-on (owner §5–§9) | `social/data.ts` (PEOPLE, synth people, Moments, notes, RECENT_SEARCHES), `lib/mock/demo-user.ts`, `public/mock/social/cast/*.jpg` (6 new), `CREDITS.md`, `credits.json`, `docs/fixtures/photo-sources.md` | Owner: replace the obviously Nepali population with a coherent fictional Italian circle, real photo where available, no mixed identities | Names, homes, avatars and birth dates of the fixture people; the harness-only synthetic people are Italian adults 20–35. Moment content adjusted where it named people or a Nepali family history the new cast cannot have: `m-sameage`/`m-meeting` name Luca; `m-project`/`m-boudha` honour Chiara's Nonna; `m-face` is "the tea-shop aama"; `m-600` is Luca documenting a restoration at the house the circle stays in; `m-forty` welcomes Elena back (no age is stated anywhere — no birth-derived text); `m-wedding` is Elena's in Ratmate; `m-nepali-2` is a traveller listening to stories. **`m-1983` (id kept) is re-dated 1998-09-14 in Vomero, Napoli** — a Moment before its author's birth is exactly what the Composer refuses, and D-17 (ancestral records) is open; the boundary-map scan it carried was not a school slip, so it carries no photo rather than a wrong one | `person-life-identity.js` §1; `social-2030.js` §8; `social-final.js` §14; fleet |
+| 2026-09-23 | 4.4-A fixture add-on (owner §2–§4, §10–§12) | `social/data.ts` (`Moment.resonances` on five Moments) | The normal feed could not show what multi-person Resonance looks like | Seeded with real cast ids, one Resonance per person, canonical ids only, no author on their own Moment: **A** `m-sameage` (Marco) 5 people — Venus ×2 (Giulia, Sofia), Sun (Elena), Saturn (Luca), Moon (Chiara); **B** `m-meal` (Luca) 3 — Mercury ×2 (Sofia, Camilla), Comet (Elena); **C** `m-video` (Sofia) 8 — Venus ×2, Sun ×2, Meteor, Comet, Jupiter, Moon; **D** `m-activity` (Sofia) 1 — Luca → Jupiter; `m-panorama` (Giulia's own) 6 — Comet ×2, Venus, Mercury, Saturn, Sun. **E**: `m-rain` and every other Moment keep zero (the Celestial suites use `m-rain`). Rendered by the unchanged approved components; nothing is ranked, scaled or reordered by count | `celestial-s7`, `celestial-s3-s6` unchanged and green; `prototype-evidence/phase-4.4a-truth/owner-fixture/` |
+| 2026-09-23 | 4.4-A fixture add-on (§7 "no mixed identities") | `identity/IdentityGate.tsx` (Phase 2, paused — not frozen), `lib/identity/demo-seed.ts` | The gate said "Enter as Maya Rai" over the old avatar while Social showed Giulia | The gate reads the one demo identity (`demoUser.name` / `demoUser.avatar`) instead of copies. The demo identity's place anchors on the curated **Italy** centroid (`cn-italy`, labelled "Bologna, Italy") — the frozen curated geography has no Italian city, and anchors are centroids by design | `gate-desktop`, `gate-mobile`, `gate-fallback`, `identity-model` |
+| 2026-09-23 | 4.4-A fixture add-on (harness) | `social/SocialPreview.tsx`, `circle/CirclePreview.tsx` (viewer labels only), comments in `social/store.tsx`, `world/model.ts`, `identity/IdentityProvider.tsx`, `lib/identity/types.ts` | Harness labels and comments named the old cast | "Giulia (owner) · Sofia (no birth time) · Luca → Giulia · Sofia → Giulia · Chiara → Giulia"; `?viewer=` values are unchanged internal tokens | `social-connection-final.js` |
+| 2026-09-23 | 4.4-A (celestial-s7 regression, A12 refinement) | `social/data.ts` (`unavailablePerson`) | The neutral unavailable identity kept the requested id, so Celestial's own resolver contract (`personOf(pid).id === pid` ⇒ "this person") drew an unresolvable resonator as a person instead of counting them | Its id is `unavailable:<id>`: counted, never rendered — fixed in data, not in `ResonateControl.tsx` | `celestial-s7-constellation.js` 114/114 |
+
+**Owner-superseded assertions — fixture vocabulary only (recorded, never silent; no invariant
+weakened or removed).** Every change below substitutes the new fixture's name, photo path, place
+or date for the old one; what each check proves is unchanged:
+
+- Names typed/matched: `social-final` (§2 readouts "Giulia Bianchi"/"Luca Rinaldi"), `social-shell`
+  (gate button, World text, Search "Giulia"/"Sofia"), `one-application`, `final-app`,
+  `complete-my-world`, `celestial-s3-s6` ("Enter as Giulia Bianchi"), `complete-my-world` (Marco,
+  Elena, Chiara, Luca), `social-2030` (Federico, Sofia, "Giulia’s World"), `my-world-2030`
+  (Federico), `social-connection-final` (Marco, Federico, Luca; harness labels "Sofia → Giulia",
+  "Luca → Giulia"), `s5-discovery` (Federico, Giulia, Marco; the name regex), `s6-motion` (Marco),
+  `social-r2-expression` ("Sofia Romano", "Luca Rinaldi"), `social-r3-3d-expression` (header regex),
+  `celestial-s7-constellation` ("Sofia Romano", "Giulia Bianchi" — this file is one of the owner's uncommitted Light-mode files; the only change made to it is these four name strings, lines 187, 401, 419, 420, because the check names the fixture people and cannot be isolated elsewhere), `i18n` (the person's name
+  "Giulia Bianchi" and place "Bologna" stay original), `social-4-4a-truth` (Sofia; "with Giulia, Luca"),
+  `gate-desktop`/`gate-mobile`/`gate-fallback` ("Enter as Giulia Bianchi"), `identity-model`
+  (name, Italy anchor, avatar — this suite was **already failing before this pass** on the avatar
+  the Person + Life Identity pass changed; it now asserts the current avatar).
+- `social-2030-final` §1 — "the global US/UK cast is present" → "the wider Italian circle is
+  present" (Matteo Gallo, Aurora Ferrari, Andrea Costa); the populated-network and ≥5-real-photos
+  checks are unchanged.
+- `social-2030` §2 — the person card's life fact reads "Circle band 30–45" (Federico is 33; was
+  Krishna's 60–75). The check is the typographic tier, unchanged.
+- `social-2030` §8 and `social-final` §14 — the oldest Moment is `m-1983` re-dated **14 SEP 1998**
+  (was 06 FEB 1983); the Life Cursor place check also accepts its new place. Chronology, provenance
+  ("shared") and cursor invariants are unchanged.
+- `circle` §7 — the day header states the owner's own place, now "Bologna" (was "Kathmandu").
+- `s4-people` §2–§3 — the name typed is "aurora" (was "grace") and the unconnected person is
+  "marco" (`p-ramesh`, was "ramesh").
+- `complete-my-world` §6 (media failure) — the broken image is the Moment's own photo, selected as
+  `img:not([data-sb-identity-photo])`: the Meal's author now has a real portrait, so the first
+  `img` in the Moment was his face. Same failure, same structure-survives assertion.
+- `s5-discovery` §6 — the deep, media-led Moment beyond the loaded window is `m-wedding`
+  ("wedding day"; was `m-1983` "admission", which no longer carries a photo). Same Photos-result →
+  reveal → land invariant.
+- `my-world-2030` §8 — the Life Cursor check is made at a 900px-tall desktop frame scrolled to
+  `m-wedding`, then the suite's 1200px frame is restored: with `m-1983` photo-less, the historical
+  tail is shorter than a 1200px screen and the trigger line correctly stays over the current year
+  there. Same "activates over historical scroll" invariant.
+- `person-life-identity` §1 — the owner's photo is `cast/giulia-bianchi.jpg`; the 40-character
+  family member's is `cast/federico-castelbarco.jpg` in all six surfaces. **Photo-vs-initials is
+  restated, not weakened:** three fixtures that had no photo now carry a licensed portrait (the
+  owner's "real photo when available"), so they assert photo-and-no-initials, and the initials
+  fallback is asserted on three fixtures that deliberately have none (MB, MG, AF). 47 → 49.
+
+**Not changed (documented):** Moment places of the Sept 2026 trip and all LIBRARY photo captions
+(image truth); the `PLACES` composer list; historical design wireframes and decision records
+(`docs/design/social-wireframes.md`, `docs/SYSTEMBOOM-HANDOFF-BRIEF.md`, earlier AGENTS.md rows)
+still show the names of their time; `ui/Avatar.tsx`'s "Maya Rai → MR" doc example. P0-6 is not
+touched: with the flag on, the phone action row measurements are recorded in
+`prototype-evidence/phase-4.4a-truth/owner-fixture/phone-action-row-metrics.json`.
+
+**Verified on final source (owner fixture add-on + truth fixes, one fleet run, suites re-run
+after a test-only correction marked ↻):** social-final 180 · social-shell 68 · one-application 40 ·
+final-app 31 · circle 132 ↻ · complete-my-world 62 ↻ · person-life-identity 49 · social-2030 31 ·
+my-world-2030 27 ↻ · social-connection-final 44 · social-2030-final 35 · s2-person-world 47 ·
+locale-resolution 21 · i18n 45 · s3-moments 17 · s4-people 20 ↻ · s3-s4-loops 14 · s5-discovery 48 ↻ ·
+s6-motion 53 · s7-device-mastery 56 · social-r2 43 · r3 80 · r3.1 69 · r3.2 92 · r3.3 102 · r3.5 20 ·
+r3.6 21 · r3.7 37 · r3.8 34 · r3.9 31 · devanagari crops pass · celestial-s0 64 · celestial-s2-field 40 ·
+celestial-s3-s6 32 · celestial-s7-constellation 114 · **social-4-4a-truth 125 (new)** ·
+identity-model 13 (was failing before this pass) · gate-desktop · gate-mobile · gate-fallback ·
+amend-desktop · amend-mobile · trail-desktop · trail-mobile PASS. `tsc --noEmit` and eslint clean;
+`next build` passes; `expressions.tsx` SHA-256 `dd78c369…a0194e` unchanged.
+

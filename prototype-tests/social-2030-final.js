@@ -32,7 +32,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   const yours = await page.$$eval("[data-sb-people-yours] [data-sb-people-row]", (els) => els.length).catch(() => 0);
   ok(yours >= 8, `Your people is a populated network, not a handful (${yours})`);
   const names = await page.evaluate(() => document.querySelector("[data-sb-people-panel]").textContent);
-  ok(/Marcus Bell/.test(names) && /Grace Okafor/.test(names) && /Theo Adeyemi/.test(names), "the global US/UK cast is present alongside the Nepali core");
+  ok(/Matteo Gallo/.test(names) && /Aurora Ferrari/.test(names) && /Andrea Costa/.test(names), "the wider Italian circle is present alongside the core cast");
   const castPhotos = await page.$$eval("[data-sb-people-panel] [data-sb-identity-photo]", (els) => els.length).catch(() => 0);
   ok(castPhotos >= 5, `real photographs populate the network, not only initials (${castPhotos})`);
   await page.keyboard.press("Escape");
@@ -83,7 +83,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   /* ---- 6. Ring stays Life-only (no relationship semantics in geometry) ---- */
   console.log("6. Ring semantics");
   await open(page, 1440, 900); await page.click("[data-sb-people]"); await sleep(300);
-  await page.evaluate(() => { const i = document.querySelector("[data-sb-people-find]"); i.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Marcus"); i.dispatchEvent(new Event("input", { bubbles: true })); });
+  await page.evaluate(() => { const i = document.querySelector("[data-sb-people-find]"); i.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Matteo"); i.dispatchEvent(new Event("input", { bubbles: true })); });
   await sleep(300); await page.click("[data-sb-people-row] button").catch(() => {});
   await sleep(300);
   const ringAttrs = await page.$eval("[data-sb-person-card] [data-sb-ring]", (e) => [...e.attributes].map((a) => a.name)).catch(() => []);

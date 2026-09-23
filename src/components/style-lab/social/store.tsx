@@ -10,6 +10,7 @@ import { now } from "@/lib/clock";
 import {
   PEOPLE,
   synthPerson,
+  unavailablePerson,
   SEED_MOMENTS,
   SEED_NOTIFICATIONS,
   type Moment,
@@ -29,6 +30,9 @@ export interface Draft {
   feeling?: string;
   photoIds: string[];
   video?: boolean;
+  /** Phase 4.4-A (A9) — the burned-in video caption. Its own field: it used to ride on
+   *  `fields.title`, the Problem kind's title, so the two could overwrite each other. */
+  videoCaption?: string;
   link?: string;
   date: string;
   place: string;
@@ -104,7 +108,7 @@ function seed(viewer: ViewerMode = "maya", seedVersion = 0): State {
 export function viewerPerson(mode: ViewerMode): Person {
   return mode === "asha" ? PEOPLE.asha : PEOPLE.maya;
 }
-/** Whose profile is on the page: the viewer's own, or Maya's when visiting. */
+/** Whose profile is on the page: the viewer's own, or Giulia's (`maya`, u-demo-001) when visiting. */
 export function profilePerson(mode: ViewerMode): Person {
   return mode === "asha" ? PEOPLE.asha : PEOPLE.maya;
 }
@@ -121,7 +125,7 @@ export function actingPerson(mode: ViewerMode): Person {
   if (mode === "visitor") return PEOPLE.bikash;
   if (mode === "ashaVisitor") return PEOPLE.asha;
   // Final Social Connection pass — test-only: the only seeded request-in relationship
-  // (Prakash → Maya) needs a way to view Maya's Hero AS Prakash, to exercise the
+  // (Chiara → Giulia) needs a way to view Giulia's Hero AS Chiara, to exercise the
   // Accept/Decline pair there. No other behaviour changes for any existing mode.
   if (mode === "prakashVisitor") return PEOPLE.prakash;
   return viewerPerson(mode);
@@ -249,6 +253,9 @@ interface Ctx {
   me: Person;
   profile: Person;
   isOwnerView: boolean;
+  /** Phase 4.4-A — true inside <PreviewScope>: the owner is looking at their World as the
+   *  public would. Render-time only; nothing written while previewing ever reaches the state. */
+  previewing: boolean;
   /** Feed in display order, hidden removed, only-me filtered for non-authors. */
   feed: Moment[];
   total: number;
@@ -268,7 +275,9 @@ export function SocialStore({ children }: { children: ReactNode }) {
   const isOwnerView = me.id === profile.id;
     // `sim-` ids exist only when the review harness seeds a Human Pulse scale fixture; they
   // resolve to deterministic fictional people so who-expressed stays a real human surface.
-  const personOf = useCallback((id: string) => Object.values(PEOPLE).find((p) => p.id === id) ?? (id.startsWith("sim-") ? synthPerson(id) : PEOPLE.m), []);
+  // Phase 4.4-A (A12): an id that resolves to nobody is shown as unavailable — never silently as
+  // another real person (it used to fall back to the fixture person "M").
+  const personOf = useCallback((id: string) => Object.values(PEOPLE).find((p) => p.id === id) ?? (id.startsWith("sim-") ? synthPerson(id) : unavailablePerson(id)), []);
   const newId = useCallback(() => `m-new-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`, []);
 
   const ordered = useMemo(() => orderFeed(state.moments, state.hidden, me.id), [state.moments, state.hidden, me.id]);
@@ -280,6 +289,7 @@ export function SocialStore({ children }: { children: ReactNode }) {
       me,
       profile,
       isOwnerView,
+      previewing: false,
       feed: ordered.slice(0, state.visible),
       total: ordered.length,
       personOf,
@@ -287,6 +297,40 @@ export function SocialStore({ children }: { children: ReactNode }) {
     }),
     [state, me, profile, isOwnerView, ordered, personOf, newId],
   );
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+/**
+ * Phase 4.4-A — VIEW AS PUBLIC, part 1 (P0-3; the no-decision part).
+ *
+ * Everything inside renders for `viewer` — the owner's technical public stand-in — through the
+ * SAME privacy view model a genuine stranger gets: no exact age, no owner tick, no owner menus,
+ * and no only-me Moment (the feed is re-ordered for the stand-in, which authors nothing).
+ *
+ * The stand-in is a render-time viewer only. It is never persisted, never a relationship, never
+ * a network identity and never an author: every write dispatched from inside the scope is refused
+ * here, so it can never become a Moment's or a response's author (the reducer also writes as the
+ * acting person, never as `me`). Only the reading actions below pass through.
+ *
+ * Deliberately NOT here (Phase 4.4-B, owner decisions): which audience `friends` means (D-2) and
+ * whose Moments a World holds (D-4). Friends-only Moments and other authors' Moments are exactly
+ * as the owner view has them.
+ */
+const PREVIEW_READ_ONLY = new Set<Action["type"]>(["loadMore", "reveal", "landed"]);
+
+export function PreviewScope({ viewer, children }: { viewer: Person | null; children: ReactNode }) {
+  const c = useContext(StoreContext);
+  if (!c) throw new Error("PreviewScope outside <SocialStore>");
+  const { state, dispatch } = c;
+  const ordered = useMemo(() => (viewer ? orderFeed(state.moments, state.hidden, viewer.id) : null), [viewer, state.moments, state.hidden]);
+  const guarded = useCallback((a: Action) => {
+    if (PREVIEW_READ_ONLY.has(a.type)) dispatch(a);
+  }, [dispatch]);
+  const value = useMemo<Ctx | null>(
+    () => (viewer && ordered ? { ...c, me: viewer, isOwnerView: false, previewing: true, dispatch: guarded, feed: ordered.slice(0, state.visible), total: ordered.length } : null),
+    [c, viewer, ordered, guarded, state.visible],
+  );
+  if (!value) return <>{children}</>;
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 

@@ -58,7 +58,7 @@ const typeSearch = (page, value) =>
     /* ---- 2. PersonCard — life fact reads as primary, not a hovercard caption (residue fix #2) ---- */
     console.log("2. PersonCard hierarchy");
     await open(page, SOCIAL, { theme: "light" });
-    await typeSearch(page, "Krishna");
+    await typeSearch(page, "Federico");
     await page.click("[data-sb-search-person='p-krishna']");
     await sleep(400);
     const cardShape = await page.evaluate(() => {
@@ -70,7 +70,7 @@ const typeSearch = (page, value) =>
         hasPrivacySentence: /exact position in their life is theirs to share/.test(card.textContent),
       };
     });
-    ok(/Circle band 60–75/.test(cardShape.lifeText ?? ""), `the life fact reads with the same weight as the name (${cardShape.lifeText})`);
+    ok(/Circle band 30–45/.test(cardShape.lifeText ?? ""), `the life fact reads with the same weight as the name (${cardShape.lifeText})`);
     ok(cardShape.lifeFontSize === "13px", `life line matches the name's typographic tier, not a caption (${cardShape.lifeFontSize})`);
     ok(cardShape.hasPrivacySentence, "the privacy sentence still exists, now beside the fact it explains");
     await shot(page, "02-person-card-hierarchy");
@@ -79,7 +79,7 @@ const typeSearch = (page, value) =>
     /* ---- 3. Search people row — life position is a subtitle, not a trailing stat (residue fix #3) ---- */
     console.log("3. Search people row");
     await sleep(200);
-    await typeSearch(page, "Asha");
+    await typeSearch(page, "Sofia");
     const searchShape = await page.evaluate(() => {
       const row = document.querySelector("[data-sb-search-person='p-asha']");
       const name = row.querySelector("span.block.truncate:not([data-sb-search-life])");
@@ -174,7 +174,7 @@ const typeSearch = (page, value) =>
     await shot(page, "12-hero-owner-360");
     await open(page, SOCIAL, { theme: "light", extra: { viewer: "ashaVisitor" } });
     const visitorKicker = await page.$eval("[data-sb-world-context]", (e) => e.textContent.trim());
-    ok(visitorKicker === "Maya’s World", `a visitor's hero states whose World it is, not their own (${visitorKicker})`);
+    ok(visitorKicker === "Giulia’s World", `a visitor's hero states whose World it is, not their own (${visitorKicker})`);
     const relWord = await page.$eval("[data-sb-hero]", (e) => e.textContent).then((t) => /Friends|Family/.test(t));
     ok(relWord, "a connected visitor's relationship shows in the identity model, outside the ring itself");
     await shot(page, "13-hero-visitor-desktop");
@@ -192,7 +192,7 @@ const typeSearch = (page, value) =>
       await page.click("[data-sb-load-more]").catch(() => {});
       await sleep(300);
     }
-    ok(!!(await page.$("[data-sb-moment='m-1983']")), "the 1983 historical Moment is reachable by loading further");
+    ok(!!(await page.$("[data-sb-moment='m-1983']")), "the oldest historical Moment (m-1983, re-dated 1998) is reachable by loading further");
     await page.$eval("[data-sb-moment='m-1983']", (e) => { const top = e.getBoundingClientRect().top; window.scrollBy(0, top - 20); });
     await sleep(400);
     const cursor = await page.$eval("[data-sb-life-cursor]", (e) => ({
@@ -205,8 +205,8 @@ const typeSearch = (page, value) =>
     // Exactly which neighbouring historical Moment lands under the trigger line is a sub-pixel
     // scroll-math question, not a Life Cursor correctness question — what matters is that it is a
     // REAL year from the fixtures, never the current year and never fabricated.
-    ok(["1983", "2022"].includes(cursor.year ?? ""), `the cursor states a real historical year being browsed, from real Moment data (${cursor.text})`);
-    ok(/Ratmate|Nuwakot/.test(cursor.text) || /band|y \d\dm/.test(cursor.text), `the cursor carries a viewer-safe life position and place from the real Moment (${cursor.text})`);
+    ok(["1998", "2022"].includes(cursor.year ?? ""), `the cursor states a real historical year being browsed, from real Moment data (${cursor.text})`);
+    ok(/Ratmate|Nuwakot|Vomero|Napoli/.test(cursor.text) || /band|y \d\dm/.test(cursor.text), `the cursor carries a viewer-safe life position and place from the real Moment (${cursor.text})`);
     ok(cursor.position === "sticky", "the cursor is an ordinary in-flow sticky element, not a fixed HUD");
     ok(cursor.boxShadow === "none" && (cursor.backdropFilter === "none" || cursor.backdropFilter === ""), "no glass panel — solid colour, no blur, no shadow");
     await shot(page, "17-life-cursor-desktop");
@@ -234,7 +234,7 @@ const typeSearch = (page, value) =>
     await page.$eval("[data-sb-moment='m-1983']", (e) => { const top = e.getBoundingClientRect().top; window.scrollBy(0, top - 20); });
     await sleep(400);
     const momentReadout = await page.$eval("[data-sb-moment='m-1983'] [data-sb-readout]", (e) => e.textContent.replace(/\s+/g, " ").trim());
-    ok(/06 FEB 1983|1983/.test(await page.$eval("[data-sb-moment='m-1983'] [data-sb-date-rule], [data-sb-moment='m-1983']", (e) => e.textContent)), "the Moment itself still carries its own exact date — the cursor did not remove it");
+    ok(/14 SEP 1998|1998/.test(await page.$eval("[data-sb-moment='m-1983'] [data-sb-date-rule], [data-sb-moment='m-1983']", (e) => e.textContent)), "the Moment itself still carries its own exact date — the cursor did not remove it");
     ok(!momentReadout.includes("·  ·"), `Moment readout stays its normal exact/local grammar, no duplicated cursor text pasted in (${momentReadout})`);
     await shot(page, "19-moment-under-cursor");
 

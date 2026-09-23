@@ -162,7 +162,7 @@ const MORTALITY = /\bremaining\b|time left|life left|years left|countdown|% of (
     await sleep(900);
     ok((await level(page)) === 4 && (await urlParam(page)) === "day:2026-09-10", "tapping a day resolves to the Almanac coordinate");
     const header = await page.$eval("[data-sb-day-header]", (e) => e.textContent.replace(/\s+/g, " ").trim());
-    ok(/10 SEP 2026/.test(header) && /34y 10m 06d/.test(header) && /Kathmandu/.test(header), `day header: date · exact age · place (${header})`);
+    ok(/10 SEP 2026/.test(header) && /34y 10m 06d/.test(header) && /Bologna/.test(header), `day header: date · exact age · place (${header})`);
     const momentsOnDay = await page.$$eval("[data-sb-almanac] [data-sb-moment]", (n) => n.map((x) => x.getAttribute("data-sb-moment")));
     ok(momentsOnDay.length === 1 && momentsOnDay[0] === "m-rain", `the accepted Moment component renders that day's Moments (${momentsOnDay.join(",")})`);
     ok(!(await page.$("[data-sb-kind-filters]")), "no kind filter when there is only one kind");

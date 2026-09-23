@@ -24,10 +24,13 @@ calls this, never a second avatar system.
 
 - **Source:** `Person.avatar` (`data.ts`) — a real, CC-licensed photograph
   (Wikimedia Commons, credited in `public/mock/social/CREDITS.md`), never a
-  generated or illustrated face. Only two fixtures carry one in this
-  reference (Maya the owner, Krishna as family) — deliberately, so the
-  fallback path is exercised by the rest of the cast (Asha, Bikash, Ramesh,
-  Prakash, M), proving the hierarchy rather than hiding it.
+  generated or illustrated face. Since the Phase 4.4-A owner fixture add-on
+  (the Italian social circle) six fixtures carry one — Giulia the owner, Sofia,
+  Luca, Elena, Chiara and Federico — as face-framed crops of CC0 portraits
+  (`public/mock/social/cast/`); the rest of the circle (Marco, Matteo, Aurora,
+  Andrea, Camilla, Francesca, Martina, Beatrice, Alice, M) deliberately has
+  none and exercises the fallback path, proving the hierarchy rather than
+  hiding it. (Before 4.4-A only Maya and Krishna carried a photo.)
 - **Fallback:** real photo → initials. There is no illustrated/curated-avatar
   middle tier — the earlier Phase-0 `Avatar` component's convention is
   superseded for identity surfaces (`RingAvatar` in `LifeRing.tsx`).
@@ -64,8 +67,8 @@ now-tick for the owner only. Nothing about this pass touches that contract.
 - Verified directly (not just visually) via a dev-only probe,
   `window.__SB_RING_DENSITY(id, connected)` / `__SB_RING_DENSITY_SELF(id)`,
   exposed from `SocialPreview.tsx` only outside production —
-  `person-life-identity.js` §6: a stranger sees none of Krishna's one
-  friends-only Moment; a connected friend does; Maya's own two Health/Problem
+  `person-life-identity.js` §6: a stranger sees none of Federico's (`p-krishna`)
+  one friends-only Moment; a connected friend does; Giulia's own two Health/Problem
   Moments never reach even a connected visitor's ring.
 
 ## 5. Relationship stays outside the ring

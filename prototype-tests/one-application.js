@@ -38,7 +38,7 @@ async function enterIdentity(page) {
   await page.waitForSelector("[role=dialog]", { timeout: 12000 });
   await sleep(400);
   await page.evaluate(() => {
-    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Maya Rai/.test(x.textContent))?.click();
+    [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Giulia Bianchi/.test(x.textContent))?.click();
   });
   await sleep(700);
 }

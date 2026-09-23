@@ -24,6 +24,7 @@ import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { X } from "lucide-react";
 import { CHIP_BASE, useChrome } from "@/components/cosmos/overlays";
 import { Avatar } from "@/components/ui/Avatar";
+import { demoUser } from "@/lib/mock/demo-user";
 import { parseBirthDate } from "@/lib/identity/birth";
 import type { PrototypeIdentity } from "@/lib/identity/types";
 import { easeOut, M2, M3 } from "@/lib/motion";
@@ -167,7 +168,8 @@ function SignInView({
 }) {
   const identity = useIdentity();
   const { gate, created } = identity;
-  const demoName = "Maya Rai";
+  // Phase 4.4-A owner fixture add-on: the gate reads the ONE demo identity, never a copy of it.
+  const demoName = demoUser.name;
 
   return (
     <>
@@ -219,7 +221,7 @@ function SignInView({
             onClick={identity.enterAsDemo}
             className="sb-transition inline-flex min-h-12 w-full items-center gap-3 rounded-full bg-[#d92a20] pr-6 pl-1.5 text-left font-semibold text-white hover:bg-[#f04136] focus-visible:outline-[#8fc2ff]"
           >
-            <Avatar src="/mock/social/face-portrait.jpg" name={demoName} size="md" />
+            <Avatar src={demoUser.avatar} name={demoName} size="md" />
             <span>
               Enter as {demoName}
               <span className="block text-xs font-normal opacity-75">Demo identity</span>

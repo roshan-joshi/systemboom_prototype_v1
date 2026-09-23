@@ -39,7 +39,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
 
   /* ---- 2. Three objects, three shapes ---- */
   console.log("2. People / Moments / Places are distinct");
-  await search(page, "Krishna");
+  await search(page, "Federico");
   const person = await page.$eval("[data-sb-search-person]", (e) => ({ ring: !!e.querySelector("[data-sb-ring]"), life: e.querySelector("[data-sb-search-life]")?.textContent ?? "", date: /\d{2} [A-Z]{3} \d{4}/.test(e.textContent) }));
   ok(person.ring && /Family/.test(person.life) && !person.date, `a person result: photo + Life Ring, name, safe band, relationship — no date (${person.life})`);
   await search(page, "Boudha");
@@ -63,14 +63,14 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   /* ---- 4. Search keeps privacy ---- */
   console.log("4. Privacy");
   await open(page, 1440, 900, { viewer: "visitor" });
-  await search(page, "Maya");
+  await search(page, "Giulia");
   const vis = await text(page, REGION);
   ok(/30–45/.test(vis) && !/\d+y \d\dm/.test(vis), "a visitor's search keeps another person band-only");
 
   /* ---- 5. Search → Person, and back with the query intact ---- */
   console.log("5. Search → Person → back");
   await open(page, 1440, 900);
-  await search(page, "Ramesh");
+  await search(page, "Marco");
   await page.click("[data-sb-search-person]"); await sleep(400);
   ok(!!(await page.$("[data-sb-person-card='p-ramesh']")), "selecting a person opens their Person surface");
   ok(!(await page.$(REGION)), "…the results step aside for it (one layer at a time)");
@@ -80,7 +80,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   // (the accepted complete-my-world flow clicks a Moment author right after this). One click on
   // the field brings the same results straight back.
   const back = await page.evaluate(() => ({ field: document.activeElement?.matches("input[type=search]"), q: document.querySelector("input[type=search]")?.value, region: !!document.querySelector("[role=region][aria-label='Search results']"), scrim: !!document.querySelector("[data-sb-scrim]") }));
-  ok(back.field && back.q === "Ramesh" && !back.region && !back.scrim, `closing the person returns focus to Search with the query kept, nothing re-opened over My World (${JSON.stringify(back)})`);
+  ok(back.field && back.q === "Marco" && !back.region && !back.scrim, `closing the person returns focus to Search with the query kept, nothing re-opened over My World (${JSON.stringify(back)})`);
   await page.click("input[type=search]"); await sleep(300);
   ok(!!(await page.$("[data-sb-search-person='p-ramesh']")), "…and one touch on the field restores the same results");
   await page.keyboard.press("Escape");
@@ -92,9 +92,11 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await page.click("[data-sb-search-moment]"); await sleep(900);
   const landed = await page.evaluate((id) => { const a = document.activeElement; const m = a?.closest("[data-sb-moment]"); return { readout: a?.hasAttribute("data-sb-readout"), same: m?.getAttribute("data-sb-moment") === id, region: !!document.querySelector("[role=region][aria-label='Search results']") }; }, target);
   ok(landed.readout && landed.same && !landed.region, `a Moment result goes straight to that Moment in the Almanac — focus on its readout, results closed (${target})`);
-  // "admission" is a media-led Moment from 1983 — a Photos result, well beyond the first eight.
-  await search(page, "admission");
-  const deep = "m-1983";
+  // A media-led historical Moment — a Photos result, well beyond the first eight. (Phase 4.4-A owner
+  // fixture add-on: m-1983 is re-dated and carries no photo, so the wedding prints of 2022 are the
+  // deep media-led Moment now.)
+  await search(page, "wedding day");
+  const deep = "m-wedding";
   const wasLoaded = await page.$(`[data-sb-moment='${deep}']`);
   ok(!!(await page.$("[data-sb-search-photo]")), "a media-led Moment surfaces as a Photos result");
   await page.click("[data-sb-search-photo]"); await sleep(1000);
@@ -187,7 +189,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   await page.click("[data-sb-people-yours] [data-sb-people-row] button"); await sleep(400);
   const card = await text(page, "[data-sb-person-card]");
   ok(card.length > 0 && !/Add Friend|Friends|Family|Message|Remove|Circle band|Not connected|theirs to share/.test(card), `ne: the Person surface — the destination of every loop — carries no English (${card.slice(0, 60)}…)`);
-  ok(/Maya|Bikash|Asha|Sunita|Krishna|Marcus|Grace|Theo|Hannah|Rory|Nadia|Walt|Sofia/.test(card), "ne: the person's own name stays original");
+  ok(/Giulia|Luca|Sofia|Elena|Federico|Marco|Chiara|Matteo|Aurora|Andrea|Camilla|Francesca|Martina|Beatrice|Alice/.test(card), "ne: the person's own name stays original");
   await page.keyboard.press("Escape");
 
   /* ---- 16. Page health ---- */

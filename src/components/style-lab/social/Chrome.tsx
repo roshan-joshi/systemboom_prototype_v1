@@ -37,6 +37,7 @@ import { MessagesButton } from "@/components/world/Messages";
 import { PeopleButton } from "@/components/world/People";
 import { useWorldMaybe } from "@/components/world/WorldProvider";
 import { focusMoment } from "@/components/world/focus-moment";
+import { announce } from "@/lib/announce";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { sbDate } from "@/lib/i18n/format";
 import { LanguageMenu } from "@/components/i18n/LanguageMenu";
@@ -471,6 +472,13 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const goToMoment = (id: string, momentId?: string) => {
     dispatch({ type: "read", id });
     if (!momentId) return;
+    // Phase 4.4-A (MC-20 stale landing): a Moment deleted or hidden since the notification arrived
+    // is said out loud — the panel stays, nothing closes onto nothing. (Which Moments a viewer may
+    // be taken to at all is the audience rule — Phase 4.4-B/C, not here.)
+    if (!state.moments.some((m) => m.id === momentId) || state.hidden.includes(momentId)) {
+      announce(t("notif.momentGone"));
+      return;
+    }
     onClose();
     dispatch({ type: "reveal", id: momentId });
     focusMoment(momentId);

@@ -1,7 +1,7 @@
 /**
  * SYSTEMBOOM prototype identity — the ONE runtime identity contract.
  *
- * Both entry paths (the Maya Rai demo seed and a freshly created identity)
+ * Both entry paths (the Giulia Bianchi demo seed and a freshly created identity)
  * produce this exact shape, and every later phase (Life Counter, Circle of
  * Life, Social) reads only this. `DemoUser` in ../mock/types stays mock
  * CONTENT for the style lab; it is a seed, never a second runtime model.

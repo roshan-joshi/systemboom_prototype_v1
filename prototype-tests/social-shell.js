@@ -61,7 +61,7 @@ async function enterAsDemo(page) {
   await page.click("[data-sb-gate-opener]");
   await sleep(700);
   const clicked = await page.evaluate(() => {
-    const b = [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Maya Rai/.test(x.textContent));
+    const b = [...document.querySelectorAll("[role=dialog] button")].find((x) => /Enter as Giulia Bianchi/.test(x.textContent));
     if (!b) return false;
     b.click();
     return true;
@@ -109,7 +109,7 @@ async function enterAsDemo(page) {
     const landed = page.url();
     const worldText = await text(page);
     ok(/\/world/.test(landed), `MY WORLD is the personal Home (${landed.replace(HOST, "")})`);
-    ok(/Maya Rai/.test(worldText) && /\d+y \d\dm \d\dd/.test(worldText), "…where the person and their exact life position are stated");
+    ok(/Giulia Bianchi/.test(worldText) && /\d+y \d\dm \d\dd/.test(worldText), "…where the person and their exact life position are stated");
     ok(!/remaining|left|countdown|%/.test(worldText), "no mortality or completion language");
     await go(page, `${HOST}/social`, { theme: "light" });
     ok(/\/world/.test(page.url()), `"Social" is capability vocabulary: /social continues to My World (${page.url().replace(HOST, "")})`);
@@ -198,7 +198,7 @@ async function enterAsDemo(page) {
     await go(page, SOCIAL, { theme: "light", w: "desktop", extra: { viewer: "visitor" } });
     const visitorHtml = await page.evaluate(() => document.documentElement.outerHTML);
     ok(!["04 NOV 1991", "06:42", "12,7"].some((f) => visitorHtml.includes(f)), "a visitor receives no birth-derived data");
-    await typeSearch(page, "Maya");
+    await typeSearch(page, "Giulia");
     const visitorSearch = await page.evaluate(() => document.querySelector("[role=region][aria-label='Search results']")?.innerText ?? "");
     ok(/30–45/.test(visitorSearch) && !/\d+y \d\dm/.test(visitorSearch), `search keeps another person band-only (${visitorSearch.replace(/\n/g, " ").slice(0, 60)})`);
 
@@ -219,7 +219,7 @@ async function enterAsDemo(page) {
     ok(results.photoDates.every((d) => /^\d{2} [A-Z]{3} \d{4}$/.test(d)), `every photo result states its date (${results.photoDates.join(" | ")})`);
     ok(results.places.every((p) => /Moments? recorded|\d+ Moments?/.test(p)), `places state how much life is recorded there (${results.places.join(" | ")})`);
     await shot(page, "15-search-desktop");
-    await typeSearch(page, "Asha");
+    await typeSearch(page, "Sofia");
     const people = await page.evaluate(() => {
       const panel = document.querySelector("[role=region][aria-label='Search results']");
       return { life: [...panel.querySelectorAll("[data-sb-search-life]")].map((s) => s.textContent.trim()), rings: panel.querySelectorAll("[data-sb-ring]").length };

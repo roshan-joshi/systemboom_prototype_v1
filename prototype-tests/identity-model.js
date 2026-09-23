@@ -135,20 +135,20 @@ check("validateBirthDate: empty / invalid / impossible / future / ok", () => {
 });
 
 /* ---- 3. demo seed ---- */
-check("demo seed → same PrototypeIdentity shape, known time, curated Kathmandu anchor", () => {
+check("demo seed → same PrototypeIdentity shape, known time, curated Italy anchor", () => {
   const maya = seed.identityFromDemoSeed();
   assert.equal(store.isPrototypeIdentity(maya), true);
   assert.equal(maya.source, "demo-seed");
-  assert.equal(maya.name, "Maya Rai");
+  assert.equal(maya.name, "Giulia Bianchi");
   assert.equal(maya.birthDate, "1991-11-04");
   assert.equal(maya.birthTime, "06:42");
   assert.equal(maya.birthTimeKnown, true);
-  assert.equal(maya.currentPlace.geoId, "cy-kathmandu");
-  assert.equal(maya.currentPlace.countryCode, "NP");
-  assert.equal(maya.currentPlace.label, "Kathmandu, Nepal");
-  assert.equal(maya.currentPlace.lat, 27.717);
-  assert.equal(maya.currentPlace.lon, 85.324);
-  assert.equal(maya.avatar, "/mock/avatar-maya.svg");
+  assert.equal(maya.currentPlace.geoId, "cn-italy");
+  assert.equal(maya.currentPlace.countryCode, "IT");
+  assert.equal(maya.currentPlace.label, "Bologna, Italy");
+  assert.equal(maya.currentPlace.lat, 42.8);
+  assert.equal(maya.currentPlace.lon, 12.8);
+  assert.equal(maya.avatar, "/mock/social/cast/giulia-bianchi.jpg");
   // Round trip through storage is lossless.
   const mem = new Mem();
   const s = store.createIdentityStore({ storage: mem, mode: "persistent" });

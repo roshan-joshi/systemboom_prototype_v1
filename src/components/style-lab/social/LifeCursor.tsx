@@ -32,11 +32,13 @@ import { useEffect, useState } from "react";
 import { now } from "@/lib/clock";
 import type { Moment, Person } from "./data";
 import { momentLifeFor } from "./view-model";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 const TRIGGER_LINE = 88; // just below the sticky top bar
 
 export function LifeCursor({ viewer, feed, personOf }: { viewer: Person; feed: Moment[]; personOf: (id: string) => Person }) {
   const [topId, setTopId] = useState<string | null>(null);
+  const { t } = useT();
 
   useEffect(() => {
     let raf = 0;
@@ -74,7 +76,8 @@ export function LifeCursor({ viewer, feed, personOf }: { viewer: Person; feed: M
 
   const author = active && moment ? personOf(moment.authorId) : null;
   const life = active && moment && author ? momentLifeFor(viewer, author, new Date(moment.at)) : null;
-  const position = life ? (life.exact ?? `Life ${life.band}`) : null;
+  // Phase 4.4-A (A24): the band phrase routes through the catalog (en byte-identical: "Life 30–45").
+  const position = life ? (life.exact ?? t("life.cursorBand", { band: life.band })) : null;
 
   return (
     <div

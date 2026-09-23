@@ -78,7 +78,7 @@ const ringsAnimating = (page) => page.evaluate(() => [...document.querySelectorA
   /* ---- 4. Relationship motion ends in the right state ---- */
   console.log("4. Relationship final states");
   await page.click("[data-sb-people]"); await sleep(300);
-  await page.type("[data-sb-people-find]", "Ramesh"); await sleep(300);
+  await page.type("[data-sb-people-find]", "Marco"); await sleep(300);
   await page.click("[data-sb-people-add]"); await sleep(350);
   const rel = await page.$eval("[data-sb-people-row]", (e) => ({ rel: e.getAttribute("data-sb-people-rel"), anim: getComputedStyle(e.querySelector("[data-sb-people-requested]")?.parentElement ?? e).animationName, dur: parseFloat(getComputedStyle(e.querySelector("[data-sb-people-requested]")?.parentElement ?? e).animationDuration) }));
   ok(rel.rel === "request-out" && rel.anim === "sb-rel-resolve" && rel.dur <= 0.28, `Add friend → Requested: one ~200ms settle, final state true (${rel.anim} ${rel.dur}s)`);
