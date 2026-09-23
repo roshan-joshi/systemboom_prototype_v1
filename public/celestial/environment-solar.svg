@@ -1,39 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1200" viewBox="0 0 1920 1200">
 <defs>
 <linearGradient id="sky" x2="0" y2="1">
-  <stop stop-color="#bcd5ec"/><stop offset=".36" stop-color="#e3eff8"/><stop offset=".62" stop-color="#f8f5ec"/><stop offset="1" stop-color="#f5f5f6"/>
+  <stop stop-color="#bcd6ee"/><stop offset=".3" stop-color="#d8e8f6"/><stop offset=".56" stop-color="#eaf2fa"/><stop offset=".8" stop-color="#f5f8fb"/><stop offset="1" stop-color="#f6f7f9"/>
 </linearGradient>
-
-<linearGradient id="metal" x2="0" y2="1">
-  <stop stop-color="#e2cc98"/><stop offset=".45" stop-color="#c9a767"/><stop offset=".7" stop-color="#e9d8ae"/><stop offset="1" stop-color="#b8945a"/>
-</linearGradient>
-<linearGradient id="glass" x2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-
-<radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-  <stop stop-color="#fff6de" stop-opacity=".95"/><stop offset=".45" stop-color="#ffeec6" stop-opacity=".4"/><stop offset="1" stop-color="#ffeec6" stop-opacity="0"/>
+<radialGradient id="bloom" cx="50%" cy="50%" r="50%">
+  <stop stop-color="#ffffff" stop-opacity=".95"/><stop offset=".4" stop-color="#fffbf2" stop-opacity=".5"/><stop offset="1" stop-color="#fffbf2" stop-opacity="0"/>
 </radialGradient>
-<linearGradient id="marble" x2="0" y2="1">
-  <stop stop-color="#fbf7ee"/><stop offset=".3" stop-color="#f3eee4"/><stop offset="1" stop-color="#e9e3d7"/>
-</linearGradient>
-<linearGradient id="horizonWarm" x2="0" y2="1"><stop stop-color="#ffe7bb" stop-opacity="0"/><stop offset=".55" stop-color="#ffe7bb" stop-opacity=".55"/><stop offset="1" stop-color="#ffe7bb" stop-opacity="0"/></linearGradient>
-<filter id="sb8" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1800"><feGaussianBlur stdDeviation="8"/></filter>
+<radialGradient id="coolAir" cx="50%" cy="50%" r="50%"><stop stop-color="#cfe2f4" stop-opacity=".6"/><stop offset="1" stop-color="#cfe2f4" stop-opacity="0"/></radialGradient>
+<linearGradient id="haze" x2="0" y2="1"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".55" stop-color="#ffffff" stop-opacity=".8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<linearGradient id="stone" x2="0" y2="1"><stop stop-color="#f7f9fb"/><stop offset=".4" stop-color="#f0f3f7"/><stop offset="1" stop-color="#e9eef4"/></linearGradient>
+<linearGradient id="skyReflect" x2="0" y2="1"><stop stop-color="#dae7f3" stop-opacity=".7"/><stop offset="1" stop-color="#dae7f3" stop-opacity="0"/></linearGradient>
+<linearGradient id="hairline"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".15" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".85" stop-color="#ffffff" stop-opacity=".95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+
+
+<filter id="sb6" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1800"><feGaussianBlur stdDeviation="6"/></filter>
 <filter id="sb18" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1800"><feGaussianBlur stdDeviation="18"/></filter>
-<filter id="sb36" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1800"><feGaussianBlur stdDeviation="36"/></filter>
+<filter id="sb40" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1800"><feGaussianBlur stdDeviation="40"/></filter>
 </defs>
 <rect width="1920" height="1200" fill="url(#sky)"/>
-<!-- the sun's light, upper left: a warm source the whole room is lit from -->
-<ellipse cx="250" cy="170" rx="182" ry="126" fill="url(#sunGlow)" filter="url(#sb36)"/>
-<circle cx="250" cy="170" r="38.5" fill="#fffaec" opacity=".85" filter="url(#sb18)"/>
-<!-- the distant world: a soft mountain horizon under warm air -->
-<path d="M0 930 L0 897.3 L160 864.24 L320 878.99 L480 863.58 L640 906.58 L800 867.07 L960 891.31 L1120 906.4 L1280 905.63 L1440 860.79 L1600 861.33 L1760 882.97 L1920 886.86 L1920 990 L0 990 Z" fill="#b6c7d9" opacity=".36" filter="url(#sb8)"/>
-<path d="M0 952 L0 933.27 L160 932.26 L320 930.16 L480 937.9 L640 919.97 L800 916.29 L960 937.62 L1120 919.9 L1280 937.1 L1440 934.02 L1600 917.94 L1760 932.43 L1920 929.94 L1920 1012 L0 1012 Z" fill="#a3b6cb" opacity=".3"/>
-<rect x="0" y="890" width="1920" height="110" fill="url(#horizonWarm)" filter="url(#sb18)"/>
-<!-- the marble floor: the room has a ground, with the sky's light in it -->
-<rect x="0" y="960" width="1920" height="240" fill="url(#marble)"/>
-<rect x="0" y="960" width="1920" height="1.6" fill="#c9a86c" opacity=".55"/>
-<ellipse cx="960" cy="1290" rx="1190.4" ry="200" fill="none" stroke="#c4a468" stroke-width="2" opacity=".42"/>
-<ellipse cx="960" cy="1290" rx="883.2" ry="144" fill="none" stroke="#c4a468" stroke-width="1.4" opacity=".3"/>
-<ellipse cx="960" cy="1286" rx="1152" ry="200" fill="none" stroke="#fff" stroke-width="14" opacity=".5" filter="url(#sb18)"/>
+<!-- daylight: a white solar bloom upper left, a cool breath of sky opposite -->
+<ellipse cx="250" cy="170" rx="210" ry="147" fill="url(#bloom)" filter="url(#sb40)"/>
+<circle cx="250" cy="170" r="42" fill="#ffffff" opacity=".9" filter="url(#sb18)"/>
+<ellipse cx="1651.2" cy="240" rx="537.6" ry="288" fill="url(#coolAir)" filter="url(#sb40)"/>
+<!-- the distant world: a faint silver mountain line under luminous haze -->
+<path d="M0 930 L0 897.3 L160 864.24 L320 878.99 L480 863.58 L640 906.58 L800 867.07 L960 891.31 L1120 906.4 L1280 905.63 L1440 860.79 L1600 861.33 L1760 882.97 L1920 886.86 L1920 990 L0 990 Z" fill="#d3deea" opacity=".4" filter="url(#sb6)"/>
+<path d="M0 952 L0 933.27 L160 932.26 L320 930.16 L480 937.9 L640 919.97 L800 916.29 L960 937.62 L1120 919.9 L1280 937.1 L1440 934.02 L1600 917.94 L1760 932.43 L1920 929.94 L1920 1012 L0 1012 Z" fill="#c9d6e5" opacity=".24"/>
+<rect x="0" y="880" width="1920" height="130" fill="url(#haze)" filter="url(#sb18)"/>
+<!-- polished pearl stone: the room's ground, with the sky reflected in it -->
+<rect x="0" y="960" width="1920" height="240" fill="url(#stone)"/>
+<rect x="0" y="960" width="1920" height="132" fill="url(#skyReflect)"/>
+<rect x="0" y="961.4" width="1920" height="1" fill="#c9d5e3" opacity=".42"/>
+<rect x="0" y="960" width="1920" height="1.4" fill="url(#hairline)"/>
+<rect x="0" y="954" width="1920" height="10" fill="#ffffff" opacity=".85" filter="url(#sb6)"/>
+<ellipse cx="307.2" cy="1044" rx="384" ry="72" fill="#ffffff" opacity=".6" filter="url(#sb18)"/>
+<ellipse cx="960" cy="1290" rx="1190.4" ry="200" fill="none" stroke="#ffffff" stroke-width="2" opacity=".95"/>
+<ellipse cx="960" cy="1293" rx="1190.4" ry="200" fill="none" stroke="#c9d4e1" stroke-width="1" opacity=".45"/>
+<ellipse cx="960" cy="1290" rx="883.2" ry="144" fill="none" stroke="#e4d8bd" stroke-width="1" opacity=".5"/>
+<ellipse cx="960" cy="1286" rx="1152" ry="200" fill="none" stroke="#ffffff" stroke-width="14" opacity=".7" filter="url(#sb18)"/>
 
 
 </svg>

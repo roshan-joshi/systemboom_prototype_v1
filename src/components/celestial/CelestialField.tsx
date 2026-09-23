@@ -28,7 +28,7 @@ import { RESONANCES, resonanceById } from "@/lib/celestial/registry";
 import { commitMotion, previewMotion, REDUCED_CROSSFADE_S, reducedTransition } from "@/lib/celestial/motion";
 import type { FieldPhase, LearningState, ResonanceId } from "@/lib/celestial/types";
 import { labelCapFor, layoutArc, objectSizeFor, perRowFor, type ArcLayout, type ItemBox } from "./layout";
-import { atmosphere, artifactAura, masteredAsset, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT, starField } from "./visual";
+import { atmosphere, artifactAura, masteredAsset, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT, RESONATE_INK_SOLAR, starField } from "./visual";
 import { useResonanceName } from "./ResonanceMark";
 
 /** Each object enters through the horizon according to its own physical character. The field
@@ -553,8 +553,10 @@ function CelestialFieldOpen({
             <span
               className="text-[13.5px] leading-snug"
               style={{
-                color: theme === "light" ? "#72501f" : `color-mix(in srgb, ${readoutAccent} 82%, var(--text))`,
-                textShadow: `0 0 18px color-mix(in srgb, ${readoutAccent} 32%, transparent)`,
+                /* Light: ink carrying a breath of the object's own hue (AA-safe at 22%) — the
+                   former fixed bronze read as antique print on the pearl ground. */
+                color: theme === "light" ? `color-mix(in srgb, ${readoutAccent} 22%, ${RESONATE_INK_SOLAR})` : `color-mix(in srgb, ${readoutAccent} 82%, var(--text))`,
+                textShadow: theme === "light" ? "none" : `0 0 18px color-mix(in srgb, ${readoutAccent} 32%, transparent)`,
                 letterSpacing: "0.005em",
               }}
             >

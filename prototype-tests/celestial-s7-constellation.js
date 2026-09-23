@@ -380,7 +380,13 @@ const stripState = (page) =>
     ok(!/r="194"/.test(cosmosSvg) && !/r="194"/.test(svg("environment-cosmos-portrait.svg")), "the unexplained r=194 circle is gone from both dark skies");
     ok(/galaxyCore/.test(cosmosSvg) && /crescent/.test(cosmosSvg) && /id="floor"/.test(cosmosSvg), "in its place: an intentional galaxy, a lit crescent, a cosmic floor");
     ok(!/M30 0 L340 0/.test(solarSvg), "the giant glass triangles are gone from the light sky");
-    ok(/id="metal"/.test(solarSvg) && /id="sunGlow"/.test(solarSvg) && /id="marble"/.test(solarSvg), "in their place: observatory frames, sunlight, a marble floor");
+    // Light-mode correction (owner-directed): the observatory is daylight, pearl and glass — the
+    // earlier gold-metal frames and beige marble read as old paper and were replaced.
+    const frameL = svg("environment-solar-frame-left.svg");
+    ok(/id="rib"/.test(frameL) && /id="pane"/.test(frameL) && /id="bloom"/.test(solarSvg) && /id="stone"/.test(solarSvg), "in their place: thin glass-dome ribs, glass panes, a daylight bloom, a pearl-stone floor");
+    const OLD_PAPER = /#(c9a767|b8945a|e2cc98|e9d8ae|7d6130|fbf7ee|f3eee4|e9e3d7|c4a468|c9a86c|ffe7bb|fff6de|ffeec6)\b/i;
+    const solarAll = ["environment-solar.svg", "environment-solar-frame-left.svg", "environment-solar-frame-right.svg", "environment-solar-portrait.svg"].map(svg).join("");
+    ok(!OLD_PAPER.test(solarAll), "no old-paper colour (mustard / brown-gold / beige / bronze shadow / yellow horizon) anywhere in the Solar Observatory");
     ok(![cosmosSvg, solarSvg].some((s) => /#D92A20/i.test(s)), "brand red never enters the environment");
 
     /* ---- 19. GATE 2 — participation grants no access to a life ---- */

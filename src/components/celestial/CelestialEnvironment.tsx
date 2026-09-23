@@ -113,13 +113,25 @@ export function CelestialEnvironment() {
 .sb-celestial-field [data-sb-depth-sky]{transform:translate3d(calc(var(--sb-depth-x) * .7),calc(var(--sb-depth-y) * .7),0);transition:transform 300ms cubic-bezier(.22,1,.36,1);}
 
 /* ─────────────────────── SOLAR OBSERVATORY — the light world ─────────────────────── */
+/* DAYLIGHT, PEARL AND GLASS. Light-mode correction: the previous pass read as old paper —
+   cream cards, brown-gold edges, brown shadows, a beige floor, heavy mustard frames. Surfaces
+   are now clean pearl white with a cool luminous edge and cool atmospheric shadow; warmth is
+   a restrained solar accent (the personal orbit, one hairline glint), never a wash. */
 html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) {
-  --sb-cel-you:#8A6420;
-  --card:#fdfcf8f2; --card-edge:rgba(171,140,80,.16); --card-shadow:0 10px 32px -20px rgba(96,74,34,.28);
+  --sb-cel-you:#A9812F; --sb-cel-you-ink:#86621A; --sb-cel-count-o:1;
+  --card:rgba(255,255,255,.9); --card-edge:rgba(172,187,208,.26);
+  /* one pearl-glass grammar: a rim light on the side facing the sun (upper left), a white inner
+     edge, and a cool ambient shadow — never a grey drop shadow */
+  --card-shadow:inset 1px 1px 0 rgba(255,255,255,.95),inset 0 0 0 1px rgba(255,255,255,.55),0 0 0 1px rgba(172,187,208,.16),0 2px 8px -4px rgba(40,64,104,.08),0 22px 52px -32px rgba(40,64,104,.34);
   background-color:#F5F5F6;
 }
-/* The observatory's walls: one window frame hugging each viewport edge, at room height, over
-   the daylight room (sky, sun, mountains, marble floor) as a cover layer. */
+/* Pearl depth on the hero and the Life instruments: lit from the upper left like polished
+   mineral, a hair of translucency so the room's daylight reads through. Never a tinted panel. */
+html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) :is([data-sb-hero], aside > section){
+  background:radial-gradient(120% 55% at 0% 0%,rgba(255,255,255,.98),rgba(255,255,255,0) 62%),linear-gradient(165deg,rgba(255,255,255,.93),rgba(246,249,252,.9));
+}
+/* The dome's walls: thin receding glass ribs hugging each viewport edge, at room height, over
+   the daylight room (sky, solar bloom, silver horizon, pearl-stone floor) as a cover layer. */
 html[data-theme="light"] .sb-cel-sky::before{
   background:url('/celestial/environment-solar.svg') center top / cover no-repeat;
   background:
@@ -135,21 +147,31 @@ html[data-theme="light"] [data-sb-celestial-sky]::after{
 @container (max-width:700px){
   html[data-theme="light"] .sb-cel-sky::before{background:url('/celestial/environment-solar-portrait.svg') center top / cover no-repeat;}
 }
-/* Pearl, not paper: the sheet is the same warm material as the hero and the Life cards, lit
-   from the upper left, with a champagne edge where the room's gold meets it. */
+/* The Moments sheet: the same pearl mineral, a cool luminous edge, cool atmospheric depth. */
 html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-sheet] {
-  background:radial-gradient(110% 34% at 0% 0%,#fffdf6,transparent 60%),linear-gradient(165deg,#fffefbf2,#fcf9f2ee 55%,#f8f4eaee);
-  box-shadow:0 1px 0 #fff inset,0 0 0 1px rgba(176,142,80,.2),0 18px 48px -28px rgba(96,74,34,.34);
+  background:radial-gradient(110% 30% at 0% 0%,rgba(255,255,255,.98),transparent 60%),linear-gradient(170deg,rgba(255,255,255,.93),rgba(248,250,253,.9) 60%,rgba(244,247,251,.9));
+  box-shadow:inset 1px 1px 0 #fff,inset 0 0 0 1px rgba(255,255,255,.6),0 0 0 1px rgba(172,187,208,.16),0 2px 8px -4px rgba(40,64,104,.08),0 26px 60px -34px rgba(40,64,104,.36);
 }
-/* The bar is part of the room: pearl glass that lets the daylight and the gold frames glow
-   through it (blurred — the bar's own text stays crisp), a warm champagne hairline beneath. */
+/* The bar is part of the room: pearl glass the daylight and the dome's ribs glow through
+   (blurred — the bar's own text stays crisp), with one fine solar glint along its lower edge. */
 html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-topbar]{
-  background:linear-gradient(180deg,rgba(255,255,255,.74),rgba(252,249,241,.68));
-  backdrop-filter:blur(18px) saturate(1.35);
-  box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(176,142,80,.26),0 12px 28px -22px rgba(60,48,20,.32);
+  background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(247,250,253,.7));
+  backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(172,187,208,.42),0 12px 28px -22px rgba(40,64,104,.3);
 }
+@container (max-width:700px){
+  html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-topbar]{
+    background:linear-gradient(180deg,rgba(226,238,251,.95),rgba(250,252,254,.93));
+    backdrop-filter:blur(18px) saturate(1.05) brightness(1.06);
+  }
+}
+html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-topbar]::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(232,222,198,.5) 20%,rgba(255,255,255,.95) 46%,rgba(186,202,222,.55) 76%,transparent);
+}
+/* An open Moment gathers daylight: a white solar bloom and a breath of sky — no gold wash. */
 html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-moment]::before {
-  background:radial-gradient(ellipse at 8% 78%,#f2ce8260,transparent 62%),radial-gradient(ellipse at 94% 50%,#9dcbe64d,transparent 68%),linear-gradient(165deg,#ffffff00,#fffffff0 55%,#e4edf299);
+  background:radial-gradient(ellipse at 8% 78%,rgba(255,248,236,.3),transparent 62%),radial-gradient(ellipse at 94% 50%,rgba(170,206,236,.32),transparent 68%),linear-gradient(165deg,#ffffff00,#ffffffe8 55%,rgba(226,236,246,.6));
   box-shadow:none;
 }
 
@@ -168,24 +190,25 @@ html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-s
   .sb-cel-strip:has(> :nth-child(5)){display:grid;grid-template-columns:repeat(4,max-content);gap:8px 12px;}
   .sb-cel-strip:has(> :nth-child(5))::before{display:none;}
   .sb-cel-strip:has(> :nth-child(5)) > .sb-cel-node::after{content:"";position:absolute;top:12px;left:-7px;right:-7px;height:1px;z-index:-1;pointer-events:none;background:#9fb4d97d;opacity:.5;}
-  html[data-theme="light"] .sb-cel-strip:has(> :nth-child(5)) > .sb-cel-node::after{background:#b3985f8a;}
+  html[data-theme="light"] .sb-cel-strip:has(> :nth-child(5)) > .sb-cel-node::after{background:rgba(160,176,200,.62);}
 }
 .sb-cel-strip::before{
   content:"";position:absolute;left:1px;right:1px;top:12px;height:1px;pointer-events:none;
   background:linear-gradient(90deg,transparent,#9fb4d97d 14%,#9fb4d97d 86%,transparent);
   opacity:.55;
 }
-html[data-theme="light"] .sb-cel-strip::before{background:linear-gradient(90deg,transparent,#b3985f8a 14%,#b3985f8a 86%,transparent);opacity:.6;}
+html[data-theme="light"] .sb-cel-strip::before{background:linear-gradient(90deg,transparent,rgba(160,176,200,.66) 14%,rgba(208,184,132,.62) 50%,rgba(160,176,200,.66) 86%,transparent);opacity:.7;}
 .sb-cel-node{position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:24px;}
-.sb-cel-count{font-size:10.5px;line-height:1;letter-spacing:.02em;opacity:.85;}
+.sb-cel-count{font-size:10.5px;line-height:1;letter-spacing:.02em;opacity:var(--sb-cel-count-o,.85);}
 /* The viewer's own signal: a fine personal orbit — position, never importance. */
 .sb-cel-your-ring{
-  position:absolute;left:50%;top:13px;width:30px;height:30px;transform:translate(-50%,-50%);
+  position:absolute;left:50%;top:11px;width:26px;height:26px;transform:translate(-50%,-50%);
   border-radius:50%;pointer-events:none;
   border:1px solid color-mix(in srgb, var(--sb-cel-you, #C9A25E) 85%, transparent);
   box-shadow:0 0 10px -3px color-mix(in srgb, var(--sb-cel-you, #C9A25E) 55%, transparent);
 }
-.sb-cel-your-ring-stage{left:12px;top:12px;width:32px;height:32px;transform:translate(-50%,-50%);}
+.sb-cel-your-ring-stage{left:12px;top:12px;width:30px;height:30px;transform:translate(-50%,-50%);}
+html[data-theme="light"] .sb-cel-your-ring{border:1.5px solid rgba(34,48,71,.66);box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),0 0 10px -2px rgba(211,182,124,.6);}
 /* The expanded stage: a quiet celestial ground, one hairline per meaning, no bars, no ranks. */
 .sb-social:has([data-sb-celestial-environment]) [data-sb-resonance-who-panel]{
   background:linear-gradient(160deg,#0d1526f2,#0a101ceb 60%,#121a2eee);
@@ -193,9 +216,9 @@ html[data-theme="light"] .sb-cel-strip::before{background:linear-gradient(90deg,
   box-shadow:0 1px 0 #c6d6ff10 inset,0 18px 44px -26px #020510c8;
 }
 html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-sb-resonance-who-panel]{
-  background:linear-gradient(160deg,#fffffff5,#fdfaf2f0 62%,#f7fbfcf2);
-  border-color:rgba(171,140,80,.2);
-  box-shadow:0 1px 0 #fff inset,0 14px 36px -26px rgba(96,74,34,.4);
+  background:linear-gradient(165deg,rgba(255,255,255,.97),rgba(248,250,253,.95) 60%,rgba(243,247,251,.95));
+  border-color:rgba(172,187,208,.4);
+  box-shadow:inset 0 1px 0 #fff,0 16px 40px -28px rgba(40,64,104,.34);
 }
 .sb-cel-group + .sb-cel-group{border-top:1px solid color-mix(in srgb, currentColor 9%, transparent);}
 /* While the constellation is open it grows tall; the frozen presence row centres its items, which
@@ -206,7 +229,7 @@ html[data-theme="light"] .sb-social:has([data-sb-celestial-environment]) [data-s
    count crossfades. Never fireworks, never a loop, nothing for merely watching. */
 @keyframes sb-cel-node-in{0%{opacity:0;transform:translateY(3px)}100%{opacity:1;transform:none}}
 .sb-cel-node-new{animation:sb-cel-node-in 240ms cubic-bezier(.22,1,.36,1) both;}
-@keyframes sb-cel-count-in{0%{opacity:0}100%{opacity:.85}}
+@keyframes sb-cel-count-in{0%{opacity:0}100%{opacity:var(--sb-cel-count-o,.85)}}
 .sb-cel-count-in{animation:sb-cel-count-in 180ms ease-out both;}
 @keyframes sb-cel-stage-in{0%{opacity:0;transform:translateY(4px)}100%{opacity:1;transform:none}}
 [data-sb-resonance-who-panel]{animation:sb-cel-stage-in 200ms cubic-bezier(.22,1,.36,1) both;}

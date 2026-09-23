@@ -25,8 +25,8 @@
  *   environment-solar.svg             SOLAR OBSERVATORY room (landscape): daylight sky, the
  *                                     sun's light from the upper left, a mountain horizon, a
  *                                     marble floor with dais inlays. No frames.
- *   environment-solar-frame-left.svg  the observatory's window frame — champagne post and
- *   environment-solar-frame-right.svg mullion arching inward, a glass glint — one per wall
+ *   environment-solar-frame-left.svg  one wall of the glass dome — three thin receding ribs,
+ *   environment-solar-frame-right.svg silver-white metal with champagne where the sun touches
  *   environment-solar-portrait.svg    phones: one composition with the frames at the edges
  *
  * Gone: the giant translucent triangles, and the three horizon-wide rib arcs (they read as
@@ -172,43 +172,59 @@ ${inner}
 }
 
 /* ───────────────────────── SOLAR OBSERVATORY ───────────────────────── */
-const SOLAR_DEFS = `
-<linearGradient id="metal" x2="0" y2="1">
-  <stop stop-color="#e2cc98"/><stop offset=".45" stop-color="#c9a767"/><stop offset=".7" stop-color="#e9d8ae"/><stop offset="1" stop-color="#b8945a"/>
+/* LIGHT-MODE CORRECTION: the owner read the previous pass as old paper — a beige marble floor
+   band, mustard/brown-gold frame strokes 16px thick with brown shadows, a yellow horizon band.
+   The observatory is now DAYLIGHT, PEARL and GLASS: cool sky, a white solar bloom, a polished
+   pearl-mineral floor that reflects the sky, and thin receding glass-dome ribs whose metal is
+   mostly silver-white with champagne only where the sun touches them. Warmth is a restrained
+   accent of light, never a wash over the page. */
+const ribDefs = (sunlit) => `
+<linearGradient id="rib" x2="0" y2="1">
+  ${sunlit
+    ? '<stop stop-color="#fffbf2"/><stop offset=".12" stop-color="#efe3c7"/>'
+    : '<stop stop-color="#f8fafc"/><stop offset=".12" stop-color="#eef2f7"/>'}<stop offset=".32" stop-color="#ffffff"/><stop offset=".75" stop-color="#f4f7fb"/><stop offset="1" stop-color="#eaeff5"/>
 </linearGradient>
-<linearGradient id="glass" x2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>`;
+<linearGradient id="pane" x2="0" y2="1"><stop stop-color="#ffffff" stop-opacity=".34"/><stop offset=".55" stop-color="#f4f8fc" stop-opacity=".14"/><stop offset="1" stop-color="#ffffff" stop-opacity=".04"/></linearGradient>
+<radialGradient id="daylight" cx="50%" cy="50%" r="50%"><stop stop-color="#ffffff" stop-opacity=".95"/><stop offset=".42" stop-color="#fffbf3" stop-opacity=".5"/><stop offset="1" stop-color="#fffbf3" stop-opacity="0"/></radialGradient>
+<linearGradient id="glint" x2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>`;
+const RIB_DEFS = ribDefs(true);
 
-/* SUNLIGHT, not a sun: warm shafts falling from the upper left through the window, and one
-   faint spectral fringe where the light refracts at the glass edge. A disc here could be misread
-   as the Sun·Joy Resonance; the room's light is never an object. */
+/* SUNLIGHT, not a sun: white daylight falling from the upper left through the glass, and one
+   faint spectral fringe where it refracts at a rib. A disc could be misread as the Sun·Joy
+   Resonance; the room's light is never an object. */
 const SUN_DEFS = `
-<linearGradient id="shaft" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff7e4" stop-opacity=".9"/><stop offset=".55" stop-color="#fff3d8" stop-opacity=".35"/><stop offset="1" stop-color="#fff3d8" stop-opacity="0"/></linearGradient>
-<linearGradient id="fringe" x2="0" y2="1"><stop stop-color="#ffd7a3" stop-opacity="0"/><stop offset=".2" stop-color="#ffd7a3" stop-opacity=".8"/><stop offset=".45" stop-color="#f7c6d6" stop-opacity=".7"/><stop offset=".7" stop-color="#c9e2ff" stop-opacity=".75"/><stop offset="1" stop-color="#c9e2ff" stop-opacity="0"/></linearGradient>`;
+<linearGradient id="shaft" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#fffaf0" stop-opacity=".35"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<linearGradient id="fringe" x2="0" y2="1"><stop stop-color="#ffe2b8" stop-opacity="0"/><stop offset=".22" stop-color="#ffe2b8" stop-opacity=".7"/><stop offset=".46" stop-color="#f6d0e2" stop-opacity=".6"/><stop offset=".7" stop-color="#cfe6ff" stop-opacity=".7"/><stop offset="1" stop-color="#cfe6ff" stop-opacity="0"/></linearGradient>`;
 function sunlight(x0, span, floorY, fringeX) {
-  const shafts = [[0, 90, 0.34], [120, 60, 0.26], [230, 110, 0.2]].map(([dx, w, o]) =>
+  const shafts = [[0, 90, 0.26], [120, 60, 0.2], [230, 110, 0.14]].map(([dx, w, o]) =>
     `<path d="M${x0 + dx} -40 L${x0 + dx + w} -40 L${x0 + dx + w + span} ${floorY} L${x0 + dx + span} ${floorY} Z" fill="url(#shaft)" opacity="${o}" filter="url(#sb14)"/>`,
   ).join("\n");
   return `${shafts}
-<rect x="${fringeX}" y="60" width="5" height="${floorY - 140}" fill="url(#fringe)" opacity=".38" filter="url(#sb2)"/>`;
+<rect x="${fringeX}" y="80" width="4" height="${floorY - 180}" fill="url(#fringe)" opacity=".34" filter="url(#sb2)"/>`;
 }
 
-/* A window frame: a post rising from the floor that arches inward overhead. */
-function frameStroke(x, archTo, top, H, w, o) {
-  const d = `M${x} ${H + 20} L${x} ${top} C${x} ${r2(top * 0.35)} ${r2(x + (archTo - x) * 0.35)} -40 ${archTo} -90`;
-  const inward = archTo > x ? 1 : -1;
+/* One glass-dome rib: rises from the floor and curves overhead toward a vanishing point beyond
+   the top of the room. Thin, with a light-side highlight and a cool contact shadow. */
+function rib(x, archTo, top, H, w, o, inward) {
+  const d = `M${x} ${H + 20} L${x} ${top} C${x} ${r2(top * 0.32)} ${r2(x + (archTo - x) * 0.3)} -50 ${archTo} -110`;
   return (
-    `<path d="${d}" fill="none" stroke="#7d6130" stroke-width="${w + 5}" opacity="${r2(o * 0.18)}" filter="url(#sb8)" transform="translate(${6 * inward} 5)"/>` +
-    `<path d="${d}" fill="none" stroke="url(#metal)" stroke-width="${w}" opacity="${o}"/>` +
-    `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${r2(Math.max(1, w * 0.12))}" opacity="${r2(o * 0.9)}" transform="translate(${r2(-w * 0.28 * inward)} 0)"/>`
+    `<path d="${d}" fill="none" stroke="#5a7090" stroke-width="${r2(w + 3)}" opacity="${r2(o * 0.08)}" filter="url(#sb4)" transform="translate(3 4)"/>` +
+    `<path d="${d}" fill="none" stroke="#8ea2be" stroke-width="1" opacity="${r2(o * 0.55)}" transform="translate(${r2(w / 2 + 0.5)} 0)"/>` +
+    `<path d="${d}" fill="none" stroke="url(#rib)" stroke-width="${w}" opacity="${o}"/>` +
+    `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${r2(Math.max(0.8, w * 0.4))}" opacity="${r2(Math.min(1, o * 1.05))}" transform="translate(${r2(-w * 0.28)} 0)"/>`
   );
 }
-function framePair(F, W, H) {
-  // F: { post, mullion, postTo, mullionTo, top, postW, floorY }, mirrored when W is given for the right wall
-  const mirror = (x) => (F.right ? W - x : x);
+/* A wall of the dome: three ribs receding into depth (each further in, thinner, fainter), a
+   translucent glass pane between the first two, and a glint running down the glass. */
+function domeWall(F, W, H) {
+  const m = (x) => (F.right ? W - x : x);
+  const inward = F.right ? -1 : 1;
+  const [a, b, c] = F.ribs;
+  const pane = `M${m(a.x)} ${H + 20} L${m(a.x)} ${a.top} C${m(a.x)} ${r2(a.top * 0.32)} ${r2(m(a.x) + (m(a.to) - m(a.x)) * 0.3)} -50 ${m(a.to)} -110 L${m(b.to)} -110 C${r2(m(b.x) + (m(b.to) - m(b.x)) * 0.3)} -50 ${m(b.x)} ${r2(b.top * 0.32)} ${m(b.x)} ${b.top} L${m(b.x)} ${H + 20} Z`;
   return (
-    `<rect x="${r2(mirror(F.post) + (F.right ? -40 : 14))}" y="0" width="26" height="${F.floorY}" fill="url(#glass)" opacity=".5" filter="url(#sb8)"/>` +
-    frameStroke(mirror(F.post), mirror(F.postTo), F.top, H, F.postW, 0.92) +
-    frameStroke(mirror(F.mullion), mirror(F.mullionTo), F.top, H, r2(F.postW * 0.5), 0.78)
+    `<path d="${pane}" fill="url(#pane)"/>` +
+    `<rect x="${r2(m(a.x) + (F.right ? -22 : 10))}" y="40" width="12" height="${F.floorY - 60}" fill="url(#glint)" opacity=".42" filter="url(#sb4)"/>` +
+    [a, b, c].map((r) => rib(m(r.x), m(r.to), r.top, H, r.w, r.o, inward)).join("")
   );
 }
 
@@ -217,55 +233,69 @@ function buildSolarRoom(L) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 <defs>
 <linearGradient id="sky" x2="0" y2="1">
-  <stop stop-color="#bcd5ec"/><stop offset=".36" stop-color="#e3eff8"/><stop offset=".62" stop-color="#f8f5ec"/><stop offset="1" stop-color="#f5f5f6"/>
+  <stop stop-color="#bcd6ee"/><stop offset=".3" stop-color="#d8e8f6"/><stop offset=".56" stop-color="#eaf2fa"/><stop offset=".8" stop-color="#f5f8fb"/><stop offset="1" stop-color="#f6f7f9"/>
 </linearGradient>
-${SOLAR_DEFS}${L.frames ? SUN_DEFS : ""}
-${L.frames ? blur("sb2", 1.5, W, H) + blur("sb14", 14, W, H) : ""}
-<radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-  <stop stop-color="#fff6de" stop-opacity=".95"/><stop offset=".45" stop-color="#ffeec6" stop-opacity=".4"/><stop offset="1" stop-color="#ffeec6" stop-opacity="0"/>
+<radialGradient id="bloom" cx="50%" cy="50%" r="50%">
+  <stop stop-color="#ffffff" stop-opacity=".95"/><stop offset=".4" stop-color="#fffbf2" stop-opacity=".5"/><stop offset="1" stop-color="#fffbf2" stop-opacity="0"/>
 </radialGradient>
-<linearGradient id="marble" x2="0" y2="1">
-  <stop stop-color="#fbf7ee"/><stop offset=".3" stop-color="#f3eee4"/><stop offset="1" stop-color="#e9e3d7"/>
-</linearGradient>
-<linearGradient id="horizonWarm" x2="0" y2="1"><stop stop-color="#ffe7bb" stop-opacity="0"/><stop offset=".55" stop-color="#ffe7bb" stop-opacity=".55"/><stop offset="1" stop-color="#ffe7bb" stop-opacity="0"/></linearGradient>
-${blur("sb8", 8, W, H)}
+<radialGradient id="coolAir" cx="50%" cy="50%" r="50%"><stop stop-color="#cfe2f4" stop-opacity=".6"/><stop offset="1" stop-color="#cfe2f4" stop-opacity="0"/></radialGradient>
+<linearGradient id="haze" x2="0" y2="1"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".55" stop-color="#ffffff" stop-opacity=".8"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<linearGradient id="stone" x2="0" y2="1"><stop stop-color="#f7f9fb"/><stop offset=".4" stop-color="#f0f3f7"/><stop offset="1" stop-color="#e9eef4"/></linearGradient>
+<linearGradient id="skyReflect" x2="0" y2="1"><stop stop-color="#dae7f3" stop-opacity=".7"/><stop offset="1" stop-color="#dae7f3" stop-opacity="0"/></linearGradient>
+<linearGradient id="hairline"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".15" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".85" stop-color="#ffffff" stop-opacity=".95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+${L.frames ? RIB_DEFS + SUN_DEFS : ""}
+${L.frames ? blur("sb2", 1.5, W, H) + blur("sb4", 3, W, H) + blur("sb14", 14, W, H) : ""}
+${blur("sb6", 6, W, H)}
 ${blur("sb18", 18, W, H)}
-${blur("sb36", 36, W, H)}
+${blur("sb40", 40, W, H)}
 </defs>
 <rect width="${W}" height="${H}" fill="url(#sky)"/>
-<!-- the sun's light, upper left: a warm source the whole room is lit from -->
-<ellipse cx="${L.sun[0]}" cy="${L.sun[1]}" rx="${L.sun[2] * 2.6}" ry="${L.sun[2] * 1.8}" fill="url(#sunGlow)" filter="url(#sb36)"/>
-<circle cx="${L.sun[0]}" cy="${L.sun[1]}" r="${r2(L.sun[2] * 0.55)}" fill="#fffaec" opacity=".85" filter="url(#sb18)"/>
-<!-- the distant world: a soft mountain horizon under warm air -->
-<path d="${L.ridgeFar}" fill="#b6c7d9" opacity=".36" filter="url(#sb8)"/>
-<path d="${L.ridgeNear}" fill="#a3b6cb" opacity=".3"/>
-<rect x="0" y="${L.floorY - 70}" width="${W}" height="110" fill="url(#horizonWarm)" filter="url(#sb18)"/>
-<!-- the marble floor: the room has a ground, with the sky's light in it -->
-<rect x="0" y="${L.floorY}" width="${W}" height="${H - L.floorY}" fill="url(#marble)"/>
-<rect x="0" y="${L.floorY}" width="${W}" height="1.6" fill="#c9a86c" opacity=".55"/>
-<ellipse cx="${W / 2}" cy="${H + L.daisDrop}" rx="${W * 0.62}" ry="${L.daisRy}" fill="none" stroke="#c4a468" stroke-width="2" opacity=".42"/>
-<ellipse cx="${W / 2}" cy="${H + L.daisDrop}" rx="${W * 0.46}" ry="${r2(L.daisRy * 0.72)}" fill="none" stroke="#c4a468" stroke-width="1.4" opacity=".3"/>
-<ellipse cx="${W / 2}" cy="${H + L.daisDrop - 4}" rx="${W * 0.6}" ry="${L.daisRy}" fill="none" stroke="#fff" stroke-width="14" opacity=".5" filter="url(#sb18)"/>
-${L.frames ? sunlight(-10, 260, L.floorY, L.frames.post + 20) : ""}
-${L.frames ? framePair({ ...L.frames, floorY: L.floorY }, W, H) + framePair({ ...L.frames, floorY: L.floorY, right: true }, W, H) : ""}
+<!-- daylight: a white solar bloom upper left, a cool breath of sky opposite -->
+<ellipse cx="${L.sun[0]}" cy="${L.sun[1]}" rx="${r2(L.sun[2] * 3)}" ry="${r2(L.sun[2] * 2.1)}" fill="url(#bloom)" filter="url(#sb40)"/>
+<circle cx="${L.sun[0]}" cy="${L.sun[1]}" r="${r2(L.sun[2] * 0.6)}" fill="#ffffff" opacity=".9" filter="url(#sb18)"/>
+<ellipse cx="${r2(W * 0.86)}" cy="${r2(H * 0.2)}" rx="${r2(W * 0.28)}" ry="${r2(H * 0.24)}" fill="url(#coolAir)" filter="url(#sb40)"/>
+<!-- the distant world: a faint silver mountain line under luminous haze -->
+<path d="${L.ridgeFar}" fill="#d3deea" opacity=".4" filter="url(#sb6)"/>
+<path d="${L.ridgeNear}" fill="#c9d6e5" opacity=".24"/>
+<rect x="0" y="${L.floorY - 80}" width="${W}" height="130" fill="url(#haze)" filter="url(#sb18)"/>
+<!-- polished pearl stone: the room's ground, with the sky reflected in it -->
+<rect x="0" y="${L.floorY}" width="${W}" height="${H - L.floorY}" fill="url(#stone)"/>
+<rect x="0" y="${L.floorY}" width="${W}" height="${r2((H - L.floorY) * 0.55)}" fill="url(#skyReflect)"/>
+<rect x="0" y="${L.floorY + 1.4}" width="${W}" height="1" fill="#c9d5e3" opacity=".42"/>
+<rect x="0" y="${L.floorY}" width="${W}" height="1.4" fill="url(#hairline)"/>
+<rect x="0" y="${L.floorY - 6}" width="${W}" height="10" fill="#ffffff" opacity=".85" filter="url(#sb6)"/>
+<ellipse cx="${r2(W * 0.16)}" cy="${r2(L.floorY + (H - L.floorY) * 0.35)}" rx="${r2(W * 0.2)}" ry="${r2((H - L.floorY) * 0.3)}" fill="#ffffff" opacity=".6" filter="url(#sb18)"/>
+<ellipse cx="${W / 2}" cy="${H + L.daisDrop}" rx="${r2(W * 0.62)}" ry="${L.daisRy}" fill="none" stroke="#ffffff" stroke-width="2" opacity=".95"/>
+<ellipse cx="${W / 2}" cy="${H + L.daisDrop + 3}" rx="${r2(W * 0.62)}" ry="${L.daisRy}" fill="none" stroke="#c9d4e1" stroke-width="1" opacity=".45"/>
+<ellipse cx="${W / 2}" cy="${H + L.daisDrop}" rx="${r2(W * 0.46)}" ry="${r2(L.daisRy * 0.72)}" fill="none" stroke="#e4d8bd" stroke-width="1" opacity=".5"/>
+<ellipse cx="${W / 2}" cy="${H + L.daisDrop - 4}" rx="${r2(W * 0.6)}" ry="${L.daisRy}" fill="none" stroke="#ffffff" stroke-width="14" opacity=".7" filter="url(#sb18)"/>
+${L.frames ? sunlight(-10, 260, L.floorY, L.frames.ribs[0].x + 16) : ""}
+${L.frames ? domeWall({ ...L.frames, floorY: L.floorY }, W, H) + domeWall({ ...L.frames, floorY: L.floorY, right: true }, W, H) : ""}
 </svg>`;
 }
 
-/* One wall's window frame on a transparent canvas, for an edge-anchored layer. */
+/* One wall of the glass dome on a transparent canvas, for an edge-anchored layer. */
+const DOME_RIBS = [
+  { x: 70, to: 470, top: 360, w: 4.4, o: 0.95 },
+  { x: 128, to: 520, top: 410, w: 3, o: 0.76 },
+  { x: 196, to: 560, top: 470, w: 2, o: 0.52 },
+];
 function buildSolarFrame(side) {
   const W = 560;
   const H = 1200;
-  const F = { post: 96, mullion: 152, postTo: 520, mullionTo: 560, top: 420, postW: 16, floorY: 960, right: side === "right" };
-  // The sun is upper LEFT (the family key light): only the left wall's window lets it in.
-  const light = side === "left" ? sunlight(-20, 300, F.floorY, 118) : "";
+  const F = { ribs: DOME_RIBS, floorY: 960, right: side === "right" };
+  // The sun is upper LEFT (the family key light): only the left wall's glass lets it in.
+  const light = side === "left"
+    ? `<ellipse cx="150" cy="150" rx="270" ry="210" fill="url(#daylight)" filter="url(#sb14)"/><ellipse cx="128" cy="128" rx="74" ry="58" fill="#ffffff" opacity=".92" filter="url(#sb14)"/>` + sunlight(-20, 300, F.floorY, 86)
+    : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-<defs>${SOLAR_DEFS}${SUN_DEFS}
+<defs>${ribDefs(side === "left")}${SUN_DEFS}
 ${blur("sb2", 1.5, W, H)}
-${blur("sb8", 8, W, H)}
+${blur("sb4", 3, W, H)}
 ${blur("sb14", 14, W, H)}
 </defs>
 ${light}
-${framePair(F, W, H)}
+${domeWall(F, W, H)}
 </svg>`;
 }
 
@@ -304,7 +334,7 @@ const files = {
     W: 900, H: 1600, floorY: 1300, daisDrop: 70, daisRy: 160,
     sun: [230, 170, 58],
     ridgeFar: ridge(900, 1270, 60, 7), ridgeNear: ridge(900, 1292, 34, 11),
-    frames: { post: 128, mullion: 170, postTo: 340, mullionTo: 370, top: 520, postW: 12 },
+    frames: { ribs: [{ x: 110, to: 330, top: 500, w: 2.6, o: 0.85 }, { x: 150, to: 360, top: 540, w: 1.8, o: 0.62 }, { x: 196, to: 390, top: 590, w: 1.2, o: 0.42 }] },
   }),
 };
 

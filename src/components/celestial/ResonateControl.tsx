@@ -26,7 +26,7 @@ import { useSocial } from "@/components/style-lab/social/store";
 import { personViewFor } from "@/components/style-lab/social/view-model";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
 import { CelestialField } from "./CelestialField";
-import { resonateGold, resonateGoldHi } from "./visual";
+import { resonateGold, resonateGoldHi, resonateLabel } from "./visual";
 import { ResonanceSeal, ResonanceSignal, useResonanceName } from "./ResonanceMark";
 
 /** Moment kinds where a Celestial Resonance is offered but laughter/celebration are not. */
@@ -103,12 +103,21 @@ export function ResonateControl({ moment }: { moment: Moment }) {
         onBlur={() => setAttending(false)}
         className="sb-press sb-resonate group relative inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-medium focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:px-3.5"
         style={{
-          color: accentHi,
+          color: resonateLabel(theme),
           border: `1px solid color-mix(in srgb, ${accent} ${open ? 95 : 78}%, transparent)`,
-          background: `linear-gradient(180deg, color-mix(in srgb, ${accent} ${open ? 20 : 13}%, transparent) 0%, transparent 80%)`,
-          boxShadow: open
-            ? `0 0 0 1px color-mix(in srgb, ${accent} 34%, transparent), 0 0 26px -2px color-mix(in srgb, ${accent} 46%, transparent), inset 0 0 18px -6px color-mix(in srgb, ${accent} 52%, transparent)`
-            : `0 0 18px -6px color-mix(in srgb, ${accent} 40%, transparent), inset 0 0 14px -8px color-mix(in srgb, ${accent} 40%, transparent)`,
+          /* Solar Observatory: a pearl aperture with a champagne rim — the fill and glow are
+             built from pearl light and a cool shadow, so opening it never pools a beige halo.
+             Deep Cosmos keeps its burning gold unchanged. */
+          background: theme === "light"
+            ? `linear-gradient(180deg, rgba(255,255,255,.92) 0%, color-mix(in srgb, ${accent} ${open ? 10 : 6}%, rgba(248,250,253,.9)) 100%)`
+            : `linear-gradient(180deg, color-mix(in srgb, ${accent} ${open ? 20 : 13}%, transparent) 0%, transparent 80%)`,
+          boxShadow: theme === "light"
+            ? open
+              ? `inset 0 1px 0 #fff, 0 0 0 1px color-mix(in srgb, ${accent} 30%, transparent), 0 0 20px -6px color-mix(in srgb, ${accent} 34%, transparent), 0 8px 20px -10px rgba(40,64,104,.28)`
+              : `inset 0 1px 0 #fff, 0 4px 12px -8px rgba(40,64,104,.24)`
+            : open
+              ? `0 0 0 1px color-mix(in srgb, ${accent} 34%, transparent), 0 0 26px -2px color-mix(in srgb, ${accent} 46%, transparent), inset 0 0 18px -6px color-mix(in srgb, ${accent} 52%, transparent)`
+              : `0 0 18px -6px color-mix(in srgb, ${accent} 40%, transparent), inset 0 0 14px -8px color-mix(in srgb, ${accent} 40%, transparent)`,
           transition: reduced ? "none" : "color 320ms ease-out, border-color 320ms ease-out, background 320ms ease-out, box-shadow 320ms ease-out",
         }}
       >
@@ -118,10 +127,10 @@ export function ResonateControl({ moment }: { moment: Moment }) {
         <span
           aria-hidden
           className="pointer-events-none absolute -inset-2 rounded-full opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"
-          style={{ background: `radial-gradient(60% 120% at 50% 50%, color-mix(in srgb, ${accent} 22%, transparent) 0%, transparent 72%)`, opacity: open ? 1 : undefined }}
+          style={{ background: `radial-gradient(60% 120% at 50% 50%, color-mix(in srgb, ${accent} ${theme === "light" ? 12 : 22}%, transparent) 0%, transparent 72%)`, opacity: open ? 1 : undefined }}
         />
         <span className="relative">
-          {mine ? <ResonanceSeal id={mine} size={22} decorative /> : <ResonateMark accent={open ? accentHi : accent} />}
+          {mine ? <ResonanceSeal id={mine} size={22} decorative /> : <ResonateMark accent={open || theme === "light" ? accentHi : accent} />}
         </span>
         <span className="relative">{t("celestial.action.resonate")}</span>
       </button>
@@ -351,7 +360,7 @@ export function ResonanceSummary({ moment }: { moment: Moment }) {
                       <span key={pid} data-sb-resonance-person={pid} className="inline-flex min-w-0 items-center gap-1.5">
                         <PersonIdentity viewer={me} subject={person} size={20} label="" />
                         <span className="max-w-[16ch] truncate text-[12px] text-muted">{view.name}</span>
-                        {pid === me.id && <span data-sb-resonance-me className="text-[10.5px] font-medium" style={{ color: "var(--sb-cel-you, #C9A25E)" }}>{t("celestial.summary.justYou")}</span>}
+                        {pid === me.id && <span data-sb-resonance-me className="text-[10.5px] font-medium" style={{ color: "var(--sb-cel-you-ink, var(--sb-cel-you, #C9A25E))" }}>{t("celestial.summary.justYou")}</span>}
                       </span>
                     ))}
                     {unnamed > 0 && (

@@ -119,13 +119,17 @@ export function starField(seed: number, count: number, w: number, h: number) {
  */
 export const RESONATE_GOLD = "#F2B457";
 export const RESONATE_GOLD_HI = "#FFD79A";
-/* Solar Observatory is a LIGHT ground: the same gold that glows on deep cosmos becomes
-   unreadable on white, so the light theme gets its own darker gold. Not an inversion — a
-   remaster, which is the rule for this theme everywhere else too. */
-export const RESONATE_GOLD_SOLAR = "#B4761C";
-export const RESONATE_GOLD_SOLAR_HI = "#8A5807";
+/* Solar Observatory is a LIGHT ground. A gold dark enough to be READABLE text on white always
+   reads as bronze (the light-mode correction pass removed exactly that aged look), so the light
+   doorway splits the jobs: a luminous solar gold for the aperture — rim, glow, mark — and an ink
+   label that carries the reading contrast. Not an inversion — a remaster. */
+export const RESONATE_GOLD_SOLAR = "#D9C59C";
+export const RESONATE_GOLD_SOLAR_HI = "#A38454";
+export const RESONATE_INK_SOLAR = "#223047";
 export const resonateGold = (theme: "dark" | "light") => (theme === "light" ? RESONATE_GOLD_SOLAR : RESONATE_GOLD);
 export const resonateGoldHi = (theme: "dark" | "light") => (theme === "light" ? RESONATE_GOLD_SOLAR_HI : RESONATE_GOLD_HI);
+/** The doorway's label colour: the glowing gold on Deep Cosmos, ink on the Solar Observatory. */
+export const resonateLabel = (theme: "dark" | "light") => (theme === "light" ? RESONATE_INK_SOLAR : RESONATE_GOLD_HI);
 
 /**
  * How an object is lit, per theme. On deep cosmos a coloured glow reads as light; on a light
@@ -148,12 +152,14 @@ export function atmosphere(theme: "dark" | "light") {
   return theme === "light"
     ? {
         basin: "radial-gradient(120% 78% at 50% 108%, rgba(147,185,211,0.19) 0%, rgba(255,255,255,0.65) 42%, transparent 74%)",
-        haze: "radial-gradient(70% 120% at 22% 8%, rgba(247,210,142,0.19) 0%, transparent 62%), radial-gradient(64% 110% at 84% 16%, rgba(132,187,225,0.24) 0%, transparent 60%)",
-        wash: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(246,247,251,0.52) 58%, rgba(240,243,249,0.62) 100%)",
-        star: "#9C7B46",
-        orbit: "rgba(147,112,54,0.30)",
+        /* Daylight, not parchment: a white solar haze and a breath of sky; silver orbits and
+           silver-blue stars (they were brown), a luminous — not orange — core. */
+        haze: "radial-gradient(70% 120% at 22% 8%, rgba(255,250,242,0.24) 0%, transparent 62%), radial-gradient(64% 110% at 84% 16%, rgba(132,187,225,0.24) 0%, transparent 60%)",
+        wash: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(246,248,252,0.52) 58%, rgba(240,244,250,0.62) 100%)",
+        star: "#8FA2C2",
+        orbit: "rgba(146,162,190,0.38)",
         rim: "rgba(120,140,190,0.34)",
-        core: "rgba(235,200,150,0.55)",
+        core: "rgba(255,234,200,0.6)",
         nebula: "radial-gradient(90% 60% at 50% 118%, rgba(196,215,226,0.32) 0%, rgba(255,255,255,0.7) 45%, transparent 76%)",
       }
     : {
