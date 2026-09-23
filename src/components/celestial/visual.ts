@@ -5,11 +5,10 @@
  * colour can never change what a Resonance means (22-DATA-CONTRACT.md §3). This module holds
  * the light each object casts, and the atmosphere the field is staged in.
  *
- * The problem this solves: the Gold Masters are square scenes with a baked background, so
- * mounting them as rounded tiles read as APP ICONS sitting on the card. Feathering each object
- * into its own light — a radial mask that dissolves the square edge into the field's own sky —
- * turns a tile into a presence. The streak objects (comet, meteor shower) keep their travel
- * because the feather is soft and centre-weighted, not a circular crop.
+ * The reference-led family uses transparent silhouettes and distinct optical exports.
+ * Contact light and emission differ by physical cause; reflected bodies remain quieter
+ * than Venus, the Sun, or the travelling phenomena. Legacy feather helpers remain available
+ * for the older composed assets, but are not applied to this transparent family.
  */
 
 import { resonanceAsset } from "@/lib/celestial/registry";
@@ -34,12 +33,12 @@ export const OBJECT_LIGHT: Record<ObjectKey, ObjectLight> = {
   venus:   { accent: "#E8899B", intensity: 1.00, feather: 62 },
   sun:     { accent: "#F2A93B", intensity: 1.25, feather: 58 },
   // Streaks travel to the corners: they need a wider feather so the trail survives.
-  meteors: { accent: "#9B7BE8", intensity: 1.15, feather: 72, needsNightSky: true },
-  comet:   { accent: "#6FC4E8", intensity: 1.20, feather: 74, needsNightSky: true },
-  jupiter: { accent: "#D98E52", intensity: 0.95, feather: 60 },
+  meteors: { accent: "#EF9A46", intensity: 1.15, feather: 72 },
+  comet:   { accent: "#6FC4E8", intensity: 1.20, feather: 74 },
+  jupiter: { accent: "#D98E52", intensity: 0.55, feather: 60 },
   saturn:  { accent: "#E8CE95", intensity: 1.00, feather: 70 },
-  moon:    { accent: "#AFC3DE", intensity: 0.80, feather: 60 },
-  mercury: { accent: "#D6B183", intensity: 0.85, feather: 58 },
+  moon:    { accent: "#AFC3DE", intensity: 0.28, feather: 60 },
+  mercury: { accent: "#D6B183", intensity: 0.40, feather: 58 },
 };
 
 /**
@@ -58,6 +57,22 @@ export function featherMask(feather: number): string {
 export function auraGradient(accent: string, strength: number): string {
   const a = (x: number) => `color-mix(in srgb, ${accent} ${Math.round(x * 100)}%, transparent)`;
   return `radial-gradient(circle at 50% 50%, ${a(0.42 * strength)} 0%, ${a(0.16 * strength)} 34%, ${a(0.05 * strength)} 56%, transparent 72%)`;
+}
+
+/** Physical light footprints: attraction, heat, trails, atmosphere, rings and reflection. */
+export function artifactAura(object: ObjectKey, strength: number): string {
+  const light = OBJECT_LIGHT[object];
+  const tint = (value: number) => `color-mix(in srgb, ${light.accent} ${Math.round(value * strength * 100)}%, transparent)`;
+  switch (object) {
+    case "venus": return `radial-gradient(ellipse at 32% 48%, ${tint(.24)}, transparent 50%), radial-gradient(ellipse at 68% 52%, ${tint(.24)}, transparent 50%)`;
+    case "sun": return `radial-gradient(circle, ${tint(.40)} 10%, ${tint(.13)} 35%, transparent 66%)`;
+    case "meteors": return `linear-gradient(135deg, transparent 36%, ${tint(.17)} 44%, transparent 48%, ${tint(.14)} 53%, transparent 59%, ${tint(.10)} 63%, transparent 68%)`;
+    case "comet": return `linear-gradient(135deg, transparent 35%, ${tint(.22)} 48%, ${tint(.06)} 57%, transparent 70%)`;
+    case "jupiter": return `radial-gradient(ellipse 64% 30% at 50% 64%, ${tint(.23)}, transparent 90%)`;
+    case "saturn": return `radial-gradient(ellipse 48% 22% at 50% 55%, transparent 38%, ${tint(.20)} 65%, transparent 98%)`;
+    case "moon": return `radial-gradient(ellipse 32% 42% at 66% 40%, ${tint(.20)}, transparent 85%)`;
+    case "mercury": return `radial-gradient(ellipse 32% 30% at 38% 35%, ${tint(.25)}, transparent 90%)`;
+  }
 }
 
 /**
@@ -117,29 +132,29 @@ export const resonateGoldHi = (theme: "dark" | "light") => (theme === "light" ? 
  * ground the same glow reads as haze and eats the streak objects, so Solar Observatory lifts
  * its objects with contrast and a soft neutral shadow instead.
  */
-export function objectFilter(theme: "dark" | "light", accent: string, size: number, lit: boolean): string {
+export function objectFilter(theme: "dark" | "light", accent: string, size: number, lit: boolean, emission = 1): string {
   if (theme === "light") {
     return lit
       ? `saturate(1.16) contrast(1.1) drop-shadow(0 ${Math.max(2, size * 0.05)}px ${Math.max(4, size * 0.12)}px rgba(40,50,80,0.30))`
       : `saturate(1.05) contrast(1.04) drop-shadow(0 ${Math.max(1, size * 0.035)}px ${Math.max(3, size * 0.09)}px rgba(40,50,80,0.22))`;
   }
   return lit
-    ? `saturate(1.12) contrast(1.05) drop-shadow(0 0 ${size * 0.22}px color-mix(in srgb, ${accent} 55%, transparent))`
-    : `saturate(1.02) drop-shadow(0 0 ${size * 0.1}px color-mix(in srgb, ${accent} 28%, transparent))`;
+    ? `saturate(1.12) contrast(1.05) drop-shadow(0 0 ${size * 0.22}px color-mix(in srgb, ${accent} ${Math.round(50 * emission)}%, transparent))`
+    : `saturate(1.02) drop-shadow(0 0 ${size * 0.1}px color-mix(in srgb, ${accent} ${Math.round(24 * emission)}%, transparent))`;
 }
 
 /** Deep Cosmos / Solar Observatory atmosphere tokens. Solar is remastered, not inverted. */
 export function atmosphere(theme: "dark" | "light") {
   return theme === "light"
     ? {
-        basin: "radial-gradient(120% 78% at 50% 108%, rgba(181,138,62,0.22) 0%, rgba(195,160,102,0.12) 42%, transparent 74%)",
-        haze: "radial-gradient(70% 120% at 22% 8%, rgba(220,172,98,0.16) 0%, transparent 62%), radial-gradient(64% 110% at 84% 16%, rgba(188,171,133,0.14) 0%, transparent 60%)",
+        basin: "radial-gradient(120% 78% at 50% 108%, rgba(147,185,211,0.19) 0%, rgba(255,255,255,0.65) 42%, transparent 74%)",
+        haze: "radial-gradient(70% 120% at 22% 8%, rgba(247,210,142,0.19) 0%, transparent 62%), radial-gradient(64% 110% at 84% 16%, rgba(132,187,225,0.24) 0%, transparent 60%)",
         wash: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(246,247,251,0.52) 58%, rgba(240,243,249,0.62) 100%)",
         star: "#9C7B46",
         orbit: "rgba(147,112,54,0.30)",
         rim: "rgba(120,140,190,0.34)",
         core: "rgba(235,200,150,0.55)",
-        nebula: "radial-gradient(90% 60% at 50% 118%, rgba(202,166,99,0.22) 0%, rgba(190,156,110,0.12) 45%, transparent 76%)",
+        nebula: "radial-gradient(90% 60% at 50% 118%, rgba(196,215,226,0.32) 0%, rgba(255,255,255,0.7) 45%, transparent 76%)",
       }
     : {
         basin: "radial-gradient(120% 78% at 50% 108%, rgba(96,124,205,0.20) 0%, rgba(58,78,150,0.10) 42%, transparent 74%)",
@@ -153,6 +168,6 @@ export function atmosphere(theme: "dark" | "light") {
       };
 }
 
-/** Original transparent Venus master; the other seven retain their accepted assets. */
+/** Transparent reference-led family. Registry semantics and legacy fallback assets stay frozen. */
 export const masteredAsset: typeof resonanceAsset = (object, theme, tier) =>
-  object === "venus" ? `/celestial/venus-heart-${tier}.webp` : resonanceAsset(object, theme, tier);
+  `/celestial/family/${object}-${theme === "light" ? "solar" : "cosmos"}-${tier}.webp`;

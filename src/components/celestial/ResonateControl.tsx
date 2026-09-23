@@ -34,6 +34,8 @@ export function ResonateControl({ moment }: { moment: Moment }) {
   const { t } = useT();
   const { me, dispatch } = useSocial();
   const [open, setOpen] = useState(false);
+  const [attending, setAttending] = useState(false);
+  const [pressing, setPressing] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const name = useResonanceName();
   const theme = useTheme();
@@ -85,9 +87,17 @@ export function ResonateControl({ moment }: { moment: Moment }) {
         data-sb-resonate
         data-sb-resonate-mine={mine ?? ""}
         data-sb-resonate-open={open ? "1" : "0"}
+        data-sb-resonate-attending={attending ? "1" : "0"}
+        data-sb-resonate-pressing={pressing ? "1" : "0"}
         aria-expanded={open}
         aria-label={mine ? name(mine) : t("celestial.action.resonate")}
         onClick={openField}
+        onPointerEnter={() => setAttending(true)}
+        onPointerLeave={() => { setAttending(false); setPressing(false); }}
+        onPointerDown={() => setPressing(true)}
+        onPointerUp={() => setPressing(false)}
+        onFocus={() => setAttending(true)}
+        onBlur={() => setAttending(false)}
         className="sb-press sb-resonate group relative inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-medium focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:px-3.5"
         style={{
           color: accentHi,

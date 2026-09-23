@@ -28,8 +28,23 @@ import { RESONANCES, resonanceById } from "@/lib/celestial/registry";
 import { commitMotion, previewMotion, REDUCED_CROSSFADE_S, reducedTransition } from "@/lib/celestial/motion";
 import type { FieldPhase, LearningState, ResonanceId } from "@/lib/celestial/types";
 import { labelCapFor, layoutArc, objectSizeFor, perRowFor, type ArcLayout, type ItemBox } from "./layout";
-import { atmosphere, auraGradient, masteredAsset, featherMask, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT, starField } from "./visual";
+import { atmosphere, artifactAura, masteredAsset, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT, starField } from "./visual";
 import { useResonanceName } from "./ResonanceMark";
+
+/** Each object enters through the horizon according to its own physical character. The field
+ * settles after this one shot; it never idles or loops. */
+function entryAnimation(profile: string) {
+  switch (profile) {
+    case "attraction": return "sb-cel-enter-attract 260ms cubic-bezier(.16,1,.3,1)";
+    case "radiate": return "sb-cel-enter-radiate 225ms cubic-bezier(.22,1,.36,1)";
+    case "rhythmic-burst": return "sb-cel-enter-burst 270ms cubic-bezier(.22,1,.36,1)";
+    case "arrive": return "sb-cel-enter-arrive 280ms cubic-bezier(.16,1,.3,1)";
+    case "expand-significance": return "sb-cel-enter-expand 285ms cubic-bezier(.16,1,.3,1)";
+    case "surround-hold-stabilize-stay": return "sb-cel-enter-surround 300ms cubic-bezier(.22,1,.36,1)";
+    case "reveal": return "sb-cel-enter-reveal 275ms cubic-bezier(.22,1,.36,1)";
+    default: return "sb-cel-enter-inspect 290ms cubic-bezier(.22,1,.36,1)";
+  }
+}
 
 export interface CelestialFieldProps {
   open: boolean;
@@ -222,6 +237,21 @@ function CelestialFieldOpen({
     [width, h, items.length],
   );
 
+  /* A small, direct pointer response gives the shared sky depth without a timer, RAF loop,
+     or any movement after the person stops attending. Touch and reduced-motion stay still. */
+  const setDepth = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (reduced || event.pointerType !== "mouse") return;
+    const el = rootRef.current;
+    if (!el) return;
+    const box = el.getBoundingClientRect();
+    el.style.setProperty("--sb-depth-x", `${(((event.clientX - box.left) / box.width) - .5) * 5}px`);
+    el.style.setProperty("--sb-depth-y", `${(((event.clientY - box.top) / box.height) - .5) * 4}px`);
+  };
+  const clearDepth = () => {
+    rootRef.current?.style.setProperty("--sb-depth-x", "0px");
+    rootRef.current?.style.setProperty("--sb-depth-y", "0px");
+  };
+
   return (
     <motion.div
       ref={rootRef}
@@ -233,13 +263,15 @@ function CelestialFieldOpen({
       aria-label={labelledBy ? undefined : t("celestial.field.aria")}
       aria-labelledby={labelledBy}
       onKeyDown={onKeyDown}
+      onPointerMove={setDepth}
+      onPointerLeave={clearDepth}
       initial={{ opacity: 0 }}
       animate={{ opacity: phase === "closed" || phase === "cancel" ? 0 : 1 }}
       transition={reduced ? reducedTransition : { duration: M2, ease: easeOut }}
       className="sb-celestial-field relative w-full select-none"
       style={{ height: h, minHeight: objectSize * 1.8 }}
     >
-      <style>{"@keyframes sb-cel-rise{from{opacity:0;transform:translateY(12px) scale(.9)}to{opacity:1;transform:none}}"}</style>
+      <style>{`@keyframes sb-cel-enter-attract{from{opacity:0;transform:translate(12px,10px) scale(.82)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-radiate{from{opacity:0;transform:scale(.7)}65%{opacity:1;transform:scale(1.08)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-burst{from{opacity:0;transform:translateY(13px) rotate(3deg) scale(.82)}55%{opacity:1;transform:translateY(-2px) rotate(-1deg) scale(1.03)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-arrive{from{opacity:0;transform:translate(20px,11px) scale(.78)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-expand{from{opacity:0;transform:translateY(12px) scale(.72)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-surround{from{opacity:0;transform:translateY(12px) rotate(-5deg) scale(.8)}70%{opacity:1;transform:rotate(1deg) scale(1.03)}to{opacity:1;transform:none}}@keyframes sb-cel-enter-reveal{from{opacity:0;filter:brightness(.6);transform:scale(.94)}to{opacity:1;filter:brightness(1);transform:none}}@keyframes sb-cel-enter-inspect{from{opacity:0;transform:translate(-10px,10px) scale(.8)}55%{opacity:1;transform:translate(2px,-1px) scale(1.03)}to{opacity:1;transform:none}}@keyframes sb-cel-label-arrive{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}`}</style>
       {/* ───────────── THE SKY ─────────────
           The field is a STAGE, not a container: star depth, a nebula haze, orbit traces and a
           luminous basin the objects stand on. All of it is one-shot — it settles and holds.
@@ -254,6 +286,7 @@ function CelestialFieldOpen({
           animate={{ opacity: 1, scale: 1 }}
           transition={reduced ? reducedTransition : { duration: 0.55, ease: easeOut }}
         >
+          <span data-sb-depth-sky className="absolute inset-0">
           {/* deep wash + nebula haze */}
           
           <span className="absolute inset-0" style={{ background: sky.haze }} />
@@ -293,6 +326,7 @@ function CelestialFieldOpen({
           <span className="absolute inset-0" style={{ background: sky.nebula }} />
           {/* the basin: the luminous floor the horizon sits on */}
           <span className="absolute inset-0" style={{ background: sky.basin }} />
+          </span>
         </motion.div>
       )}
 
@@ -348,7 +382,7 @@ function CelestialFieldOpen({
               className="flex flex-col items-center"
               style={
                 layout && !reduced
-                  ? { animation: `sb-cel-rise 520ms cubic-bezier(.22,1,.36,1) ${60 + i * 45}ms both` }
+                  ? { animation: `${entryAnimation(d.motionProfile)} ${18 + i * 12}ms both` }
                   : undefined
               }
             >
@@ -377,8 +411,8 @@ function CelestialFieldOpen({
                 style={{
                   width: objectSize * 2.5,
                   height: objectSize * 2.5,
-                  background: auraGradient(
-                    light.accent,
+                  background: artifactAura(
+                    d.objectKey,
                     light.intensity * (theme === "light" ? 0.45 : 1) * (isCommitting ? 1.5 : lit ? 1 : 0.42),
                   ),
                   opacity: isCommitting ? 1 : lit ? 0.95 : 0.5,
@@ -441,14 +475,25 @@ function CelestialFieldOpen({
                   draggable={false}
                   className="block h-full w-full object-cover"
                   style={{
-                    WebkitMaskImage: d.objectKey === "venus" ? undefined : featherMask(light.feather),
-                    maskImage: d.objectKey === "venus" ? undefined : featherMask(light.feather),
-                    filter: objectFilter(theme, light.accent, objectSize, lit),
-                    transform: d.objectKey === "venus" ? "none" : "scale(1.3)",
+                    filter: objectFilter(theme, light.accent, objectSize, lit, light.intensity),
                     transition: reduced ? `filter ${REDUCED_CROSSFADE_S}s linear` : "filter 380ms cubic-bezier(.22,1,.36,1)",
                   }}
                 />
               </motion.span>
+              {/* A short reflection anchors each artifact to the shared optical floor.
+                  Quiet reflected bodies cast less light than the Sun or the travellers. */}
+              <span aria-hidden className="pointer-events-none absolute" style={{
+                left: 0, top: objectSize * 0.86, width: objectSize, height: objectSize * 0.24,
+                backgroundImage: `url("${masteredAsset(d.objectKey, theme, "object")}")`,
+                backgroundSize: "100% 100%", transform: "scaleY(-1)",
+                opacity: (theme === "light" ? 0.16 : 0.24) * light.intensity,
+                filter: "blur(1px)", maskImage: "linear-gradient(transparent, #000)",
+              }} />
+              <span aria-hidden className="pointer-events-none absolute rounded-[50%]" style={{
+                left: "4%", width: "92%", height: "13%", top: "88%",
+                borderBottom: `1px solid color-mix(in srgb, ${light.accent} ${theme === "light" ? 48 : 65}%, transparent)`,
+                boxShadow: `0 3px 7px color-mix(in srgb, ${theme === "light" ? "#596576" : light.accent} ${theme === "light" ? 18 : Math.round(23 * light.intensity)}%, transparent)`,
+              }} />
               {isSelected && (
                 /* THE SEAL RING — a held orbit, in the object's own light, not a UI outline. */
                 <span
@@ -475,6 +520,8 @@ function CelestialFieldOpen({
               accent={light.accent}
               lit={lit}
               lift={maxLift - (p?.lift ?? 0)}
+              entering={layout !== null && !reduced}
+              delay={105 + i * 16}
             />
             </span>
           </div>
@@ -551,6 +598,8 @@ interface LabelProps {
   accent: string;
   lit: boolean;
   lift: number;
+  entering: boolean;
+  delay: number;
 }
 
 /**
@@ -566,7 +615,7 @@ interface LabelProps {
  * width, never clipped — Devanagari and Cyrillic simply take the room they need.
  */
 const ResonanceLabel = function ResonanceLabelImpl({
-  ref, objectName, meaning, learningState, emphasised, width, perRow, objectSize, minRef, accent, lit, lift,
+  ref, objectName, meaning, learningState, emphasised, width, perRow, objectSize, minRef, accent, lit, lift, entering, delay,
 }: LabelProps & { ref?: React.Ref<HTMLSpanElement> }) {
   const text = (
     <>
@@ -610,6 +659,7 @@ const ResonanceLabel = function ResonanceLabelImpl({
         hyphens: "none",
         opacity: emphasised ? 1 : 0.9,
         transition: "opacity 150ms linear",
+        animation: entering ? `sb-cel-label-arrive 360ms cubic-bezier(.22,1,.36,1) ${delay}ms both` : undefined,
       }}
     >
       {text}

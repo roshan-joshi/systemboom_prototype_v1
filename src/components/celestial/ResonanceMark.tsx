@@ -5,13 +5,9 @@
  *
  * Contract: 22-COMPONENT-ARCHITECTURE.md · 22-ASSET-PIPELINE.md · Bible Ch. 08.
  *
- * THE APERTURE. The Primary-8 masters are composed celestial SCENES, not icon cut-outs:
- * Venus streams an atmospheric bridge off-disc, the comet and the meteor shower are diagonal
- * travel across a field of stars. Keying out their backgrounds would destroy exactly the half
- * of each composition that carries the feeling, and cropping them to a disc would turn eight
- * distinct objects into eight circles — the thing Stage 23 §9 forbids. So the mark is a small
- * APERTURE: a window onto the real scene, with the theme's own sky behind it. One silhouette
- * for alignment in a row, eight genuinely different things inside it.
+ * Signal prioritizes the heart, corona, trail or planetary silhouette; Seal keeps more
+ * surface detail. Both use dedicated transparent optical exports from the same art family
+ * as the Field. No enclosing night disc or radial crop is applied to these silhouettes.
  *
  * Both tiers are STATIC once settled — no passive loops anywhere in settled UI (Bible Ch. 09).
  */
@@ -19,7 +15,7 @@
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { useTheme } from "@/lib/use-theme";
 import { CELESTIAL_A11Y_KEY, resonanceById } from "@/lib/celestial/registry";
-import { auraGradient, masteredAsset, featherMask, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT } from "./visual";
+import { artifactAura, masteredAsset, nightSky, nightSkyTheme, objectFilter, OBJECT_LIGHT } from "./visual";
 import type { ResonanceId } from "@/lib/celestial/types";
 
 /** The canonical accessible name: "Celestial Resonance: Mercury, Curious. Tell me more." */
@@ -74,14 +70,13 @@ function Aperture({ id, size = 20, tier, decorative, className, title }: MarkPro
         style={{
           left: "50%", top: "50%", transform: "translate(-50%, -50%)",
           width: size * 1.9, height: size * 1.9,
-          background: auraGradient(light.accent, light.intensity * (theme === "light" ? 0.3 : 0.62)),
+          background: artifactAura(d.objectKey, light.intensity * (theme === "light" ? 0.3 : 0.62)),
         }}
       />
       {theme === "light" && light.needsNightSky && (
         <span aria-hidden className="pointer-events-none absolute inset-0" style={{ background: nightSky(), borderRadius: "50%" }} />
       )}
-      {/* FEATHERED, NOT FRAMED — the same treatment as the Field, so a committed Resonance
-          reads as the same celestial object at every size instead of turning into an icon. */}
+      {/* The transparent optical tier carries the same identity as the larger Field art. */}
       {/* eslint-disable-next-line @next/next/no-img-element -- local static asset, no remote host, no optimizer */}
       <img
         src={masteredAsset(d.objectKey, nightSkyTheme(theme, light.needsNightSky), tier)}
@@ -93,9 +88,7 @@ function Aperture({ id, size = 20, tier, decorative, className, title }: MarkPro
         loading="lazy"
         className="relative block h-full w-full object-cover"
         style={{
-          WebkitMaskImage: d.objectKey === "venus" ? undefined : featherMask(light.feather),
-          maskImage: d.objectKey === "venus" ? undefined : featherMask(light.feather),
-          filter: objectFilter(theme, light.accent, size, false),
+          filter: objectFilter(theme, light.accent, size, false, light.intensity),
         }}
       />
     </span>
