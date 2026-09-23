@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+<defs>
+<radialGradient id="galaxyCore" cx="50%" cy="50%" r="50%">
+  <stop stop-color="#eef3fd" stop-opacity=".95"/><stop offset=".26" stop-color="#c6d3ef" stop-opacity=".6"/><stop offset=".6" stop-color="#8298c9" stop-opacity=".24"/><stop offset="1" stop-color="#5c74a8" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="veilB" cx="50%" cy="50%" r="50%"><stop stop-color="#2a3d6e" stop-opacity=".55"/><stop offset="1" stop-color="#2a3d6e" stop-opacity="0"/></radialGradient>
+<radialGradient id="veilV" cx="50%" cy="50%" r="50%"><stop stop-color="#3d2c5c" stop-opacity=".46"/><stop offset="1" stop-color="#3d2c5c" stop-opacity="0"/></radialGradient>
+<radialGradient id="crescentBody" cx="30%" cy="28%" r="80%">
+  <stop stop-color="#d3def2"/><stop offset=".42" stop-color="#94a8cc"/><stop offset="1" stop-color="#3a4866"/>
+</radialGradient>
+<filter id="b4" filterUnits="userSpaceOnUse" x="-300" y="-300" width="760" height="760"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="b6" filterUnits="userSpaceOnUse" x="-300" y="-300" width="760" height="760"><feGaussianBlur stdDeviation="5"/></filter>
+<filter id="b12" filterUnits="userSpaceOnUse" x="-300" y="-300" width="760" height="760"><feGaussianBlur stdDeviation="11"/></filter>
+<filter id="b16" filterUnits="userSpaceOnUse" x="-300" y="-300" width="760" height="760"><feGaussianBlur stdDeviation="16"/></filter>
+</defs>
+<mask id="crescent-80"><rect x="-20" y="-20" width="200" height="200" fill="#fff"/><circle cx="100.5" cy="100.5" r="51.5" fill="#000"/></mask>
+<g opacity=".9">
+  <circle cx="80" cy="80" r="75" fill="url(#veilB)" filter="url(#b12)" opacity=".55"/>
+  <circle cx="80" cy="80" r="50" fill="#0d1322"/>
+  <circle cx="80" cy="80" r="48.5" fill="url(#crescentBody)" mask="url(#crescent-80)"/>
+  <circle cx="80" cy="80" r="54" fill="none" stroke="#a9bde3" stroke-width="4.5" opacity=".14" filter="url(#b4)"/>
+</g>
+</svg>

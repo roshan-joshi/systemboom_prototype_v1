@@ -219,6 +219,61 @@ export function simulateExpressions(spec: string): Record<string, string> | null
   return out;
 }
 
+/* ────── Celestial Social Universe — HARNESS-ONLY multi-person Resonance fixtures ──────
+ * Review fixtures for the shared Resonance Constellation, 0 → 1,000+ people each holding ONE
+ * Celestial Resonance on one Moment (`?resonance=` on the style-lab route, never the product
+ * route). Same architecture as `simulateExpressions` above: real cast first so small
+ * who-lists show real people, then deterministic `sim-` synthetic people. The two systems
+ * stay strict siblings — this map is `Moment.resonances`, never `Moment.expressions`.
+ * Canonical Primary-8 ids only; distributions are deliberately NOT sorted by count so the
+ * canonical-order invariant is actually exercised. */
+export function simulateResonances(spec: string): Record<string, string> | null {
+  const DIST: Record<string, [string, number][]> = {
+    // M1 — one person
+    "1": [["venus-love", 1]],
+    // M2 — three people, two meanings
+    "3": [["venus-love", 2], ["moon-touched", 1]],
+    // M3 — eight people, five meanings
+    "8": [["venus-love", 2], ["sun-joy", 2], ["comet-wow", 1], ["saturn-support", 2], ["moon-touched", 1]],
+    // M4 — sixteen people, all eight meanings
+    "16": [["venus-love", 3], ["sun-joy", 2], ["meteor-laugh", 1], ["comet-wow", 2], ["jupiter-celebrate", 2], ["saturn-support", 3], ["moon-touched", 2], ["mercury-curious", 1]],
+    // M5 — fifty-six people, all eight (counts deliberately non-monotonic in canonical order)
+    "50": [["venus-love", 9], ["sun-joy", 12], ["meteor-laugh", 4], ["comet-wow", 7], ["jupiter-celebrate", 5], ["saturn-support", 11], ["moon-touched", 6], ["mercury-curious", 2]],
+    // M6 — many people, one shared meaning
+    "200same": [["venus-love", 200]],
+    // Count-formatting evidence — 1,204 people, all eight
+    "1000": [["venus-love", 300], ["sun-joy", 260], ["meteor-laugh", 90], ["comet-wow", 130], ["jupiter-celebrate", 110], ["saturn-support", 180], ["moon-touched", 94], ["mercury-curious", 40]],
+    // No-popularity gate — Moment A (Venus 2 · Moon 2) vs Moment B (Venus 45 · Moon 2): only
+    // the neutral number may differ between the two; Venus's dignity may not.
+    "2v2m": [["venus-love", 2], ["moon-touched", 2]],
+    "45v2m": [["venus-love", 45], ["moon-touched", 2]],
+  };
+  // Privacy gate — a resonator whose identity the view model cannot resolve (an id outside the
+  // cast and outside the sim- namespace). It must be counted as a person and never rendered as
+  // somebody else.
+  if (spec === "ghost") return { [PEOPLE.asha.id]: "venus-love", "p-unresolvable": "venus-love", [PEOPLE.bikash.id]: "moon-touched" };
+  // M7 — the viewer has already selected one (five people, viewer's is Saturn — never the biggest)
+  if (spec === "mine") {
+    const sim = simulateResonances("3");
+    if (!sim) return null;
+    sim[PEOPLE.maya.id] = "saturn-support";
+    sim["sim-201"] = "sun-joy";
+    return sim;
+  }
+  const dist = DIST[spec];
+  if (!dist) return null;
+  const real = Object.values(PEOPLE).map((p) => p.id).filter((id) => id !== PEOPLE.maya.id && id !== PEOPLE.m.id);
+  const out: Record<string, string> = {};
+  let i = 0;
+  for (const [rid, n] of dist) {
+    for (let k = 0; k < n; k++) {
+      out[i < real.length ? real[i] : `sim-${i - real.length + 1}`] = rid;
+      i += 1;
+    }
+  }
+  return out;
+}
+
 export function matchPeople(term: string, excludeId?: string, limit?: number): Person[] {
   const t = term.trim().toLowerCase();
   if (!t) return [];

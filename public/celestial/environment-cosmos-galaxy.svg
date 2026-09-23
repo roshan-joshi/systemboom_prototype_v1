@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
+<defs>
+<radialGradient id="galaxyCore" cx="50%" cy="50%" r="50%">
+  <stop stop-color="#eef3fd" stop-opacity=".95"/><stop offset=".26" stop-color="#c6d3ef" stop-opacity=".6"/><stop offset=".6" stop-color="#8298c9" stop-opacity=".24"/><stop offset="1" stop-color="#5c74a8" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="veilB" cx="50%" cy="50%" r="50%"><stop stop-color="#2a3d6e" stop-opacity=".55"/><stop offset="1" stop-color="#2a3d6e" stop-opacity="0"/></radialGradient>
+<radialGradient id="veilV" cx="50%" cy="50%" r="50%"><stop stop-color="#3d2c5c" stop-opacity=".46"/><stop offset="1" stop-color="#3d2c5c" stop-opacity="0"/></radialGradient>
+<radialGradient id="crescentBody" cx="30%" cy="28%" r="80%">
+  <stop stop-color="#d3def2"/><stop offset=".42" stop-color="#94a8cc"/><stop offset="1" stop-color="#3a4866"/>
+</radialGradient>
+<filter id="b4" filterUnits="userSpaceOnUse" x="-300" y="-300" width="920" height="800"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="b6" filterUnits="userSpaceOnUse" x="-300" y="-300" width="920" height="800"><feGaussianBlur stdDeviation="5"/></filter>
+<filter id="b12" filterUnits="userSpaceOnUse" x="-300" y="-300" width="920" height="800"><feGaussianBlur stdDeviation="11"/></filter>
+<filter id="b16" filterUnits="userSpaceOnUse" x="-300" y="-300" width="920" height="800"><feGaussianBlur stdDeviation="16"/></filter>
+</defs>
+<g transform="rotate(-24 160 100)" opacity=".78">
+  <ellipse cx="160" cy="100" rx="174" ry="64.6" fill="url(#veilB)" filter="url(#b16)" opacity=".7"/>
+  <ellipse cx="160" cy="100" rx="116" ry="38" fill="url(#galaxyCore)" filter="url(#b12)"/>
+  <ellipse cx="160" cy="100" rx="52.2" ry="15.96" fill="url(#galaxyCore)" filter="url(#b6)"/>
+  <ellipse cx="160" cy="100" rx="19.72" ry="9.12" fill="#f4f7fe" opacity=".9" filter="url(#b4)"/>
+  <path d="M49.8 113.68 C90.4 136.1 171.6 138 218 120.9" fill="none" stroke="#b4c4e7" stroke-width="5.32" opacity=".34" filter="url(#b6)"/>
+  <path d="M270.2 86.32 C229.6 63.9 148.4 62 102 79.1" fill="none" stroke="#98abd4" stroke-width="4.56" opacity=".3" filter="url(#b6)"/>
+</g>
+</svg>

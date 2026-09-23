@@ -15,7 +15,7 @@ import { MotionConfig } from "motion/react";
 import { SystemboomLogo } from "@/components/ui/SystemboomLogo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { now } from "@/lib/clock";
-import { PEOPLE, simulateExpressions, type Moment, type Person } from "./data";
+import { PEOPLE, simulateExpressions, simulateResonances, type Moment, type Person } from "./data";
 import { Composer, draftFromMoment, emptyDraft } from "./Composer";
 import { CircleModule } from "./CircleModule";
 import { LifeCounter } from "./LifeCounter";
@@ -34,6 +34,7 @@ import { SocialStore, dateKey, localISO, useSocial, type Draft, type ViewerMode 
 import { lifeViewFor, momentLifeFor, ringViewFor } from "./view-model";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { CelestialEnvironment } from "@/components/celestial/CelestialEnvironment";
+import { useCelestialSurface } from "@/lib/celestial/flags";
 
 /**
  * "View as public" — Social Freeze Delta. A technical stand-in `viewer`, never rendered or
@@ -428,6 +429,9 @@ function Inner({ product = false }: { product?: boolean }) {
   });
   const [composer, setComposer] = useState<Draft | null>(null);
   const [harness, setHarness] = useState(!product);
+  // Celestial arrival evidence — deterministic counter for the harness "+1 resonance" control.
+  const arriveN = useRef(0);
+  const celestialOn = useCelestialSurface("moment");
   // "View as public" (Social Freeze Delta) — the owner previewing their own profile exactly as
   // a stranger would see it. Only ever meaningful while genuinely looking at your own profile.
   const [previewPublic, setPreviewPublic] = useState(false);
@@ -471,6 +475,13 @@ function Inner({ product = false }: { product?: boolean }) {
     if (pulse) {
       const sim = simulateExpressions(pulse);
       if (sim) dispatch({ type: "pulse-sim", id: q.get("pulseMoment") ?? "m-rain", expressions: sim });
+    }
+    // Celestial Social Universe — harness-only multi-person Resonance fixtures:
+    //   ?resonance=1|3|8|16|50|200same|1000|mine  (optionally ?resonanceMoment=<id>)
+    const res = q.get("resonance");
+    if (res) {
+      const sim = simulateResonances(res);
+      if (sim) dispatch({ type: "resonance-sim", id: q.get("resonanceMoment") ?? "m-rain", resonances: sim });
     }
     const nf = q.get("notifications");
     if (nf === "many" || nf === "empty") dispatch({ type: "notifications", mode: nf });
@@ -590,6 +601,21 @@ function Inner({ product = false }: { product?: boolean }) {
             <Seg label="Bell" value={state.notifications.length === 0 ? "empty" : state.notifications.length > 10 ? "many" : "seed"} onChange={(v) => dispatch({ type: "notifications", mode: v as "seed" | "many" | "empty" })} options={["seed", "many", "empty"]} />
             <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={state.simulateFailure} onChange={(e) => dispatch({ type: "simulateFailure", on: e.target.checked })} /> simulate failure</label>
             <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={noCover} onChange={(e) => setNoCover(e.target.checked)} /> no cover</label>
+            {/* Celestial Social Universe — arrival evidence: one more person's Resonance lands
+                live (deterministic person + canonical-cycling meaning; never the viewer).
+                Flag-gated so the flag-off harness stays byte-identical. */}
+            {celestialOn && <button
+              type="button"
+              data-sb-harness-arrive
+              onClick={() => {
+                const RIDS = ["venus-love", "sun-joy", "meteor-laugh", "comet-wow", "jupiter-celebrate", "saturn-support", "moon-touched", "mercury-curious"];
+                arriveN.current += 1;
+                dispatch({ type: "resonance-arrive", id: "m-rain", personId: `sim-a${arriveN.current}`, resonance: RIDS[arriveN.current % RIDS.length] });
+              }}
+              className="rounded-full border border-edge px-2.5 py-1 text-muted hover:text-text"
+            >
+              +1 resonance
+            </button>}
             <span className="ml-auto flex items-center gap-2">
               <button type="button" onClick={() => dispatch({ type: "reset" })} className="rounded-full border border-edge px-2.5 py-1 text-muted hover:text-text">Reset</button>
               <ThemeToggle />

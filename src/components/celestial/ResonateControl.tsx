@@ -11,17 +11,20 @@
  * paired control, and the mascot keeps its own approved wording.
  */
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { formatNumberLocale } from "@/lib/i18n/format";
 import { useTheme } from "@/lib/use-theme";
 import { useReducedMotionPref } from "@/lib/use-reduced-motion";
-import { RESONANCES, byCanonicalOrder, resonanceById } from "@/lib/celestial/registry";
-import type { ResonanceId } from "@/lib/celestial/types";
+import { RESONANCES, resonanceById } from "@/lib/celestial/registry";
+import type { ResonanceId, ResonanceSummaryEntry } from "@/lib/celestial/types";
 import { useCelestialSurface } from "@/lib/celestial/flags";
+import { summarizeResonances, resonatorTotal } from "@/lib/celestial/resonance-summary";
 import type { Moment } from "@/components/style-lab/social/data";
 import { useSocial } from "@/components/style-lab/social/store";
 import { personViewFor } from "@/components/style-lab/social/view-model";
+import { PersonIdentity } from "@/components/identity/PersonIdentity";
 import { CelestialField } from "./CelestialField";
 import { resonateGold, resonateGoldHi } from "./visual";
 import { ResonanceSeal, ResonanceSignal, useResonanceName } from "./ResonanceMark";
@@ -171,75 +174,203 @@ function ResonateMark({ accent }: { accent: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* CELESTIAL HUMAN PULSE                                               */
+/* CELESTIAL HUMAN PULSE — THE SHARED RESONANCE CONSTELLATION          */
 /* ------------------------------------------------------------------ */
 
 /**
  * PEOPLE, NOT POPULARITY.
  *
  * Canonical registry order, always. Never sorted by count, never a winner, never a "top",
- * never sized by count. An entitlement or a visual edition can never change what is shown
- * here. The count is a fact about people, not a score.
+ * never sized by count — a 312 and a 3 are the same Seal. An entitlement or a visual edition
+ * can never change what is shown here. The count is a fact about people, not a score.
+ *
+ * One person = one celestial signal; together they form the Moment's shared constellation.
+ * Aggregation is the ONE pure rule in src/lib/celestial/resonance-summary.ts, so this strip,
+ * the expanded stage and any future surface can never drift apart.
  */
+
+/** How many people each expanded group shows before its quiet "Show more" (then +48 — Bible Ch. 14). */
+const WHO_FIRST = 24;
+const WHO_STEP = 48;
+
 export function ResonanceSummary({ moment }: { moment: Moment }) {
   const enabled = useCelestialSurface("moment");
-  const { t, tp } = useT();
+  const { t, tp, locale } = useT();
   const { me, personOf } = useSocial();
   const name = useResonanceName();
   const [openWho, setOpenWho] = useState(false);
+  const [whoShown, setWhoShown] = useState<Record<string, number>>({});
+  const whoRef = useRef<HTMLButtonElement>(null);
 
-  const entries = Object.entries(moment.resonances ?? {});
+  /* Quiet count/arrival motion (brief §42, §53–§55): a NEW meaning settles in at its canonical
+     position and a changed count crossfades — one-shot, localized, never fireworks, and never
+     on first mount. The previous committed shape lives in a ref and the diff is applied AFTER
+     render (never read during it); count spans are keyed by their value, so a live change
+     mounts a fresh element for the one-shot class. Reduced motion collapses both to the
+     shared 150ms rule via the environment stylesheet. */
+  const prevShape = useRef<Map<string, number> | null>(null);
+  const stripRef = useRef<HTMLSpanElement>(null);
+
+  const entries = summarizeResonances(moment.resonances, me.id);
+  useEffect(() => {
+    const prev = prevShape.current;
+    const root = stripRef.current;
+    /* Only a LIVE change by one person is an arrival: someone joins (+1), leaves (−1), or moves
+       their one signal (±0). A larger jump is data arriving — a first load, a page of history —
+       and it lands still. Never sixteen arrivals at once. */
+    const prevTotal = prev ? [...prev.values()].reduce((a, b) => a + b, 0) : 0;
+    const oneLiveChange = prev !== null && Math.abs(resonatorTotal(entries) - prevTotal) <= 1;
+    if (prev && root && oneLiveChange) {
+      for (const e of entries) {
+        const node = root.querySelector(`[data-sb-constellation-node="${e.resonanceId}"]`);
+        if (!node) continue;
+        if (!prev.has(e.resonanceId)) node.classList.add("sb-cel-node-new");
+        else if (prev.get(e.resonanceId) !== e.count) node.querySelector(".sb-cel-count")?.classList.add("sb-cel-count-in");
+      }
+    }
+    prevShape.current = new Map(entries.map((x) => [x.resonanceId, x.count]));
+  });
+
   if (!enabled || entries.length === 0) return null;
 
-  const byId = new Map<string, string[]>();
-  for (const [personId, rid] of entries) {
-    if (!resonanceById(rid)) continue; // unknown ids are ignored, never rendered
-    byId.set(rid, [...(byId.get(rid) ?? []), personId]);
-  }
-  // CANONICAL ORDER. Deliberately the registry's order — NOT the count.
-  const present = [...byId.keys()].sort(byCanonicalOrder);
-  const total = entries.length;
+  const total = resonatorTotal(entries);
+  const fmt = (n: number) => formatNumberLocale(locale, n);
   const mine = moment.resonances?.[me.id];
 
+  const typeLine = (e: ResonanceSummaryEntry) => {
+    const d = resonanceById(e.resonanceId);
+    return d
+      ? tp("celestial.summary.typeCount", e.count, { meaning: t(d.meaningKey), object: t(d.objectNameKey), n: fmt(e.count) })
+      : "";
+  };
+
+  const closeWho = () => {
+    setOpenWho(false);
+    requestAnimationFrame(() => whoRef.current?.focus({ preventScroll: true }));
+  };
+
   return (
-    <div data-sb-resonance-summary={total} className="mt-1 flex flex-wrap items-center gap-2">
+    <div data-sb-resonance-summary={total} className="sb-cel-constellation mt-1 flex w-full min-w-0 flex-wrap items-center gap-2">
       <button
+        ref={whoRef}
         type="button"
         data-sb-resonance-who
         aria-expanded={openWho}
         aria-label={t("celestial.summary.who")}
         onClick={() => setOpenWho((v) => !v)}
-        className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-1.5 text-muted hover:text-text focus-visible:outline-[var(--focus)]"
+        className="inline-flex min-h-9 min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-full px-1.5 text-muted hover:text-text focus-visible:outline-[var(--focus)]"
       >
-        <span className="flex items-center gap-1">
-          {present.map((rid) => (
-            /* Every present resonance is shown at the SAME size. Size never encodes count. */
-            <ResonanceSeal key={rid} id={rid as ResonanceId} size={22} decorative />
+        {/* THE CONSTELLATION STRIP — present meanings as fixed points on one fine shared
+            horizon. Equal Seals, canonical order, quiet participation numbers. */}
+        <span ref={stripRef} className="sb-cel-strip">
+          {entries.map((e) => (
+            <span
+              key={e.resonanceId}
+              data-sb-constellation-node={e.resonanceId}
+              data-sb-resonance-count={e.count}
+              className="sb-cel-node"
+            >
+              {/* The viewer's own signal: a fine personal orbit, never a bigger object. */}
+              {e.viewerHasSelected && <span data-sb-resonance-yours aria-hidden className="sb-cel-your-ring" />}
+              {/* Every present resonance is shown at the SAME size. Size never encodes count. */}
+              <ResonanceSeal id={e.resonanceId} size={22} decorative />
+              {total > 1 && (
+                <span key={`${e.resonanceId}-${e.count}`} className="sb-cel-count tabular-nums" aria-hidden>
+                  {fmt(e.count)}
+                </span>
+              )}
+            </span>
           ))}
         </span>
-        <span className="text-[12.5px]">{tp("celestial.summary.peopleN", total, { n: total })}</span>
+        <span className="text-[12.5px]">{tp("celestial.summary.peopleN", total, { n: fmt(total) })}</span>
       </button>
+
+      {/* Screen readers get the whole constellation without opening it: "Love, Venus: 4 people." */}
+      <span className="sr-only">{entries.map(typeLine).join(" ")}</span>
 
       {openWho && (
         <div
           data-sb-resonance-who-panel
-          className="w-full rounded-xl border border-[var(--hair)] p-2"
+          className="sb-cel-stage w-full rounded-xl border border-[var(--hair)] p-3"
           role="group"
           aria-label={t("celestial.summary.aria")}
+          onKeyDown={(ev) => {
+            if (ev.key === "Escape") {
+              ev.stopPropagation();
+              closeWho();
+            }
+          }}
         >
-          {present.map((rid) => {
-            const people = byId.get(rid) ?? [];
+          <div className="mb-1 flex items-center gap-2 px-1">
+            <span className="text-[11px] font-semibold tracking-[0.12em] uppercase text-muted">{t("celestial.constellation.title")}</span>
+            <span className="text-[11px] text-muted">{tp("celestial.summary.peopleN", total, { n: fmt(total) })}</span>
+            <button
+              type="button"
+              aria-label={t("celestial.constellation.close")}
+              onClick={closeWho}
+              className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-text focus-visible:outline-[var(--focus)]"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+            </button>
+          </div>
+          {entries.map((e) => {
+            const shown = whoShown[e.resonanceId] ?? WHO_FIRST;
+            /* PRIVACY: a person appears here only through the view model, and only when the
+               view model resolves THAT person. Participation grants no access: the row reads
+               `personViewFor` (never a raw Person field) and hands the subject to PersonIdentity,
+               the one identity component, which reduces it the same way. Anyone the view model
+               cannot resolve — or resolves to a different person — is counted, never shown. */
+            const named: { pid: string; person: ReturnType<typeof personOf>; view: ReturnType<typeof personViewFor> }[] = [];
+            for (const pid of e.personIds) {
+              const person = personOf(pid);
+              if (person.id !== pid) continue;
+              const view = personViewFor(me, person);
+              if (view.name) named.push({ pid, person, view });
+            }
+            const unnamed = e.count - named.length;
+            const people = named.slice(0, shown);
+            const remaining = named.length - people.length;
+            const d = resonanceById(e.resonanceId);
             return (
-              <div key={rid} data-sb-resonance-group={rid} className="flex items-start gap-2 px-1 py-1.5">
-                <ResonanceSeal id={rid as ResonanceId} size={24} decorative />
+              <div key={e.resonanceId} data-sb-resonance-group={e.resonanceId} className="sb-cel-group flex items-start gap-2.5 px-1 py-2">
+                <span className="relative mt-0.5 shrink-0">
+                  {e.viewerHasSelected && <span aria-hidden className="sb-cel-your-ring sb-cel-your-ring-stage" />}
+                  <ResonanceSeal id={e.resonanceId} size={24} decorative />
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12px] font-medium text-text">{name(rid as ResonanceId)}</span>
-                  <span className="block text-[12px] text-muted">
-                    {people
-                      /* Identity resolves through the view-model boundary — never a raw
-                         fixture read, so no birth-derived field can reach a visitor. */
-                      .map((pid) => personViewFor(me, personOf(pid)).name)
-                      .join(", ")}
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[12px] font-medium text-text">
+                      {d ? `${t(d.objectNameKey)} · ${t(d.meaningKey)}` : ""}
+                    </span>
+                    {/* The participation number: a fact about people, equal typography for every meaning. */}
+                    <span className="text-[11.5px] text-muted tabular-nums">{fmt(e.count)}</span>
+                    <span className="sr-only">{name(e.resonanceId)} — {typeLine(e)}</span>
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    {people.map(({ pid, person, view }) => (
+                      <span key={pid} data-sb-resonance-person={pid} className="inline-flex min-w-0 items-center gap-1.5">
+                        <PersonIdentity viewer={me} subject={person} size={20} label="" />
+                        <span className="max-w-[16ch] truncate text-[12px] text-muted">{view.name}</span>
+                        {pid === me.id && <span data-sb-resonance-me className="text-[10.5px] font-medium" style={{ color: "var(--sb-cel-you, #C9A25E)" }}>{t("celestial.summary.justYou")}</span>}
+                      </span>
+                    ))}
+                    {unnamed > 0 && (
+                      /* The aggregate fallback: these people are counted in the constellation
+                         but carry no identity the viewer may see. */
+                      <span data-sb-resonance-unnamed={unnamed} className="text-[12px] text-muted">
+                        +{tp("celestial.summary.peopleN", unnamed, { n: fmt(unnamed) })}
+                      </span>
+                    )}
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        data-sb-resonance-more={e.resonanceId}
+                        onClick={() => setWhoShown((s) => ({ ...s, [e.resonanceId]: shown + WHO_STEP }))}
+                        className="rounded-full border border-[var(--hair)] px-2 py-0.5 text-[11px] text-muted hover:text-text focus-visible:outline-[var(--focus)]"
+                      >
+                        {t("celestial.constellation.more")} · {fmt(remaining)}
+                      </button>
+                    )}
                   </span>
                 </span>
               </div>
@@ -250,7 +381,10 @@ export function ResonanceSummary({ moment }: { moment: Moment }) {
 
       {mine && (
         <span data-sb-resonance-mine={mine} className="sr-only">
-          {t("celestial.field.selected")}: {name(mine as ResonanceId)}
+          {t("celestial.field.selected")}: {name(mine as ResonanceId)} — {t("celestial.summary.youResonated", {
+            object: t(resonanceById(mine)?.objectNameKey ?? ""),
+            meaning: t(resonanceById(mine)?.meaningKey ?? ""),
+          })}
         </span>
       )}
     </div>

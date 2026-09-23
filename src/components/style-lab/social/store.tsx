@@ -64,6 +64,12 @@ type Action =
   | { type: "resonate"; id: string; resonance: string | null }
   // R3.3 harness-only (§31): the review route seeds Human Pulse scale fixtures with it
   | { type: "pulse-sim"; id: string; expressions: Record<string, string> }
+  /** Celestial Social Universe — harness-only: seed one Moment's multi-person Resonance map
+   *  (`?resonance=` on the style-lab route, never the product route). Sibling of pulse-sim. */
+  | { type: "resonance-sim"; id: string; resonances: Record<string, string> }
+  /** Celestial Social Universe — harness-only: ONE more person's Resonance arrives live, so
+   *  the quiet arrival motion is demonstrable. Never the acting viewer; one entry per person. */
+  | { type: "resonance-arrive"; id: string; personId: string; resonance: string }
   | { type: "hide"; id: string }
   | { type: "note"; momentId: string; note: Note }
   | { type: "noteEdit"; momentId: string; noteId: string; text: string }
@@ -155,6 +161,13 @@ function reduce(s: State, a: Action): State {
     case "pulse-sim":
       // harness fixture: replace one Moment's expression map wholesale (review route only)
       return { ...s, moments: s.moments.map((m) => (m.id === a.id ? { ...m, expressions: a.expressions } : m)) };
+    case "resonance-sim":
+      // harness fixture: replace one Moment's Resonance map wholesale (review route only).
+      // `m.expressions` is untouched: the two families never cross-write.
+      return { ...s, moments: s.moments.map((m) => (m.id === a.id ? { ...m, resonances: a.resonances } : m)) };
+    case "resonance-arrive":
+      // harness fixture: one more person's single Resonance lands (review route only)
+      return editMoment(a.id, (m) => ({ ...m, resonances: { ...(m.resonances ?? {}), [a.personId]: a.resonance } }));
     case "express": {
       const meId = actingPerson(s.viewer).id;
       return editMoment(a.id, (m) => {

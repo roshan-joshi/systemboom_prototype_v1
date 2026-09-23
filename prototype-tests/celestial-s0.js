@@ -78,6 +78,9 @@ const required = [
   "celestial.field.remove","celestial.field.selected","celestial.a11y.full","celestial.summary.aria",
   "celestial.summary.who","celestial.summary.peopleN","celestial.summary.youAndN","celestial.summary.justYou",
   "celestial.notification.resonated","celestial.chat.aria","celestial.chat.who",
+  // Celestial Social Universe — the shared Resonance Constellation (additive; list only grows)
+  "celestial.summary.typeCount","celestial.summary.youResonated",
+  "celestial.constellation.title","celestial.constellation.close","celestial.constellation.more",
   ...OBJECTS.map((o) => `celestial.object.${o}`),
   ...MEANINGS.map((m) => `celestial.meaning.${m}`),
   ...IDS.map((i) => `celestial.phrase.${i}`),
