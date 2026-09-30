@@ -57,8 +57,20 @@ const hasEnglishWords = (s, words) => words.some((w) => new RegExp(`(^|[^A-Za-z]
   console.log("3. Date truth");
   await open(page, 1440, 1000, { viewer: "maya", extra: { composer: "1" } });
   await sleep(300);
-  const composerDate = await text(page, "[data-sb-composer] [data-sb-date-display]");
-  ok(/^\d{2} [A-Z]{3} \d{4}$/.test(composerDate), `composer date reads the SYSTEMBOOM grammar, not a numeric locale date (${composerDate})`);
+  // GREENFIELD (§21) + UC-C3 (§42): the event date lives behind the When control — collapsed
+  // it states the truth, Change opens the same SYSTEMBOOM grammar.
+  await page.click("[data-sb-composer] [data-sb-record-details]");
+  await sleep(250);
+  await page.evaluate(() => [...document.querySelectorAll("[data-sb-kind-row] button")][0]?.click());
+  await sleep(300);
+  await page.evaluate(() => document.querySelector("[data-sb-more-toggle]")?.click());
+  await sleep(250);
+  await page.evaluate(() => document.querySelector("[data-sb-when-change]")?.click());
+  await sleep(250);
+  await page.evaluate(() => { const i = document.querySelector("[data-sb-when] input[type=date]"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, "2019-07-14"); i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); });
+  await sleep(250);
+  const composerDate = await text(page, "[data-sb-composer] [data-sb-when-value]");
+  ok(composerDate === "14 JUL 2019", `the When reads the SYSTEMBOOM grammar, not a numeric locale date (${composerDate})`);
 
   /* ---- 4. Composer is fully localised — no English leakage (ne) ---- */
   console.log("4. Composer localisation");
@@ -67,18 +79,26 @@ const hasEnglishWords = (s, words) => words.some((w) => new RegExp(`(^|[^A-Za-z]
   const comp = await text(page, "[data-sb-composer]");
   const engLeak = hasEnglishWords(comp, ["New", "moment", "Public", "Post", "Cancel", "Media", "Meal", "Activity", "Problem", "Health", "Project", "Meeting", "feeling", "Where", "Confirm", "today", "Video", "Link"]);
   ok(!engLeak, "ne composer carries no leftover English UI words");
-  const kindWords = await page.$$eval("[data-sb-composer] [data-sb-kind-row] span.text-\\[11px\\]", (n) => n.map((x) => x.textContent.trim()));
-  ok(kindWords.length === 7 && kindWords.every((w) => !/^[A-Za-z]+$/.test(w)), `ne composer kind words are localised (${kindWords.join(", ")})`);
-  // return English & confirm byte-identical kind words
+  // Universal Composer recorded supersession (§6/§15): the classifications sit behind Record
+  // details; the localisation contract is unchanged — every revealed word speaks the locale.
+  await page.click("[data-sb-composer] [data-sb-record-details]");
+  await sleep(300);
+  const kindWords = await page.$$eval("[data-sb-composer] [data-sb-kind-row] [data-sb-kind-label]", (n) => n.map((x) => x.textContent.trim()));
+  ok(kindWords.length === 7 && kindWords.every((w) => !/^[A-Za-z &]+$/.test(w)), `ne composer record names are localised (${kindWords.join(", ")})`);
+  // return English & confirm byte-identical words
   await open(page, 390, 900, { viewer: "maya", lang: "en", cookie: "en", extra: { composer: "1" } });
   await sleep(300);
-  const enKinds = await page.$$eval("[data-sb-composer] [data-sb-kind-row] span.text-\\[11px\\]", (n) => n.map((x) => x.textContent.trim()).join(","));
-  ok(enKinds === "media,meal,activity,problem,health,project,meeting", `en kind words unchanged (${enKinds})`);
+  await page.click("[data-sb-composer] [data-sb-record-details]");
+  await sleep(300);
+  const enKinds = await page.$$eval("[data-sb-composer] [data-sb-kind-row] [data-sb-kind-label]", (n) => n.map((x) => x.textContent.trim()).join("|"));
+  ok(enKinds === "Life Moment|Meal|Activity|Health|Problem|Project|Meeting", `en record names (${enKinds})`);
 
   /* ---- 5. Kind fields (localised labels) ---- */
   console.log("5. Kind fields");
   await open(page, 1440, 1000, { viewer: "maya", lang: "es", cookie: "es", extra: { composer: "1" } });
   await sleep(300);
+  await page.click("[data-sb-composer] [data-sb-record-details]").catch(() => {});
+  await sleep(250);
   await page.click("[data-sb-composer] button[aria-label='Comida']").catch(() => {});
   await sleep(250);
   const fields = await page.$("[data-sb-composer] [data-sb-kind-fields='meal']");

@@ -75,6 +75,28 @@ async function setValue(page, sel, v) {
   }, sel, v);
   await sleep(120);
 }
+/* UC-C3 (§6/§72) — "Add details" / the record pill opens the focused Record chooser sheet;
+   a choice closes it again (one pill, never seven persistent categories). */
+async function openChooser(page) {
+  await page.evaluate(() => { const b = document.querySelector("[data-sb-composer] [data-sb-record-details]"); if (b && b.getAttribute("aria-expanded") !== "true") b.click(); });
+  await sleep(300);
+}
+async function chooseKind(page, label) {
+  await openChooser(page);
+  await click(page, `[data-sb-kind-row] button[aria-label='${label}']`);
+}
+async function justPost(page) {
+  await openChooser(page);
+  await click(page, "[data-sb-record-social-only]");
+}
+/* UC-C3 (§10/§12) — media arrives through its SOURCES: Media → My Media (the account's own
+   assets, multi-select), then "Add n". */
+async function myMedia(page, alts) {
+  await click(page, "[data-sb-composer] button[aria-label='Media']");
+  await click(page, "[data-sb-media-source='mymedia']");
+  await page.evaluate((names) => { const g = document.querySelector("[data-sb-mymedia-grid]"); for (const n of names) [...g.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === n)?.click(); }, alts);
+  await sleep(200);
+}
 
 /* ---------- contrast ---------- */
 function lum(rgb) {
@@ -335,7 +357,13 @@ async function contrastTable(page, theme) {
   const other = "[data-sb-moment='m-meal']";
   await click(page, `${other} button[aria-label=More]`);
   const otherItems = await page.$$eval(`${other} [role=menu] [role^=menuitem]`, (n) => n.map((x) => x.textContent.trim()));
-  ok(otherItems.join("|") === "Report|Hide|Copy link|View in Life — later", `others' menu: ${otherItems.join(" · ")}`);
+  // S5 (Social Wall completion): a private Save (bookmark) leads every Moment menu, and
+  // Share… appears exactly when the platform itself has navigator.share (no dead item, no
+  // repost engine). Recorded supersession — the invariant (the same accepted items in the
+  // same order) is unchanged and asserted capability-aware.
+  const hasNativeShare = await page.evaluate(() => "share" in navigator);
+  const expectedOthers = hasNativeShare ? "Save|Report|Hide|Share…|Copy link|View in Life — later" : "Save|Report|Hide|Copy link|View in Life — later";
+  ok(otherItems.join("|") === expectedOthers, `others' menu: ${otherItems.join(" · ")}`);
   await clickText(page, "Hide", other);
   ok(!(await page.$(other)), "Hide removes the moment from the feed");
 
@@ -384,7 +412,9 @@ async function contrastTable(page, theme) {
   const menuItems = await page.$$eval("[role=menu][aria-label=Account] [role=menuitem]", (n) => n.map((x) => x.textContent.replace(/later/, "").trim()));
   // Complete-My-World pass: the menu gains Appearance (the phone home of the
   // theme) and Logout is real. The "later" items are unchanged.
-  ok(menuItems.map((t) => t.replace(/(Appearance).*/, "$1")).join("|") === "Statistics|Weather|Exchange|Settings|Appearance|Logout", `avatar menu: ${menuItems.join(" · ")}`);
+  // S5 recorded supersession: the account menu gains the real Saved surface, first —
+  // the "later" placeholders, Appearance, Language and Logout are unchanged.
+  ok(menuItems.map((t) => t.replace(/(Appearance).*/, "$1")).join("|") === "Saved|Statistics|Weather|Exchange|Settings|Appearance|Logout", `avatar menu: ${menuItems.join(" · ")}`);
   await shot(page, "avatar-menu");
   await page.keyboard.press("Escape");
 
@@ -397,48 +427,78 @@ async function contrastTable(page, theme) {
     await sleep(400);
     const focused = await page.evaluate(() => document.activeElement?.id === "sb-composer-text");
     ok(focused, `${theme} ${w}: composer opens with focus in the text`);
-    const postDisabled = await page.$eval("[data-sb-composer] footer button[type=button]", (b) => b.disabled);
-    ok(postDisabled, `${theme} ${w}: Post disabled while empty`);
+    // GREENFIELD (§44): never a mystery-disabled POST — it carries aria-disabled and, when
+    // pressed empty, states the reason and publishes nothing.
+    const emptyPost = await page.evaluate(async () => {
+      const b = [...document.querySelectorAll("[data-sb-composer] footer button")].find((x) => x.textContent.trim() === "Post");
+      const n0 = document.querySelectorAll("[data-sb-moment]").length;
+      b.click();
+      await new Promise((r) => setTimeout(r, 1200));
+      return { ariaOff: b.getAttribute("aria-disabled") === "true", said: !!document.querySelector("[data-sb-composer-issue]"), posted: document.querySelectorAll("[data-sb-moment]").length !== n0 };
+    });
+    ok(emptyPost.ariaOff && emptyPost.said && !emptyPost.posted, `${theme} ${w}: an empty POST states its reason and publishes nothing`);
     // The shell is viewport-fixed: a phone sheet fills the viewport height at the frame's width; a modal is ≤560 wide.
     const shell = await page.evaluate(() => { const c = document.querySelector("[data-sb-composer]").getBoundingClientRect(); const f = document.querySelector("[data-sb-social-frame]").getBoundingClientRect(); return { w: Math.round(c.width), fw: Math.round(f.width), top: Math.round(c.top), h: Math.round(c.height), vh: window.innerHeight }; });
     ok(w === "360" ? shell.w === shell.fw && shell.top === 0 && shell.h === shell.vh : shell.w <= 560 && shell.w >= 400, `${theme} ${w}: shell is ${w === "360" ? "a viewport-height sheet" : "a centred modal"} (${shell.w}px of ${shell.fw}px, top ${shell.top}, ${shell.h}/${shell.vh}px)`);
     await shot(page, `composer-empty-${theme}-${w}`);
-    // kinds
+    // kinds — UC-C3 (§6/§72): Add details opens the focused Record chooser (Just post apart
+    // from the seven records); every choice collapses it to one pill, and each adapter shows
+    // only its approved Quick fields. Superseded shapes (recorded in AGENTS.md "UC-C3"):
+    // Activity leads with its common four (the full list is a focused picker, §39) and Health
+    // with a Choose control (the 17 types are a focused picker, §47).
+    await click(page, "[data-sb-composer] [data-sb-record-details]");
+    ok(await page.evaluate(() => !!document.querySelector("[data-sb-record-social-only]") && document.querySelectorAll("[data-sb-kind-row] [role=radio]").length === 7), `${theme} ${w}: Just post apart; exactly seven records`);
+    await click(page, "[data-sb-sheet-panel='record'] [data-sb-sheet-back]");
+    const QUICK = {
+      meal: () => document.querySelectorAll("[data-sb-chipselect='occasion'] button").length === 6 && !!document.querySelector("[data-sb-ufield='items']"),
+      activity: () => document.querySelectorAll("[data-sb-activity-common] button").length === 5 && !document.querySelector("[data-sb-chipselect='activityType']"),
+      problem: () => !document.querySelector("[data-sb-domain-quick]") && document.getElementById("sb-composer-text").placeholder === "What's the problem?",
+      health: () => !!document.querySelector("[data-sb-ufield='bodyArea']") && !!document.querySelector("[data-sb-health-choose]") && document.querySelectorAll("[data-sb-chipselect='healthType'] button").length === 0 && !!document.querySelector("[data-sb-health-sharing]"),
+      project: () => !!document.querySelector("[data-sb-ufield='projectTitle']") && !!document.querySelector("[data-sb-ufield='goal']"),
+      meeting: () => !!document.querySelector("[data-sb-ufield='subject']") && !!document.querySelector("[data-sb-domain-quick='meeting'] [data-sb-when]"),
+    };
     for (const k of ["meal", "activity", "problem", "health", "project", "meeting"]) {
-      await click(page, `[data-sb-composer] button[aria-label='${k[0].toUpperCase() + k.slice(1)}']`);
-      const fields = await page.$eval(`[data-sb-kind-fields='${k}']`, (e) => e.querySelectorAll("label").length);
-      ok(fields >= 2, `${theme} ${w}: ${k} reveals its fields (${fields})`);
+      await chooseKind(page, k === "meal" ? "Meal" : k === "activity" ? "Activity" : k === "problem" ? "Problem" : k === "health" ? "Health" : k === "project" ? "Project" : "Meeting");
+      await sleep(250);
+      const okQuick = await page.evaluate((kk, fnSrc) => new Function(`return (${fnSrc})()`)(), k, QUICK[k].toString());
+      ok(okQuick, `${theme} ${w}: ${k} reveals its approved quick fields`);
+      const aud = await page.$eval("[data-sb-audience]", (b) => b.textContent.trim());
+      ok(aud === "Public", `${theme} ${w}: ${k} never rewrites the one audience (§7/§28) (${aud})`);
       if (theme === "light") await shot(page, `composer-kind-${k}`);
-      if (k === "health" || k === "problem") {
-        const pv = await page.$eval("[data-sb-composer] button[aria-haspopup=listbox]", (b) => b.textContent.trim());
-        ok(pv.startsWith("Only me"), `${theme} ${w}: ${k} defaults to Only me`);
-      }
-      await click(page, `[data-sb-composer] button[aria-label='${k[0].toUpperCase() + k.slice(1)}']`); // deselect
     }
-    // photos + detection
-    await click(page, "[data-sb-composer] button[aria-label='Photos & video']");
-    await click(page, "[data-sb-composer] button[aria-label='Nyatapola temple, Bhaktapur']");
-    const readoutState = await page.$eval("[data-sb-readout-state]", (e) => e.getAttribute("data-sb-readout-state"));
-    ok(readoutState === "detected", `${theme} ${w}: photo with a file date → detected readout, Post disabled until confirm`);
-    const rt = await page.$eval("[data-sb-readout-state]", (e) => e.textContent);
-    ok(/\d+y \d+m \d+d/.test(rt) && rt.includes("Bhaktapur") && rt.includes("03 AUG 2026"), `readout text: "${rt.replace(/\s+/g, " ").trim().slice(0, 90)}"`);
+    await justPost(page);
+    // photos + detection — through My Media (UC-C3 §10/§12)
+    await myMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await click(page, "[data-sb-mymedia-add]");
+    await sleep(300);
+    // GREENFIELD (§23/§24): the photo's own date/place wait for the person's review — with the
+    // date and place stated plainly, and NEVER a Life age anywhere in creation (§22).
+    const review = await page.$eval("[data-sb-metadata-review]", (e) => e.textContent.replace(/\s+/g, " ").trim());
+    ok(review.includes("03 AUG 2026") && review.includes("Bhaktapur"), `${theme} ${w}: the review states the photo's own date and place ("${review.slice(0, 70)}")`);
+    ok(await page.evaluate(() => !/\d+y \d+m \d+d/.test(document.querySelector("[data-sb-composer]").textContent)), `${theme} ${w}: no Life age appears in the composer (§22)`);
     if (theme === "light") await shot(page, "composer-detected");
-    await click(page, "[data-sb-composer] button[aria-label='A rain-wet hiti courtyard in Kathmandu']");
-    await click(page, "[data-sb-composer] button[aria-label='Annapurna range panorama from Mustang']");
-    const thumbs = await page.$$eval("[data-sb-thumb]", (n) => n.map((x) => x.getAttribute("data-sb-thumb")));
+    await myMedia(page, ["A rain-wet hiti courtyard in Kathmandu", "Annapurna range panorama from Mustang"]);
+    await click(page, "[data-sb-mymedia-add]");
+    const thumbs = await page.$$eval("[data-sb-media-collage] [data-sb-thumb]", (n) => n.map((x) => x.getAttribute("data-sb-thumb")));
     ok(thumbs.join(",") === "nyatapola,rain,panorama", `three thumbs in order (${thumbs.join(",")})`);
+    // reorder + remove live in the Media organizer over the same draft (UC-C3 §16)
+    await click(page, "[data-sb-media-edit]");
     await click(page, "[data-sb-composer] button[aria-label='Move photo 3 earlier']");
-    const thumbs2 = await page.$$eval("[data-sb-thumb]", (n) => n.map((x) => x.getAttribute("data-sb-thumb")));
+    const thumbs2 = await page.$$eval("[data-sb-organizer-list] [data-sb-thumb]", (n) => n.map((x) => x.getAttribute("data-sb-thumb")));
     ok(thumbs2.join(",") === "nyatapola,panorama,rain", `reorder works (${thumbs2.join(",")})`);
     await click(page, "[data-sb-composer] button[aria-label='Remove photo 3']");
-    ok((await page.$$eval("[data-sb-thumb]", (n) => n.length)) === 2, "remove works");
+    ok((await page.$$eval("[data-sb-organizer-list] [data-sb-thumb]", (n) => n.length)) === 2, "remove works");
     if (theme === "light") await shot(page, "composer-thumbs");
-    // limit
-    for (let i = 1; i <= 10; i++) await page.evaluate((i) => document.querySelector(`[data-sb-composer] button[aria-label='Bisket Jatra, Bhaktapur — frame ${i}']`)?.click(), i);
+    // limit — the ONE configurable media limit, stated where the choosing happens
+    await click(page, "[data-sb-organizer-add]");
+    await click(page, "[data-sb-media-source='mymedia']");
+    for (let i = 1; i <= 10; i++) await page.evaluate((i) => [...document.querySelectorAll("[data-sb-mymedia-grid] button")].find((b) => b.getAttribute("aria-label") === `Bisket Jatra, Bhaktapur — frame ${i}`)?.click(), i);
     await sleep(200);
-    ok(await page.evaluate(() => document.body.innerText.includes("10 of 10 — remove one to add another")), "ten-photo limit states what happens");
+    ok(await page.evaluate(() => document.body.innerText.includes("10 of 10 — remove one to add another")), "the media limit states what happens");
     if (theme === "light") await shot(page, "composer-limit");
-    await clickText(page, "Confirm", "[data-sb-composer]");
+    await click(page, "[data-sb-mymedia-add]");
+    await sleep(300);
+    await clickText(page, "Use", "[data-sb-metadata-review]");
     await setValue(page, "#sb-composer-text", "Ten that survived, plus the temple.");
     // posting → posted lands on the rule
     await clickText(page, "Post", "[data-sb-composer] footer");
@@ -455,39 +515,58 @@ async function contrastTable(page, theme) {
   await click(page, "[data-sb-open-composer]");
   await page.waitForSelector("[data-sb-composer]");
   await setValue(page, "#sb-composer-text", "x".repeat(2010));
-  ok(await page.evaluate(() => document.body.innerText.includes("2,010 / 2,000")) && (await page.$eval("[data-sb-composer] footer button[type=button]", (b) => b.disabled)), "over-limit counter turns danger and disables Post");
+  ok(await page.evaluate(() => document.body.innerText.includes("2,010 / 2,000")) && (await page.$eval("[data-sb-composer] footer button:last-of-type", (b) => b.getAttribute("aria-disabled") === "true" || [...document.querySelectorAll("[data-sb-composer] footer button")].some((x) => x.getAttribute("aria-disabled") === "true"))), "over-limit counter turns danger and blocks Post");
   await shot(page, "composer-overlimit");
+  // GREENFIELD (§21) + UC-C3 (§42): the event's own time lives behind the When control —
+  // "Today · Change" — and the future/past truths hold there.
   await setValue(page, "#sb-composer-text", "Future test");
-  await setValue(page, "[data-sb-composer] input[type=date]", "2031-01-01");
+  await chooseKind(page, "Life Moment");
+  await page.evaluate(() => document.querySelector("[data-sb-more-toggle]").click());
+  await sleep(250);
+  await click(page, "[data-sb-when-change]");
+  await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "2031-01-01");
   ok(await page.evaluate(() => document.body.innerText.includes("hasn't happened yet")), "future date is refused inline");
   await shot(page, "composer-future");
-  await setValue(page, "[data-sb-composer] input[type=date]", "2019-05-04");
+  await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "2019-05-04");
   ok(await page.evaluate(() => document.body.innerText.includes("Placed in your past")), "backdating shows the past-placement notice");
   await shot(page, "composer-backdated");
-  await click(page, "[data-sb-composer] button[aria-label='Meal']");
+  // §20/§44 — a Meal with nothing meaningful refuses with a plain sentence, never a dead button
+  await setValue(page, "#sb-composer-text", "");
+  await chooseKind(page, "Meal");
   await clickText(page, "Post", "[data-sb-composer] footer").catch(() => {});
-  ok(await page.$eval("[data-sb-composer] footer button[type=button]", (b) => b.disabled), "required kind field missing keeps Post disabled");
-  await click(page, "[data-sb-composer] button[aria-label='Meal']");
-  await click(page, "[data-sb-composer] button[aria-label='Photos & video']");
-  await clickText(page, "Video", "[data-sb-composer] [role=tablist]");
-  await page.click("[data-sb-composer] input[aria-label='Video']");
+  await sleep(1200);
+  ok(await page.evaluate(() => document.body.innerText.includes("Say something or add a photo first.") && !document.querySelector("[data-sb-moment^='m-new-']")), "an empty Meal states what it needs and publishes nothing");
+  await justPost(page);
+  // a video from My Media — one video alone keeps the accepted caption-in-place (UC-C3 §9)
+  await myMedia(page, ["Evening kora around Boudhanath, video"]);
+  await click(page, "[data-sb-mymedia-add]");
   await sleep(200);
-  ok(await page.evaluate(() => document.body.innerText.includes("Burn the date and place")), "video preview offers the burned-in caption");
-  await page.evaluate(() => { const boxes = [...document.querySelectorAll("[data-sb-composer] input[type=checkbox]")]; boxes[boxes.length - 1].click(); });
-  await sleep(100);
+  ok(await page.evaluate(() => !!document.querySelector("[data-sb-composer] input[aria-label='Caption']")), "an attached video offers its caption in place");
   await shot(page, "composer-video");
-  await page.click("[data-sb-composer] input[aria-label='Video']");
-  await clickText(page, "Link", "[data-sb-composer] [role=tablist]");
+  // remove it from THIS post (never from My Media) so a link can take its place
+  await click(page, "[data-sb-media-edit]");
+  await click(page, "[data-sb-organizer-list] button[aria-label='Remove video 1']");
+  await click(page, "[data-sb-sheet-panel='organizer'] [data-sb-sheet-back]");
+  // a link is its own reference row in Add media, not a media source (UC-C3 §10)
+  await click(page, "[data-sb-composer] button[aria-label='Media']");
+  await click(page, "[data-sb-media-source='link']");
   await setValue(page, "[data-sb-composer] input[placeholder='Paste a link']", "https://example.org/watch?v=kora");
   await sleep(200);
   ok(!!(await page.$(".sb-resolving")), "link paste shows resolving progress");
   await sleep(800);
   ok(await page.evaluate(() => !!document.querySelector("[data-sb-composer] input[aria-label='Link title']")), "link resolves to an editable preview card");
   await shot(page, "composer-link");
-  await click(page, "[data-sb-composer] button[aria-label='Remove preview']");
-  await clickText(page, "feeling", "[data-sb-composer]");
-  await clickText(page, "nostalgic", "[data-sb-composer]");
-  ok(await page.evaluate(() => document.body.innerText.includes("feeling nostalgic")), "feeling chosen reads in the readout");
+  await setValue(page, "[data-sb-composer] input[placeholder='Paste a link']", "");
+  await sleep(200);
+  await click(page, "[data-sb-sheet-panel='media'] [data-sb-sheet-back]");
+  // feeling lives in the Life Moment's More details, added deliberately (UC-C3 §43)
+  await chooseKind(page, "Life Moment");
+  await page.evaluate(() => { if (!document.querySelector("[data-sb-more]")) document.querySelector("[data-sb-more-toggle]").click(); });
+  await sleep(250);
+  await click(page, "[data-sb-add-field='feeling']");
+  await page.evaluate(() => [...document.querySelectorAll("[data-sb-chipselect='feeling'] button")].find((b) => b.textContent.trim() === "nostalgic")?.click());
+  await sleep(200);
+  ok(await page.evaluate(() => [...document.querySelectorAll("[data-sb-chipselect='feeling'] button")].find((b) => b.textContent.trim() === "nostalgic")?.getAttribute("aria-checked") === "true"), "feeling chosen holds its chip");
   await shot(page, "composer-feeling");
   await click(page, "[data-sb-composer] button[aria-haspopup=listbox]");
   await shot(page, "composer-privacy");
@@ -501,9 +580,10 @@ async function contrastTable(page, theme) {
   ok(await page.evaluate(() => document.body.innerText.includes("Couldn't post. Your draft is kept.")), "failed post keeps the draft and offers Retry");
   await shot(page, "composer-failed");
   await page.evaluate(() => document.querySelector("input[type=checkbox]")?.click());
-  // discard confirm + keep draft
+  // discard confirm + keep draft — UC-C3 §55 supersession: the ask reads "Keep this draft?"
+  // (Keep draft · Discard · Continue editing); the invariant is unchanged.
   await clickText(page, "Cancel", "[data-sb-composer] footer");
-  ok(await page.evaluate(() => document.body.innerText.includes("Discard this moment?")), "closing with content asks Keep draft / Discard");
+  ok(await page.evaluate(() => document.body.innerText.includes("Keep this draft?")), "closing with content asks Keep draft / Discard / Continue editing");
   await shot(page, "composer-discard");
   await clickText(page, "Keep draft", "[data-sb-composer] footer");
   await sleep(300);
@@ -514,7 +594,7 @@ async function contrastTable(page, theme) {
   await click(page, "[data-sb-moment='m-nepali-1'] button[aria-label=More]");
   await clickText(page, "Edit", "[data-sb-moment='m-nepali-1']");
   await page.waitForSelector("[data-sb-composer]");
-  ok(await page.evaluate(() => document.querySelector("#sb-composer-title")?.textContent === "Edit moment" && document.querySelector("#sb-composer-text").value.includes("स्वयम्भू")), "edit reopens the same composer, prefilled (Devanagari intact)");
+  ok(await page.evaluate(() => document.querySelector("#sb-ucomposer-title")?.textContent === "Edit post" && document.querySelector("#sb-composer-text").value.includes("स्वयम्भू")), "edit reopens the same composer, prefilled (Devanagari intact)");
   await shot(page, "composer-edit");
   await setValue(page, "#sb-composer-text", "बिहानै स्वयम्भू — edited.");
   await clickText(page, "Save", "[data-sb-composer] footer");
@@ -596,13 +676,30 @@ async function contrastTable(page, theme) {
     await click(page, "[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
     await sleep(400);
-    const labels = await page.$$eval("[data-sb-kind-row] span.text-\\[11px\\]", (n) => n.map((x) => x.textContent.trim()));
-    ok(labels.join(",") === "media,meal,activity,problem,health,project,meeting", `${theme} 360: every kind button carries its word (${labels.join(", ")})`);
-    const kindStyle = await page.$eval("[data-sb-kind-row] span.text-\\[11px\\]", (e) => ({ size: getComputedStyle(e).fontSize, weight: getComputedStyle(e).fontWeight }));
-    ok(kindStyle.size === "11px" && (kindStyle.weight === "500" || kindStyle.weight === "medium"), `${theme} 360: kind words 11px/500 (${kindStyle.size}/${kindStyle.weight})`);
+    // Universal Composer recorded supersession (§6): the opening state is SOCIAL — media,
+    // People and Record details only; the classification row is NOT presented until asked.
+    ok(await page.evaluate(() => !document.querySelector("[data-sb-kind-row]")), `${theme} 360: no classification row at open — the Composer opens social (§6)`);
+    // UC-C3 §5 supersession: the action words are human — Media · People · Place · Add details
+    const actionWords = await page.$$eval("[data-sb-composer-actions] span.text-\\[11px\\]", (n) => n.map((x) => x.textContent.trim()));
+    ok(actionWords.join(",") === "Media,People,Place,Add details", `${theme} 360: the four context actions carry their words (${actionWords.join(", ")})`);
+    await click(page, "[data-sb-composer] [data-sb-record-details]");
+    const labels = await page.$$eval("[data-sb-kind-row] [data-sb-kind-label]", (n) => n.map((x) => x.textContent.trim()));
+    ok(labels.join("|") === "Life Moment|Meal|Activity|Health|Problem|Project|Meeting", `${theme} 360: the chooser names exactly the seven records (${labels.join(" · ")})`);
+    // UC-C3 §6/§72 supersession: record names were 11px quiet chips in a persistent row; they
+    // are now READABLE rows (14px/500, 44px targets) inside a focused chooser sheet.
+    const kindStyle = await page.$eval("[data-sb-kind-row] [data-sb-kind-label]", (e) => ({ size: getComputedStyle(e).fontSize, weight: getComputedStyle(e).fontWeight, rowH: Math.round(e.closest("button").getBoundingClientRect().height) }));
+    ok(kindStyle.size === "14px" && (kindStyle.weight === "500" || kindStyle.weight === "medium") && kindStyle.rowH >= 44, `${theme} 360: record rows read 14px/500 at ≥44px (${kindStyle.size}/${kindStyle.weight}/${kindStyle.rowH}px)`);
     await shot(page, `corrections/composer-kind-row-360-${theme}`);
+    // GREENFIELD (§21) + UC-C3 (§42): the date instrument lives behind the When control and
+    // keeps the SYSTEMBOOM grammar
+    await click(page, "[data-sb-composer] button[aria-label='Life Moment']");
+    await page.evaluate(() => document.querySelector("[data-sb-more-toggle]").click());
+    await sleep(250);
+    await click(page, "[data-sb-when-change]");
+    await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "2019-07-14");
+    await sleep(250);
     const composerDate = await page.$eval("[data-sb-composer] [data-sb-date-display]", (e) => e.textContent.trim());
-    ok(/^\d{2} [A-Z]{3} \d{4}$/.test(composerDate), `${theme} 360: composer date shows SYSTEMBOOM grammar (${composerDate})`);
+    ok(composerDate === "14 JUL 2019", `${theme} 360: the When speaks SYSTEMBOOM grammar (${composerDate})`);
     if (theme === "light") await shot(page, "corrections/composer-date-closed");
     await page.keyboard.press("Escape");
     await sleep(300);
@@ -612,7 +709,11 @@ async function contrastTable(page, theme) {
   await click(page, "[data-sb-open-composer]");
   await page.waitForSelector("[data-sb-composer]");
   await setValue(page, "#sb-composer-text", "Backdated to the 2019 monsoon.");
-  await setValue(page, "[data-sb-composer] input[type=date]", "2019-07-14");
+  await chooseKind(page, "Life Moment");
+  await page.evaluate(() => document.querySelector("[data-sb-more-toggle]").click());
+  await sleep(250);
+  await click(page, "[data-sb-when-change]");
+  await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "2019-07-14");
   await sleep(300);
   ok((await page.$eval("[data-sb-composer] [data-sb-date-display]", (e) => e.textContent.trim())) === "14 JUL 2019", "backdated composer date reads 14 JUL 2019");
   await shot(page, "corrections/backdated-before-post");

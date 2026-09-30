@@ -18,3 +18,18 @@ prototype-evidence/
 # the expression asset pipeline and the render briefs read the mascot source from it.
 references/cosmos/
 references/social/
+
+# Same convention — a design-exploration bible (concept boards, art variants, tar.gz
+# bundles) and an audit screenshots zip. Working material, not needed by the app or build.
+references/celestial-resonance-bible/
+references/SYSTEMBOOM_Composer_Screenshots_2026-09-29.zip
+
+# Audit evidence screenshots — same rule as prototype-evidence/ above.
+references/social-bible-audit/evidence/
+references/social-bible-audit/phase-4.3/evidence/
+
+# Generated scratch/output — not app source, kept local only.
+tmp/
+output/
+Claude outputs/
+PHASE-4.3-FINAL-AUDIT-PACKAGE/

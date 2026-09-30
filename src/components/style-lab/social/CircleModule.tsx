@@ -30,7 +30,8 @@ export function CircleModule({ viewer, subject, moments, compact = false }: { vi
   const [band, setBand] = useState<number | null>(null);
   const own = life.scope === "owner";
 
-  const thisMonth = moments.filter((m) => m.authorId === subject.id && m.at.slice(0, 7) === localISO(at).slice(0, 7)).length;
+  // Universal Composer: social-only posts (record "none") are not recorded life.
+  const thisMonth = moments.filter((m) => m.authorId === subject.id && m.record !== "none" && m.timePrecision !== "unknown" && m.at.slice(0, 7) === localISO(at).slice(0, 7)).length;
   const size = compact ? 96 : 220;
   const shown = band ?? life.bandIndex;
   const counts = ring.momentsByBand ?? [];

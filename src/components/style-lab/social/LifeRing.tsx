@@ -34,7 +34,10 @@ const INSTRUMENT_MIN = 140;
 
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = ((deg - 90) * Math.PI) / 180;
-  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)] as const;
+  // Rounded to 1/10000 px: Math.cos/sin precision is implementation-defined, and the server's
+  // V8 and the browser's can disagree in the last ULP — a real hydration mismatch on these
+  // attributes (seen when the host browser updated). Sub-0.0001px is invisible; determinism is not.
+  return [Math.round((cx + r * Math.cos(rad)) * 1e4) / 1e4, Math.round((cy + r * Math.sin(rad)) * 1e4) / 1e4] as const;
 }
 function arc(cx: number, cy: number, r: number, a0: number, a1: number) {
   const [x0, y0] = polar(cx, cy, r, a0);

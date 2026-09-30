@@ -27,7 +27,7 @@ const count = (page, sel) => page.$$eval(sel, (n) => n.length);
   const before = await count(page, "[data-sb-moment]");
   await page.click("[data-sb-open-composer]"); await sleep(400);
   await page.type("[data-sb-composer] textarea", "Testing the human loop at the ridge.");
-  await page.click("[data-sb-composer] footer button[type=button]"); // Post
+  await page.evaluate(() => [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post")?.click()); // Post
   await sleep(1300);
   const after = await count(page, "[data-sb-moment]");
   const hasText = await page.evaluate(() => document.body.innerText.includes("Testing the human loop at the ridge."));

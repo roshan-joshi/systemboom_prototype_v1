@@ -25,7 +25,8 @@ import { useTheme } from "@/lib/use-theme";
 import { now } from "@/lib/clock";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
 import { ResonanceNotificationMark } from "@/components/celestial/ResonateControl";
-import { matchPeople, PLACES, RECENT_SEARCHES, type Moment } from "./data";
+import { Notification as NotificationT, matchPeople, PLACES, RECENT_SEARCHES, type Moment } from "./data";
+import { relationshipBetween } from "@/components/world/model";
 import { MenuItem, Popover } from "./Moment";
 import { dayLabel, dateKey, formatDate, formatTime, useSocial } from "./store";
 import { momentLifeFor } from "./view-model";
@@ -36,7 +37,7 @@ import { setTheme } from "@/lib/use-theme";
 import { MessagesButton } from "@/components/world/Messages";
 import { PeopleButton } from "@/components/world/People";
 import { useWorldMaybe } from "@/components/world/WorldProvider";
-import { focusMoment } from "@/components/world/focus-moment";
+import { focusMoment, focusNote } from "@/components/world/focus-moment";
 import { announce } from "@/lib/announce";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { sbDate } from "@/lib/i18n/format";
@@ -62,6 +63,7 @@ export function TopBar({
   surface,
   worldLabel,
   onReturnHome,
+  onOpenSaved,
 }: {
   onBell: () => void;
   bellOpen: boolean;
@@ -79,6 +81,8 @@ export function TopBar({
   worldLabel?: string;
   /** Present only while viewing another person's World — one low-noise route back, from the account control, not a second navigation row. */
   onReturnHome?: () => void;
+  /** S5 — opens the viewer's private Saved surface (an account concern, not navigation). */
+  onOpenSaved?: () => void;
 }) {
   const world = useWorldMaybe();
   const router = useRouter();
@@ -144,7 +148,7 @@ export function TopBar({
             <ThemeToggle />
           </span>
           <span className="relative ml-0.5 @2xl:ml-1">
-            <button type="button" aria-label={t("account.menuAria", { name: me.name })} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} className="inline-flex items-center gap-1 rounded-full focus-visible:outline-[var(--focus)]">
+            <button type="button" aria-label={t("account.menuAria", { name: me.name })} aria-haspopup="menu" data-sb-account-trigger aria-expanded={menu} onClick={() => setMenu((v) => !v)} className="inline-flex items-center gap-1 rounded-full focus-visible:outline-[var(--focus)]">
               <PersonIdentity viewer={me} subject={me} size={28} />
               <span aria-hidden className="hidden text-[10px] text-muted @2xl:inline">▾</span>
             </button>
@@ -165,6 +169,11 @@ export function TopBar({
                   </>
                 )}
                 <div className="my-1 border-t border-[var(--hair)]" />
+                {onOpenSaved && (
+                  <MenuItem onClick={() => { setMenu(false); onOpenSaved(); }}>
+                    {t("saved.title")}
+                  </MenuItem>
+                )}
                 {[
                   { key: "account.statistics" },
                   { key: "account.weather" },
@@ -221,7 +230,7 @@ const GROUP_LABEL = "px-2 pt-1 pb-1 text-[11px] font-semibold tracking-[0.14em] 
 const ROW = "sb-press flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left text-text hover:bg-steel/12 focus-visible:outline-[var(--focus)]";
 
 function SearchField({ open: controlled, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void }) {
-  const { state, personOf, me, dispatch } = useSocial();
+  const { state, personOf, me, dispatch, canSee } = useSocial();
   const world = useWorldMaybe();
   const { t, tp, locale } = useT();
   const [q, setQ] = useState("");
@@ -249,9 +258,11 @@ function SearchField({ open: controlled, onOpenChange }: { open?: boolean; onOpe
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setOpen is stable per render for this purpose
   }, [controlled === undefined]);
   const term = q.trim().toLowerCase();
-  // Search sees only what this viewer may see: another person's only-me Moments
-  // never reach a result, a count or a place tally.
-  const visible = state.moments.filter((m) => m.authorId === me.id || m.privacy !== "onlyme");
+  // S1/S6 — search sees only what this viewer may see, answered by the ONE access seam
+  // (`canSee`): a private Moment never reaches a result, a count or a place tally, whatever
+  // relationship the author has to anyone else.
+  // §36 — an unshared projection is gone from every SOCIAL surface, Search included.
+  const visible = state.moments.filter((m) => canSee(m) && !m.unshared);
   const matches = (m: Moment) => (m.text ?? "").toLowerCase().includes(term) || (m.place ?? "").toLowerCase().includes(term);
   const photos = term ? visible.filter((m) => m.media && matches(m)).slice(0, 4) : [];
   const moments = term ? visible.filter((m) => !m.media && matches(m)).slice(0, 3) : [];
@@ -266,6 +277,9 @@ function SearchField({ open: controlled, onOpenChange }: { open?: boolean; onOpe
   const opener = () => (fieldRef.current && fieldRef.current.getClientRects().length > 0 ? fieldRef.current : toggleRef.current);
   const goToMoment = (m: Moment) => {
     setOpen(false);
+    // S1 §5.5 — a result can live outside the World currently open (someone else's page holds
+    // only their Moments); landing returns to the viewer's own World first.
+    if (state.profileId) dispatch({ type: "openWorld", id: null });
     dispatch({ type: "reveal", id: m.id });
     focusMoment(m.id);
   };
@@ -350,7 +364,7 @@ function SearchField({ open: controlled, onOpenChange }: { open?: boolean; onOpe
             {people.length > 0 && (
               <Group title={t("search.people")}>
                 {people.map((p) => {
-                  const rel = p.id !== me.id && world ? world.relationshipOf(p.id) : null;
+                  const rel = p.id !== me.id && world ? relationshipBetween(world.relationships, me.id, p.id) : null;
                   return (
                     <button
                       key={p.id}
@@ -457,7 +471,7 @@ function thumbOf(m: Moment): string {
 /* ---------- notifications ---------- */
 
 export function NotificationsPanel({ onClose }: { onClose: () => void }) {
-  const { state, dispatch, personOf, me } = useSocial();
+  const { state, dispatch, personOf, me, canSee } = useSocial();
   const world = useWorldMaybe();
   const { t, tp } = useT();
   /** The Moment a notification points at — its own date is the coordinate the row states. */
@@ -469,19 +483,34 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
   }
   const unread = state.notifications.filter((n) => n.unread).length;
   // §41 — a Moment event goes to THAT Moment: reveal it if it is not loaded, land on it, settle.
-  const goToMoment = (id: string, momentId?: string) => {
+  const goToMoment = (id: string, momentId?: string, noteId?: string, kind?: NotificationT["kind"], whoId?: string) => {
     dispatch({ type: "read", id });
+    // S4 — "accepted your friend request" is about the PERSON: their surface opens.
+    if (kind === "accepted" && whoId && world) {
+      onClose();
+      world.openPerson(whoId);
+      return;
+    }
     if (!momentId) return;
     // Phase 4.4-A (MC-20 stale landing): a Moment deleted or hidden since the notification arrived
-    // is said out loud — the panel stays, nothing closes onto nothing. (Which Moments a viewer may
-    // be taken to at all is the audience rule — Phase 4.4-B/C, not here.)
-    if (!state.moments.some((m) => m.id === momentId) || state.hidden.includes(momentId)) {
+    // is said out loud — the panel stays, nothing closes onto nothing.
+    const target = state.moments.find((m) => m.id === momentId);
+    if (!target || state.hidden.includes(momentId)) {
       announce(t("notif.momentGone"));
       return;
     }
+    // S1 §5.8 — the audience rule holds on every direct route: a notification never lands on (or
+    // reveals a word of) a Moment this viewer may not see. Truthful unavailable state instead.
+    if (!canSee(target)) {
+      announce(t("notif.momentUnavailable"));
+      return;
+    }
     onClose();
+    if (state.profileId) dispatch({ type: "openWorld", id: null });
     dispatch({ type: "reveal", id: momentId });
-    focusMoment(momentId);
+    // S4 — an event about an exact response lands ON that response, inside the conversation.
+    if (noteId && target.notes.some((x) => x.id === noteId && !x.removed)) focusNote(momentId, noteId);
+    else focusMoment(momentId);
   };
 
   return (
@@ -511,7 +540,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
               {items.map((n) => {
                 const who = personOf(n.whoId);
                 if (n.kind === "request" && world) {
-                  const rel = world.relationshipOf(n.whoId);
+                  const rel = relationshipBetween(world.relationships, me.id, n.whoId);
                   return (
                     <li key={n.id}>
                       <div className={`flex w-full items-center gap-3 rounded-[10px] py-1.5 pr-2 pl-6 ${n.unread ? "" : "opacity-80"}`} data-sb-notification-request={n.whoId}>
@@ -544,7 +573,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
                 const thumb = target?.media ? thumbOf(target) : "";
                 return (
                   <li key={n.id}>
-                    <button type="button" onClick={() => goToMoment(n.id, n.momentId)} className={`sb-press flex w-full items-center gap-3 rounded-[10px] py-1.5 pr-2 pl-6 text-left hover:bg-steel/10 focus-visible:outline-[var(--focus)] ${n.unread ? "" : "opacity-80"}`} data-sb-notification-moment={n.momentId}>
+                    <button type="button" onClick={() => goToMoment(n.id, n.momentId, n.noteId, n.kind, n.whoId)} className={`sb-press flex w-full items-center gap-3 rounded-[10px] py-1.5 pr-2 pl-6 text-left hover:bg-steel/10 focus-visible:outline-[var(--focus)] ${n.unread ? "" : "opacity-80"}`} data-sb-notification-moment={n.momentId}>
                       <PersonIdentity viewer={me} subject={who} at={new Date(n.at)} size={24} />
                       <span className="min-w-0 flex-1 text-[13px] leading-[1.4]">
                         <span className="font-medium text-text">{who.name}</span> <span className="text-text">{n.text}</span>

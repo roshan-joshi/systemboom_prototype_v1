@@ -138,8 +138,9 @@ function tsLoad(file) {
     ok(await page.$eval("[data-sb-moment='m-rain'] [data-sb-readout]", (e) => !/\d\d:\d\d/.test(e.textContent)), "a day-precision Moment shows no clock at all");
     await shot(page, "02-edit-moved-date-day-precision");
 
-    // link: real title / description / image survive (Prakash owns m-link)
-    await open(page, DESKTOP, "&viewer=prakashVisitor");
+    // link: real title / description / image survive (Chiara owns m-link — she edits it in her
+    // OWN World: since S1 a visitor's page holds only the subject's Moments)
+    await open(page, DESKTOP, "&viewer=prakashVisitor&profile=p-prakash");
     await ensureMoment(page, "m-link");
     const link0 = await momentOf(page, "m-link");
     await menuOf(page, "m-link");
@@ -170,12 +171,14 @@ function tsLoad(file) {
     await press(page, "Edit", "[data-sb-moment='m-rain']");
     await page.waitForSelector("[data-sb-composer]");
     await setValue(page, "#sb-composer-text", "An unsaved thought.");
-    await press(page, "Cancel", "[data-sb-composer] footer");
+    // UC-C3 §55 — the one exit is the header X (the idle footer no longer carries a Cancel)
+    const closeX = async () => { await page.click("[data-sb-composer] header button"); await sleep(300); };
+    await closeX();
     ok(await page.evaluate(() => !!document.querySelector("[data-sb-discard-edit]") && document.body.innerText.includes("Discard your changes?")), "closing an edit with changes asks before letting go");
     await shot(page, "03-edit-close-asks");
     await press(page, "Keep editing", "[data-sb-composer] footer");
     ok(await page.$eval("#sb-composer-text", (e) => e.value === "An unsaved thought."), "Keep editing returns to the words as they were");
-    await press(page, "Cancel", "[data-sb-composer] footer");
+    await closeX();
     await press(page, "Discard changes", "[data-sb-composer] footer");
     await sleep(400);
     ok(!(await page.$("[data-sb-composer]")) && (await momentOf(page, "m-rain")).text === rain0.text, "Discard changes closes and saves nothing");
@@ -199,7 +202,7 @@ function tsLoad(file) {
       const posted = s.moments.some((m) => (m.text || "").includes(marker));
       ok(phase === "posting" && !posted && !(await page.evaluate((mk) => document.body.innerText.includes(mk), marker)), `${label} inside the posting window: the Moment never appears (phase was ${phase})`);
       if (how === "cancel") ok(inert, "while Posting, the Composer body is inert (no edit can race the pending post)");
-      if (how === "keep") ok(s.draft?.text === marker, "Keep draft keeps the words as a draft instead");
+      if (how === "keep") ok(s.udraft?.text === marker, "Keep draft keeps the words as a draft instead");
     }
     // an open privacy menu cannot race the pending post
     await open(page, DESKTOP);
@@ -265,7 +268,13 @@ function tsLoad(file) {
     ok(pv.yours === 0, "the owner's own Expression is not shown as “your expression” to the public");
     await menuOf(page, "m-rain");
     const pmenu = await page.$$eval("[data-sb-moment='m-rain'] [role=menu] [role^=menuitem]", (n) => n.map((x) => ({ t: x.textContent.trim(), off: x.disabled })));
-    ok(pmenu.map((x) => x.t).join("|") === "Report|Hide|Copy link|View in Life — later" && pmenu.every((x) => x.off), `the owner's own Moment shows a stranger's menu, paused (${pmenu.map((x) => x.t).join(" · ")})`);
+    // S5 recorded supersession: Save (private bookmark) leads the stranger's menu too — and
+    // pauses with it in the preview, exactly like every other stranger action. Share… is in
+    // the list exactly when the platform has navigator.share (capability-aware, like
+    // social-final's own check).
+    const pShare = await page.evaluate(() => "share" in navigator);
+    const pExpected = pShare ? "Save|Report|Hide|Share…|Copy link|View in Life — later" : "Save|Report|Hide|Copy link|View in Life — later";
+    ok(pmenu.map((x) => x.t).join("|") === pExpected && pmenu.every((x) => x.off), `the owner's own Moment shows a stranger's menu, paused (${pmenu.map((x) => x.t).join(" · ")})`);
     await page.keyboard.press("Escape");
     await sleep(200);
     const exprBefore = JSON.stringify((await momentOf(page, "m-rain")).expressions);
@@ -277,11 +286,13 @@ function tsLoad(file) {
     await page.evaluate(() => document.querySelector("[data-sb-moment='m-rain'] [data-sb-respond]").click());
     await sleep(400);
     ok(await page.evaluate(() => !!document.querySelector("[data-sb-moment='m-rain'] [data-sb-note]") && !document.querySelector("[data-sb-moment='m-rain'] [data-sb-response-composer]") && !document.querySelector("[data-sb-moment='m-rain'] [data-sb-note-author]")), "a conversation opened while previewing reads, without a composer or person doorways");
-    // Life Cursor through the stand-in
-    await page.evaluate(() => document.querySelector("[data-sb-moment='m-wedding']")?.scrollIntoView({ block: "start" }));
+    // Life Cursor through the stand-in — S1: the preview holds only the owner's own public
+    // Moments (all current-year in the seed), so the cursor is correctly SILENT; it must never
+    // carry an exact age either way.
+    await page.evaluate(() => { const ms = document.querySelectorAll("[data-sb-sheet] [data-sb-moment]"); ms[ms.length - 1]?.scrollIntoView({ block: "start" }); });
     await sleep(500);
     const cursor = await page.evaluate(() => document.querySelector("[data-sb-life-cursor]")?.textContent ?? "");
-    ok(!/\d+y \d\dm \d\dd/.test(cursor), `the Life Cursor shows no exact age while previewing (“${cursor.trim()}”)`);
+    ok(!/\d+y \d\dm \d\dd/.test(cursor) && !/band|Life \d/.test(cursor), `the Life Cursor leaks nothing while previewing (“${cursor.trim()}”)`);
     await shot(page, "04-view-as-public-desktop");
     // contamination — the stand-in never became anyone
     const s3 = await state(page);
@@ -290,10 +301,12 @@ function tsLoad(file) {
     const wire = requests.slice(reqBefore).some((r) => r.url.includes("sb-public-viewer") || r.body.includes("sb-public-viewer"));
     ok(!store.includes("sb-public-viewer"), "the public stand-in is never an author, a response author, an Expression/Resonance key or stored state");
     ok(!storage.includes("sb-public-viewer") && !wire, "…never persisted to storage and never sent over the network");
-    // PART 2 IS NOT SETTLED HERE (D-2 / D-4 are the owner's):
-    ok(pv.friendsOwn, "part 2 not settled: the owner's own Friends-only Moment is still shown in the preview (D-2 decides)");
-    ok(pv.friendsOthers > 1, `part 2 not settled: other people's Friends-only Moments are still shown (${pv.friendsOthers}; D-2 decides)`);
-    ok(s3.moments.filter((m) => m.authorId !== "u-demo-001").length > 0 && (await page.$$eval("[data-sb-sheet] [data-sb-moment]", (n) => n.some((e) => e.querySelector("[data-sb-readout]") && !e.querySelector("[data-sb-ring=own]")))), "part 2 not settled: other authors' Moments are still in the stream (D-4 decides)");
+    // PART 2 SETTLED — Social Wall S1 (owner-decided §5.3/§5.5/§5.7), superseding the recorded
+    // "part 2 not settled" posture the two assertions below replace: View as public is the
+    // stranger row of the one access matrix, on the owner's OWN World.
+    ok(!pv.friendsOwn, "S1: the owner's Friends-only Moment is HIDDEN from the public preview (a stranger is not connected)");
+    ok(pv.friendsOthers === 0, `S1: no Friends-audience Moment of anyone's reaches the preview (${pv.friendsOthers})`);
+    ok(s3.moments.filter((m) => m.authorId !== "u-demo-001").length > 0 && (await page.$$eval("[data-sb-sheet] [data-sb-moment]", (n) => n.length > 0 && n.every((e) => !!e.querySelector("[data-sb-readout]") && !e.querySelector("[data-sb-ring=own]")))), "S1: the preview is the owner's World only — every rendered Moment is the owner's, seen through a stranger's ring");
     await page.evaluate(() => window.scrollTo(0, 0));
     await press(page, "Return to My World");
     await sleep(500);
@@ -438,107 +451,162 @@ function tsLoad(file) {
 
     /* ---------------- §5 COMPOSER DATA HYGIENE ---------------- */
     console.log("§5 composer hygiene");
+    // GREENFIELD SUPERSESSION (Universal Composer brief §48, recorded in AGENTS.md): the flows
+    // below re-prove the same PRODUCT TRUTHS (A11 before-birth, A12 unmatched names, A9 field
+    // hygiene, A10 one-media, caption/title separation) through the approved new contract —
+    // event time lives behind When (§21), fields are domain adapters (§14–§19), and POST
+    // refuses with a stated reason instead of a mystery-disabled button (§44).
+    // UC-C3 re-pointing (wiring only — every truth below is asserted unchanged): kinds are
+    // chosen in the focused Record chooser sheet, the When control opens with Change, and
+    // People is a real picker (search → select → Done) instead of a comma field.
+    const udetails = async () => { await page.evaluate(() => { const b = document.querySelector("[data-sb-record-details]"); if (b && b.getAttribute("aria-expanded") !== "true") b.click(); }); await sleep(300); };
+    const ukind = async (aria) => { await udetails(); await page.evaluate((a) => [...document.querySelectorAll(`[data-sb-kind-row] button[aria-label='${a}']`)][0]?.click(), aria); await sleep(350); };
+    const usocialOnly = async () => { await udetails(); await page.evaluate(() => document.querySelector("[data-sb-record-social-only]")?.click()); await sleep(300); };
+    const upost = async () => { await press(page, "Post", "[data-sb-composer] footer"); await sleep(1300); };
+    const uwhen = async () => { await page.evaluate(() => document.querySelector("[data-sb-when-change]")?.click()); await sleep(250); };
+    const upeople = async (names) => {
+      await page.evaluate(() => document.querySelector("[data-sb-composer-actions] button[aria-label='People']").click());
+      await sleep(300);
+      for (const nm of names) {
+        await setValue(page, "#sb-people-common", nm);
+        await sleep(250);
+        await page.evaluate(() => document.querySelector("[data-sb-person-option]")?.click());
+        await sleep(200);
+      }
+    };
+    const upeopleDone = async () => { await page.evaluate(() => document.querySelector("[data-sb-people-done]")?.click()); await sleep(300); };
+    const umedia = async (alts) => {
+      await page.evaluate(() => document.querySelector("[data-sb-composer-actions] button[aria-label='Media']").click());
+      await sleep(300);
+      await page.click("[data-sb-media-source='mymedia']");
+      await sleep(300);
+      await page.evaluate((names) => { const g = document.querySelector("[data-sb-mymedia-grid]"); for (const n of names) [...g.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === n)?.click(); }, alts);
+      await sleep(200);
+      await page.click("[data-sb-mymedia-add]");
+      await sleep(350);
+    };
+
+    // A11 — a date before the owner's birth is refused (now via the When field)
     await open(page, DESKTOP);
     await page.click("[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
     await setValue(page, "#sb-composer-text", "A memory from before I was born?");
-    await setValue(page, "[data-sb-composer] input[type=date]", "1985-06-01");
-    const pb = await page.evaluate(() => ({ refused: document.body.innerText.includes("That date is before this life began."), state: document.querySelector("[data-sb-readout-state]").getAttribute("data-sb-readout-state"), neg: /-\d+y/.test(document.querySelector("[data-sb-readout-state]").textContent), postOff: [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post").disabled, min: document.querySelector("[data-sb-composer] input[type=date]").getAttribute("min") }));
-    ok(pb.refused && pb.state === "before-life" && pb.postOff, "a date before the owner's birth is refused with the Life rule's own sentence, and Post stays disabled");
-    ok(!pb.neg && pb.min === "1991-11-04", `no negative age is shown; the date field starts at the birth date (min=${pb.min})`);
-    await shot(page, "11-composer-pre-birth-refusal");
-    await setValue(page, "[data-sb-composer] input[type=date]", "");
-    const empty = await page.evaluate(() => ({ nan: /NaN/.test(document.querySelector("[data-sb-composer]").textContent), postOff: [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post").disabled }));
-    ok(!empty.nan && empty.postOff, "a cleared date blocks Post and is never computed from (no NaN age)");
-    await press(page, "Cancel", "[data-sb-composer] footer");
-    await press(page, "Discard", "[data-sb-composer] footer").catch(() => {});
+    await ukind("Life Moment");
+    await page.evaluate(() => document.querySelector("[data-sb-more-toggle]").click());
+    await sleep(300);
+    await uwhen();
+    await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "1985-06-01");
+    const before0 = (await state(page)).moments.length;
+    await press(page, "Post", "[data-sb-composer] footer");
+    await sleep(1400);
+    const pb = await page.evaluate(() => ({
+      refused: document.body.innerText.includes("That date is before this life began."),
+      hook: !!document.querySelector("[data-sb-before-life]"),
+      neg: /-\d+y/.test(document.querySelector("[data-sb-composer]").textContent),
+      postOff: [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post")?.getAttribute("aria-disabled") === "true",
+      min: document.querySelector("[data-sb-composer] [data-sb-when] input[type=date]").getAttribute("min"),
+    }));
+    ok(pb.refused && pb.hook && pb.postOff && (await state(page)).moments.length === before0, "a date before the owner's birth is refused with the Life rule's own sentence — POST states it and publishes nothing");
+    ok(!pb.neg && pb.min === "1991-11-04", `no negative age is shown; the When field starts at the birth date (min=${pb.min})`);
+    // §21 — clearing the When returns the event to NOW (unknown stays unknown, never NaN)
+    await setValue(page, "[data-sb-composer] [data-sb-when] input[type=date]", "");
+    await sleep(250);
+    ok(await page.evaluate(() => !document.querySelector("[data-sb-composer]").textContent.includes("NaN")), "a cleared When shows no NaN anywhere");
+    await upost();
+    let cleared = (await state(page)).moments.find((m) => m.text === "A memory from before I was born?");
+    ok(!!cleared && cleared.atPrecision === "minute" && !cleared.sharedAt, "…and the post truthfully happens NOW — nothing fabricated (§21)");
+    await sleep(2100);
 
-    // people present: unmatched names never become ids
-    await open(page, DESKTOP);
+    // A12 — unmatched people names are said out loud, never stored (now via the common People)
     await page.click("[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
-    await page.click("[data-sb-composer] button[aria-label='Meal']");
-    await setValue(page, "#sb-kf-what", "Dal bhat");
-    await page.focus("#sb-kf-with");
-    await page.keyboard.type("Zzqx, Sofia");
-    await page.focus("#sb-kf-what");
-    await sleep(250);
-    const pp = await page.evaluate(() => ({ note: document.querySelector("[data-sb-people-unmatched]")?.textContent ?? "", field: document.querySelector("#sb-kf-with").value }));
-    ok(/Zzqx/.test(pp.note) && pp.field === "Sofia Romano", `an unmatched name is said out loud and not recorded (“${pp.note}”; field now “${pp.field}”)`);
+    await page.evaluate(() => document.querySelector("[data-sb-composer-actions] button[aria-label='People']").click());
+    await sleep(300);
+    await setValue(page, "#sb-people-common", "Zzqx");
+    await sleep(300);
+    const unmatchedNote = await page.evaluate(() => ({ note: document.querySelector("[data-sb-people-unmatched]")?.textContent ?? "", options: document.querySelectorAll("[data-sb-person-option]").length }));
+    await setValue(page, "#sb-people-common", "Sofia");
+    await sleep(300);
+    await page.evaluate(() => document.querySelector("[data-sb-person-option]")?.click());
+    await sleep(200);
+    const pp = await page.evaluate(() => ({ note: "", chips: [...document.querySelectorAll("[data-sb-sheet-panel='people'] [aria-label^='Remove ']")].map((b) => b.getAttribute("aria-label").replace(/^Remove /, "")).join(",") }));
+    ok(/Zzqx/.test(unmatchedNote.note) && unmatchedNote.options === 0 && pp.chips === "Sofia Romano", `an unmatched name is said out loud and never selectable (“${unmatchedNote.note}”; selected “${pp.chips}”)`);
+    await upeopleDone();
     await setValue(page, "#sb-composer-text", "Meal with a stranger's name.");
-    await press(page, "Post", "[data-sb-composer] footer");
-    await sleep(1500);
+    await ukind("Meal");
+    await upost();
     const meal = (await state(page)).moments.find((m) => m.text === "Meal with a stranger's name.");
     ok(JSON.stringify(meal?.fields?.with) === JSON.stringify(["p-asha"]), `only the real person is stored (${JSON.stringify(meal?.fields?.with)})`);
     ok(await page.evaluate((id) => { const el = document.querySelector(`[data-sb-moment='${id}']`); return !!el && !/\bwith M\b/.test(el.textContent); }, meal?.id), "no fixture person (\"M\") ever stands in for a name that matched nobody");
+    await sleep(2100);
 
-    // an ordinary Moment carries no kind fields; a kind carries only its own
+    // A9 — an ordinary post carries no specialist fields (People stay common); words alone are social
     await page.click("[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
-    await page.click("[data-sb-composer] button[aria-label='Meal']");
-    await setValue(page, "#sb-kf-what", "Tea");
-    await page.focus("#sb-kf-with"); await page.keyboard.type("Sofia"); await page.focus("#sb-kf-what"); await sleep(150);
-    await page.click("[data-sb-composer] button[aria-label='Meal']"); // back to an ordinary Moment
+    await upeople(["Sofia"]);
+    await upeopleDone();
+    await ukind("Meal");
+    await page.evaluate(() => [...document.querySelectorAll("[data-sb-chipselect='occasion'] button")].find((b) => b.textContent.trim() === "Dinner")?.click());
+    await sleep(250);
+    await usocialOnly();
     await setValue(page, "#sb-composer-text", "Ordinary after a meal draft.");
-    await press(page, "Post", "[data-sb-composer] footer");
-    await sleep(1500);
+    await upost();
     const ord = (await state(page)).moments.find((m) => m.text === "Ordinary after a meal draft.");
-    ok(ord && ord.kind === "moment" && ord.fields === undefined, "an ordinary Moment carries no specialised kind fields");
-    await page.click("[data-sb-open-composer]");
-    await page.waitForSelector("[data-sb-composer]");
-    await page.click("[data-sb-composer] button[aria-label='Meal']");
-    await setValue(page, "#sb-kf-what", "Tea");
-    await page.focus("#sb-kf-with"); await page.keyboard.type("Sofia"); await page.focus("#sb-kf-what"); await sleep(150);
-    await page.click("[data-sb-composer] button[aria-label='Activity']");
-    await setValue(page, "#sb-kf-what", "Walk");
-    await setValue(page, "#sb-composer-text", "Activity after a meal draft.");
-    await press(page, "Post", "[data-sb-composer] footer");
-    await sleep(1500);
-    const act = (await state(page)).moments.find((m) => m.text === "Activity after a meal draft.");
-    ok(act && act.kind === "activity" && act.fields && !("with" in act.fields), `a kind posts only its own fields (${JSON.stringify(act?.fields)})`);
+    ok(ord && ord.kind === "moment" && Object.keys(ord.fields ?? {}).join(",") === "with", `an ordinary post carries no specialised kind fields — People only (${JSON.stringify(ord?.fields)})`);
+    ok(ord && ord.record === "none", "…and words alone stay a social post — no Human Record (§9/§31)");
+    await sleep(2100);
 
-    // one kind of media: no silent overwrite
+    // A9 — a kind posts only its own fields, plus the common People
     await page.click("[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
-    await page.click("[data-sb-composer] button[aria-label='Photos & video']");
-    await page.click("[data-sb-composer] button[aria-label='A rain-wet hiti courtyard in Kathmandu']");
-    await press(page, "Confirm", "[data-sb-composer]"); // the photo's file date is detected — confirm it
-    await press(page, "Video", "[data-sb-composer] [role=tablist]");
-    const vid = await page.evaluate(() => ({ off: document.querySelector("[data-sb-composer] input[aria-label='Video']").disabled, hint: !!document.querySelector("[data-sb-one-media]") }));
-    await press(page, "Link", "[data-sb-composer] [role=tablist]");
-    const lnk = await page.evaluate(() => ({ off: document.querySelector("[data-sb-composer] input[placeholder='Paste a link']").disabled, hint: !!document.querySelector("[data-sb-one-media]") }));
-    ok(vid.off && vid.hint && lnk.off && lnk.hint, "with a photo attached, video and link are closed off — with the reason stated — instead of silently overwritten later");
+    await upeople(["Sofia"]);
+    await upeopleDone();
+    await ukind("Meal");
+    await page.evaluate(() => [...document.querySelectorAll("[data-sb-chipselect='occasion'] button")].find((b) => b.textContent.trim() === "Dinner")?.click());
+    await sleep(250);
+    await ukind("Activity");
+    await page.evaluate(() => [...document.querySelectorAll("[data-sb-activity-common] button")].find((b) => b.textContent.trim() === "Run")?.click());
+    await sleep(250);
+    await page.type("[data-sb-ufield='distance']", "5 km");
+    await setValue(page, "#sb-composer-text", "Activity after a meal draft.");
+    await upost();
+    const act = (await state(page)).moments.find((m) => m.text === "Activity after a meal draft.");
+    ok(act && act.kind === "activity" && act.fields && !("occasion" in act.fields) && act.fields.activityType === "run" && act.fields.distance === "5 km" && JSON.stringify(act.fields.with) === JSON.stringify(["p-asha"]), `a kind posts only its own fields, plus the common People (${JSON.stringify(act?.fields)})`);
+    await sleep(2100);
+
+    // A10 — no silent overwrite. UC-C3 §9 supersession (owner-directed, recorded): photos and
+    // videos now COMBINE in one post (a gallery), so "video closed off by a photo" retires.
+    // The invariant — nothing attached is silently dropped or replaced — holds: a link cannot
+    // join visual media, it is closed off with the reason stated.
+    await page.click("[data-sb-open-composer]");
+    await page.waitForSelector("[data-sb-composer]");
+    await umedia(["A rain-wet hiti courtyard in Kathmandu"]);
+    await page.evaluate(() => document.querySelector("[data-sb-meta-use]")?.click());
+    await sleep(250);
+    await page.evaluate(() => document.querySelector("[data-sb-composer-actions] button[aria-label='Media']").click());
+    await sleep(300);
+    const lnk = await page.evaluate(() => ({ off: document.querySelector("[data-sb-media-source='link']")?.disabled, hint: !!document.querySelector("[data-sb-one-media]"), video: !document.querySelector("[data-sb-media-source='mymedia']")?.disabled }));
+    ok(lnk.off && lnk.hint && lnk.video, "with a photo attached, a link is closed off — with the reason stated — while videos may still join (UC-C3 §9)");
     await shot(page, "12-composer-one-media-kind");
+    await page.evaluate(() => document.querySelector("[data-sb-sheet-panel='media'] [data-sb-sheet-back]")?.click());
+    await sleep(250);
     await setValue(page, "#sb-composer-text", "One kind of media.");
-    await press(page, "Post", "[data-sb-composer] footer");
-    await sleep(1500);
+    await upost();
     const one = (await state(page)).moments.find((m) => m.text === "One kind of media.");
     ok(one?.media?.kind === "photos" && one.media.items.length === 1, "the post keeps exactly what was attached");
+    await sleep(2100);
 
-    // the video caption no longer rides on the Problem title
+    // the video caption stays its own thing — never a Problem's field (A9 truth, new shape)
     await page.click("[data-sb-open-composer]");
     await page.waitForSelector("[data-sb-composer]");
-    await page.click("[data-sb-composer] button[aria-label='Problem']");
-    await setValue(page, "#sb-kf-title", "Roof leak");
-    await page.click("[data-sb-composer] button[aria-label='Photos & video']");
-    await press(page, "Video", "[data-sb-composer] [role=tablist]");
-    await page.click("[data-sb-composer] input[aria-label='Video']");
-    await sleep(200);
-    await page.evaluate(() => { const boxes = [...document.querySelectorAll("[data-sb-composer] input[type=checkbox]")]; boxes[boxes.length - 1].click(); });
-    await sleep(150);
+    await ukind("Problem");
     await setValue(page, "#sb-composer-text", "Problem with a video.");
-    await press(page, "Post", "[data-sb-composer] footer");
-    await sleep(1500);
+    await umedia(["Wind over the rice terraces, video"]);
+    await setValue(page, "[data-sb-composer] input[aria-label='Caption']", "Evening drip from the beam");
+    await upost();
     const prob = (await state(page)).moments.find((m) => m.text === "Problem with a video.");
-    ok(prob?.fields?.title === "Roof leak" && prob?.media?.kind === "video" && prob.media.caption && prob.media.caption !== "Roof leak", `the Problem title and the video caption stay separate (“${prob?.fields?.title}” / “${prob?.media?.caption}”)`);
-
-    // unit: an unknown id is neutral and band-less, never a fixture person
-    const dataMod = tsLoad("src/components/style-lab/social/data.ts");
-    const vm = tsLoad("src/components/style-lab/social/view-model.ts");
-    const u = dataMod.unavailablePerson("p-nobody");
-    const lv = vm.lifeViewFor(dataMod.PEOPLE.maya, u, new Date());
-    ok(u.unavailable && u.name === "—" && !Object.values(dataMod.PEOPLE).some((p) => p.id === u.id) && lv.scope === "other" && lv.bandIndex === -1, `an unknown id is the neutral unavailable person — band-less, not a fixture (${JSON.stringify(lv)})`);
-    ok(/unavailablePerson\(id\)/.test(fs.readFileSync(path.join(ROOT, "src/components/style-lab/social/store.tsx"), "utf8")) && !/:\s*PEOPLE\.m\)/.test(fs.readFileSync(path.join(ROOT, "src/components/style-lab/social/store.tsx"), "utf8")), "the store resolves unknown ids to the unavailable person, never to PEOPLE.m");
+    ok(prob?.kind === "problem" && prob.fields?.status === "open" && prob.media?.kind === "video" && prob.media.caption === "Evening drip from the beam" && !Object.values(prob.fields).includes("Evening drip from the beam"), `the Problem record and the video caption stay separate (status ${prob?.fields?.status} / “${prob?.media?.caption}”)`);
+    await sleep(2100);
 
     /* ---------------- §6 RESPOND TRUTH ---------------- */
     console.log("§6 respond truth");
@@ -613,7 +681,10 @@ function tsLoad(file) {
     await page.keyboard.press("Escape");
     await sleep(250);
     const k3 = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
-    ok(k0 === "Report" && k1 === "Hide" && k2 === "Copy link" && k3 === "More", `menu keys: open → ${k0}, ↓ → ${k1}, End → ${k2}, Escape → back to ⋯ (${k3})`);
+    // S5 recorded supersession: Save now leads the menu, so open lands on Save and ↓ reaches
+    // Report. The invariant — opens on the FIRST item, arrows move, End reaches the last
+    // actionable item, Escape returns to the trigger — is unchanged.
+    ok(k0 === "Save" && k1 === "Report" && k2 === "Copy link" && k3 === "More", `menu keys: open → ${k0}, ↓ → ${k1}, End → ${k2}, Escape → back to ⋯ (${k3})`);
     // the delete confirmation takes focus (the safe choice) — keyboard never falls to <body>
     await page.focus("[data-sb-moment='m-rain'] button[aria-label=More]");
     await page.keyboard.press("Enter");
@@ -727,8 +798,11 @@ function tsLoad(file) {
     console.log("§9 boundaries");
     const sha = (f) => crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, f))).digest("hex");
     ok(sha("src/components/style-lab/social/expressions.tsx") === "dd78c36970dfa8c766cb196348c8db0293cf80ad5dea2cd31e19de3068a0194e", "Boom: expressions.tsx is byte-identical");
+    // S1 supersession (owner-decided §5.6, was "band-at-Moment + public-only visitor density"):
+    // the boundary this protects is that Phase 4.4-A itself decided no Life policy — the policy
+    // now in force is S1's, asserted as source truth here and behaviourally in social-s1-trust.js.
     const vmSrc = fs.readFileSync(path.join(ROOT, "src/components/style-lab/social/view-model.ts"), "utf8");
-    ok(/momentLifeFor\(viewer: Person, author: Person, at: Date\)/.test(vmSrc) && /ring\.momentsByBand = bandCounts\(subject, visible\)/.test(vmSrc), "Life policy untouched: the band-at-Moment rule and visitor density are unchanged (D-1 is 4.4-B)");
+    ok(/momentLifeFor\(viewer: Person, author: Person, at: Date\)/.test(vmSrc) && /bandAt\(author, now\(\)\)/.test(vmSrc) && !/momentsByBand = bandCounts\(subject, visible\)/.test(vmSrc), "Life policy is S1's: current band for another person's Moment, per-band density owner-only");
     ok(pageErrors.length === 0, `no page errors (${pageErrors.slice(0, 3).join(" | ")})`);
   } catch (e) {
     failures.push(`suite error: ${e.message}`);

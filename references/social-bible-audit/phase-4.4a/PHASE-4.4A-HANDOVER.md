@@ -107,7 +107,7 @@ posture — the flag's committed default stays OFF), D-4 (whose Moments a World 
   Giulia's World, the hero says "Friends" while Giulia's person card says "Not connected · Add
   Friend": `WorldProvider` stores relationships only from the owner's side. Relationship
   architecture → 4.4-B/C. Frame `owner-fixture/g-7-personcard-as-visitor.png`.
-- **P0-6** (Celestial phone action row) unchanged: with the flag on, the Moment ⋯ sits at x 347–391,
+- **P0-6** — *fixed afterwards in Phase 4.4-A.1 (2026-09-24), see `PHASE-4.4A1-P06.md`; the line below records the 4.4-A state.* (Celestial phone action row) unchanged: with the flag on, the Moment ⋯ sits at x 347–391,
   so it's clipped at 360 and at the edge at 390 (`owner-fixture/phone-action-row-metrics.json`). It
   doesn't depend on how many people resonated.
 - Carryovers recorded in AGENTS.md: per-response ring at response time (D-1), cascade delete with

@@ -76,8 +76,11 @@ export function LifeCursor({ viewer, feed, personOf }: { viewer: Person; feed: M
 
   const author = active && moment ? personOf(moment.authorId) : null;
   const life = active && moment && author ? momentLifeFor(viewer, author, new Date(moment.at)) : null;
-  // Phase 4.4-A (A24): the band phrase routes through the catalog (en byte-identical: "Life 30–45").
-  const position = life ? (life.exact ?? t("life.cursorBand", { band: life.band })) : null;
+  // S1 §5.6 (owner-decided, supersedes the band here): a historical position belongs only to the
+  // viewer's OWN Moments. For another person's Moment the cursor states the year and place — a
+  // band beside a past year would either be their historical band (a birth-date leak) or their
+  // current band (a false coordinate). `t` stays for the viewer's own-band case below.
+  const position = life ? (life.exact ?? (moment && moment.authorId === viewer.id ? t("life.cursorBand", { band: life.band }) : null)) : null;
 
   return (
     <div
@@ -87,7 +90,8 @@ export function LifeCursor({ viewer, feed, personOf }: { viewer: Person; feed: M
     >
       {active && moment && (
         <div className="flex h-full items-center">
-          <span className="font-medium text-text">{year}</span>&nbsp;· {position}
+          <span className="font-medium text-text">{year}</span>
+          {position && <span>&nbsp;· {position}</span>}
           {moment.place && <span>&nbsp;· {moment.place}</span>}
         </div>
       )}

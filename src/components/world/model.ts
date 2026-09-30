@@ -26,25 +26,68 @@ import { PEOPLE } from "@/components/style-lab/social/data";
 
 export type Relationship = "friend" | "family" | "request-in" | "request-out" | "none";
 
+/**
+ * Social Wall S1 (owner-decided §5.4): MY WORLD holds the owner's own Moments plus the visible
+ * Moments of ACCEPTED Friends and Family — never a stranger's or a pending person's. The seeded
+ * circle is made coherent with that rule: everyone who authors a Moment in Giulia's feed is
+ * connected (Marco shares Luca's birthday and their festivals; Chiara and M were always written
+ * as circle people). The relationship-FLOW fixtures move to people who author nothing:
+ * Francesca is the single, obvious incoming request; Martina and Alice stay outgoing;
+ * Beatrice is the one stranger every Add-friend flow starts from.
+ */
 export const RELATIONSHIPS: Record<string, Relationship> = {
   [PEOPLE.bikash.id]: "friend",
   [PEOPLE.asha.id]: "friend",
   [PEOPLE.sunita.id]: "family",
   [PEOPLE.krishna.id]: "family",
-  [PEOPLE.prakash.id]: "request-in",
-  [PEOPLE.ramesh.id]: "none",
-  [PEOPLE.m.id]: "request-out",
-  // Social 2030 Final — the wider network's relationships. Deliberately no second `request-in`:
-  // Chiara (p-prakash) stays the single, obvious incoming request so that surface reads unambiguously.
+  [PEOPLE.prakash.id]: "friend",
+  [PEOPLE.ramesh.id]: "friend",
+  [PEOPLE.m.id]: "friend",
   [PEOPLE.marcus.id]: "friend",
   [PEOPLE.grace.id]: "friend",
   [PEOPLE.theo.id]: "friend",
   [PEOPLE.hannah.id]: "friend",
-  [PEOPLE.rory.id]: "none",
+  [PEOPLE.rory.id]: "request-in",
   [PEOPLE.walt.id]: "none",
   [PEOPLE.nadia.id]: "request-out",
   [PEOPLE.sofia.id]: "request-out",
 };
+
+/**
+ * Social Wall S1 §5.1–§5.2 — ONE source of relationship truth, DIRECTION-AWARE.
+ *
+ * The prototype's relationship graph is anchored on the demo owner (Giulia): the map above reads
+ * "the anchor's relationship to person X". A pending request is directional, so reading the same
+ * edge from the other side inverts it (she asked me ⇄ I asked her). A pair with no anchor in it
+ * is honestly UNKNOWN here — the prototype carries no third-party graph — and resolves to "none";
+ * the live backend owns the full graph (LIVE CONTRACT, social-api-contract.md §D).
+ *
+ * Every surface (Hero, PersonCard, People, feed composition, search chips) reads THIS function,
+ * so no two surfaces can disagree about the same pair again (the "Friends" here / "Not connected"
+ * there contradiction was exactly two surfaces reading the map from different sides).
+ */
+export const RELATIONSHIP_ANCHOR = PEOPLE.maya.id;
+
+export const invertRel = (r: Relationship): Relationship =>
+  r === "request-in" ? "request-out" : r === "request-out" ? "request-in" : r;
+
+export function relationshipBetween(map: Record<string, Relationship>, viewerId: string, otherId: string): Relationship {
+  if (viewerId === RELATIONSHIP_ANCHOR) return map[otherId] ?? "none";
+  if (otherId === RELATIONSHIP_ANCHOR) return invertRel(map[viewerId] ?? "none");
+  return "none";
+}
+
+/** The map key a relationship ACTION for (viewer, other) writes — always the non-anchor person. */
+export const relationshipKeyFor = (viewerId: string, otherId: string) =>
+  viewerId === RELATIONSHIP_ANCHOR ? otherId : viewerId;
+
+/** The acting viewer's own people list — for the anchor, the whole map; for anyone else, the
+ *  one edge the prototype truthfully knows (their edge to the anchor). */
+export function relationshipEntriesFor(map: Record<string, Relationship>, viewerId: string): [string, Relationship][] {
+  if (viewerId === RELATIONSHIP_ANCHOR) return Object.entries(map);
+  const own = map[viewerId];
+  return own ? [[RELATIONSHIP_ANCHOR, invertRel(own)]] : [];
+}
 
 export const connected = (r: Relationship) => r === "friend" || r === "family";
 

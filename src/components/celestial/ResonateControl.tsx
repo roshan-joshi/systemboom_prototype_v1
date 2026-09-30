@@ -101,7 +101,16 @@ export function ResonateControl({ moment }: { moment: Moment }) {
         onPointerUp={() => setPressing(false)}
         onFocus={() => setAttending(true)}
         onBlur={() => setAttending(false)}
-        className="sb-press sb-resonate group relative inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-medium focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:px-3.5"
+        /* Phase 4.4-A.1 (P0-6) — below the @lg container (512px, i.e. every portrait phone) the
+           doorway is a compact 44×44 aperture: its mark or the viewer's own seal, the same light,
+           border and motion. That keeps Respond, Boom, Resonate and ⋯ on one line in the phone
+           Moment column (304px at 360) in every locale. From @lg — where the widest locale's
+           labelled row fits — the word returns, still with 44px touch height until @2xl. The
+           accessible name is the aria-label either way; the title carries the verb for pointer
+           users (and as the description when the name is the chosen object). Layout only — no
+           meaning, artwork, order or motion changes. */
+        title={t("celestial.action.resonate")}
+        className="sb-press sb-resonate group relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-full px-0 font-medium focus-visible:outline-[var(--focus)] @lg:min-w-0 @lg:px-4 @2xl:min-h-9 @2xl:px-3.5"
         style={{
           color: resonateLabel(theme),
           border: `1px solid color-mix(in srgb, ${accent} ${open ? 95 : 78}%, transparent)`,
@@ -132,7 +141,7 @@ export function ResonateControl({ moment }: { moment: Moment }) {
         <span className="relative">
           {mine ? <ResonanceSeal id={mine} size={22} decorative /> : <ResonateMark accent={open || theme === "light" ? accentHi : accent} />}
         </span>
-        <span className="relative">{t("celestial.action.resonate")}</span>
+        <span className="relative hidden whitespace-nowrap @lg:inline" data-sb-resonate-label>{t("celestial.action.resonate")}</span>
       </button>
       {open && anchor && createPortal(
         <div data-sb-resonate-field className="relative mt-7 w-full pb-2">

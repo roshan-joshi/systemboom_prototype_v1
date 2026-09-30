@@ -95,7 +95,9 @@ const clearIdentity = (page) => page.evaluate(() => { localStorage.removeItem("s
     const textWorld = await page.evaluate(() => document.body.innerText);
     ok(!/\bSocial\b/.test(textWorld), '"Social" is no longer user-facing on the personal Home');
     ok(!/Dashboard/i.test(textWorld), "no Dashboard vocabulary");
-    ok(/What happened at/.test(textWorld), "the Moments stream leads");
+    // GREENFIELD supersession (Universal Composer §5/§22): the entry asks the social question,
+    // never a Life age.
+    ok(/What's happening\?/.test(textWorld), "the Moments stream leads");
 
     /* ---- 3. My World visual set ---- */
     console.log("3. My World visuals");

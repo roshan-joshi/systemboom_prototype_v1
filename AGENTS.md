@@ -1230,3 +1230,403 @@ identity-model 13 (was failing before this pass) · gate-desktop · gate-mobile 
 amend-desktop · amend-mobile · trail-desktop · trail-mobile PASS. `tsc --noEmit` and eslint clean;
 `next build` passes; `expressions.tsx` SHA-256 `dd78c369…a0194e` unchanged.
 
+
+# Phase 4.4-A.1 — P0-6 mobile Moment action-row containment (owner-directed micro-fix · 2026-09-24)
+
+Owner review accepted Phase 4.4-A (P0-3 part 1, P0-4, P0-5); this pass fixes only P0-6 and
+supersedes the three "P0-6 untouched / still loses ⋯" carryover lines in the Phase 4.4-A section
+above (they were true when written). With Celestial on, the Moment action row (Respond · Boom ·
+Resonate · ⋯) was ONE non-wrapping flex line of fixed-width children — 28px Almanac gutter +
+Respond 102 + Boom 44 + Resonate 118–121 + ⋯ 44 + 3 × 8px gaps = 363px — inside a 304px (360
+viewport) / 319 (375) / 334 (390) phone column. Nothing could shrink, so the ⋯ ran past the Moment
+(x 347–391 at 360) and the Moments sheet's clipping content box (`overflow:hidden`, 12–348 at 360)
+cut it off. Measured in all eight locales it was worse than reported: Russian ("Откликнуться",
+155px) overflowed by 28px even at 430, Dutch by 1px. Resonance participant count played no part
+(0/1/5/8 resonators measured identical; only the viewer's own seal is 3px wider than the mark).
+Both words (Respond, Resonate) cannot share a 304px column with Boom and ⋯ in any locale (311px
+without the ⋯), so one control had to become compact; Resonate is the secondary, flag-gated one.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-24 | 4.4-A.1 (P0-6) | `social/Moment.tsx` (frozen Phase 4) | The action row had no shrinkable part and no reserved place for ⋯ | The row is a primary cluster (`data-sb-actions-primary`: Respond · Boom · Resonate, `flex-1 min-w-0 flex-wrap`) plus a trailing ⋯ group (`data-sb-actions-more`, `shrink-0`, first-line height `min-h-11 @2xl:min-h-10`) that owns its slot: the ⋯ can never be pushed out, and where the cluster runs out of room (a narrower column, a long locale below 360px, large text) it wraps inside itself instead of clipping, the ⋯ staying beside the first line. Respond ellipsizes only when its word alone is wider than a line (`min-w-0 max-w-full` + a `truncate` span; `RespondMark` `shrink-0`). With a compact Resonate present the gaps are 6px (`has-[[data-sb-resonate]]:@max-lg:gap-1.5`) — the default flag-off row keeps its 8px spacing; desktop keeps 12px, View in Life and one shared vertical centre | `social-4-4a1-p06.js` §1–§7 |
+| 2026-09-24 | 4.4-A.1 (P0-6) | `celestial/ResonateControl.tsx` (Celestial — layout classes + a title only) | Both words cannot fit beside Boom and ⋯ in a phone column | Below the `@lg` container (512px — every portrait phone) the Resonate doorway is a compact 44×44 aperture: the same mark or the viewer's own seal, the same light, border, halo and motion. From `@lg`, where the widest locale's labelled row fits, the word returns (`data-sb-resonate-label`), still with 44px touch height until `@2xl`. Its accessible name is its existing `aria-label` either way ("Resonate", or the chosen object's name) and a `title` carries the verb for pointer users, as Boom's does. No meaning, artwork, order, aggregation or motion changed | `social-4-4a1-p06.js` §4–§5; `celestial-s*` suites green |
+| 2026-09-24 | 4.4-A.1 (P0-6) | `docs/handover/moment-conversation-model.md` | The accepted doc said the action row "never wraps at 320/360" and did not know Resonate | Describes the Celestial row, the compact aperture and where the cluster may wrap | — |
+
+Result (real Chromium rectangles, repeated in the in-app browser at 360 and 390): at
+360/375/390/430 × dark/light × the 0/1/5/8-resonator fixtures, all four actions are visible on one
+line inside the Moment and inside the real clipping box with room for the focus ring; ⋯ ends at the
+Moment's own right edge (16px inside the clipping box, 28px from the screen edge); no overlap; every
+target ≥ 44×44; no horizontal page scroll; the ⋯ answers across its whole 44px circle and opens its
+menu on screen from a real tap; Tab reaches it with a visible ring. All eight locales hold one line
+at 360 on the Social stream (Nepali, the widest, with 4px spare). 512–667 (small tablets, landscape
+phones) show the word with 44px targets; ≥672 the desktop row is as before. On the Circle/Life Day
+Almanac (296px column at 360) Nepali wraps the cluster at 360 — only there, only because it must
+(222px needed of 218) — with the ⋯ fixed on the first line. An adversarial four-lens review
+(layout · a11y/scope · regression · test quality, each verified by a skeptic) found no blocker; its
+confirmed findings were fixed (word range, title hint, desktop wrap alignment, Respond vs ⋯ at 320 +
+200% text, Almanac/preview/quiet/Boom-deck/light-expanded coverage, exact counts, locale proof,
+clipping-box prose).
+
+Owner-superseded assertions: **none.** No accepted check was changed, weakened or removed.
+
+Documented, NOT changed (outside P0-6): the global `:focus-visible { border-radius: 6px }` in
+`globals.css` squares every round control while focused (pre-existing, product-wide); the rich
+summary row wraps onto two lines at 390 (the owner-approved Resonance summary, untouched); dark
+square backgrounds behind two planet lenses in the summary row at 390 (Celestial artwork, for the
+Celestial owner); below 360 a wrapped cluster puts Resonate visually on line 2 while its tab order
+stays Respond → Boom → Resonate → ⋯.
+
+# Phase S-SOCIAL — Social Wall Completion S1–S8 (owner-directed autonomous program · 2026-09-25)
+
+One owner-directed program (SOCIAL WALL COMPLETION MASTER PROGRAM + AUTONOMOUS LOOP)
+completing the Social Wall as a full future-social product: trust foundation, Respond
+conversation, People/friends verification, exact-landing signal, Moment completion
+(Save/Share), search + safety edges, UX polish for the new surfaces, and an
+entitlement-ready monetization foundation with the free core complete by construction.
+Ledger: `SOCIAL-COMPLETION-LOOP.md`; master handover:
+`docs/handover/SOCIAL-COMPLETION-HANDOVER.md`. RESPOND (conversation) · BOOM (mascot
+expression) · RESONATE (Celestial) remain three distinct verbs; no like economy, no
+ranking, no repost engine, no notification spam, no billing. `expressions.tsx` and every
+Celestial file byte-untouched; Circle/Cosmos/Ancestor-Tree not reopened.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-25 | S1 | `social/view-model.ts` (frozen Phase 4) | Audience filtering lived scattered in render paths; another person's Moment readout printed a HISTORICAL band (brackets the birth year) | `canSeeMoment` — THE access seam (owner all own; public all; friends → friend/family; onlyme owner-only); `momentLifeFor` states the CURRENT band for any non-owner; ring density owner-only (`connected` param retired, kept threaded) | `social-s1-trust.js` §1–§3; `person-life-identity.js` §6 (superseded rows below) |
+| 2026-09-25 | S1 | `social/store.tsx` (frozen Phase 4) | My World showed every fixture Moment regardless of relationship; no way to stand in another's World | `composeFeed` (own + accepted connections' visible; a foreign World = subject's Moments only), `profileId` + `openWorld`, `AudienceScope`/`canSee` in the ctx, PreviewScope through the stranger row | `social-s1-trust.js` §1, §5; `social-4-4a-truth.js` §3 (superseded, below) |
+| 2026-09-25 | S1 | `world/model.ts` | The owner-anchored map answered "friend?" identically for both directions — Hero and Card could contradict | `relationshipBetween` (pending inverts), `relationshipKeyFor`, `relationshipEntriesFor`; relationships re-seeded coherently (friends = the people whose content already behaves as friends; ONE request-in: Francesca; stranger: Beatrice) — the owner feed stayed byte-identical | `social-s1-trust.js` §2; `social-connection-final.js` §10 (superseded, below) |
+| 2026-09-25 | S1 | `SocialPreview.tsx`, `ProfileHero.tsx`, `PersonCard.tsx`, `People.tsx`, `Chrome.tsx`, `LifeCursor.tsx`, `data.ts` | The surfaces had to read/write the one truth | Hero/Card/People/search/notifications resolve through `relationshipBetween`; search + notification landing filter through `canSee`; the Life Cursor names year+place only on foreign Moments; `?profile=` harness param; foreign-World empty state; 3 i18n keys ×8 | `social-s1-trust.js` 24/24 |
+| 2026-09-25 | S2 | `social/data.ts`, `social/store.tsx` (frozen Phase 4) | Responses had no expression channel and delete destroyed conversations | `Note.expressions?/removed?/photo?/mentions?`; `noteExpress` (single-active); `noteDelete` → tombstone when replies exist, prune with the last reply | `social-s2-respond.js` §1, §3 |
+| 2026-09-25 | S2 | `social/Moment.tsx` (frozen Phase 4) | The conversation lacked Boom, deep replies, mentions, media, batching | `NoteBoom` (the ONE registry at conversation weight; who-list = people list), reply-to-reply → parent composer with the person prefilled AND recorded as a chosen mention, tombstone row, mention suggestions (participants + connections only; ids stored, never scanned; doorways), one-photo picker/chip/fallback, `CONV_BATCH` 20 + "View N earlier responses"; 9 i18n keys ×8 | `social-s2-respond.js` 29/29; `social-final` 180, `social-r2` 43, `social-r3-3d` 80 green |
+| 2026-09-25 | S2 (A21 held) | `social/Moment.tsx` | The new Boom control's grown hit area covered part of Reply's 44px target | The Boom control's phone hit area yields the strip toward Reply at the gap midline (`after:-left-1`), keeping both targets whole | `social-4-4a-truth.js` §4 (125/125 re-run) |
+| 2026-09-25 | S4 | `social/data.ts` (frozen Phase 4) | nt4 claimed a mention nobody had made; events couldn't land on their exact response | `Notification.noteId?` + kinds `reply/mention/response-boom/moment-boom/accepted`; n-vid-1 really mentions Giulia; nt1/3/5/8 → their real responses; four new READ fixtures, each true against fixture data; chat deliberately stays out of the bell | `social-s4-signal.js` §1; every count-contract suite green |
+| 2026-09-25 | S4 | `world/focus-moment.ts`, `social/Moment.tsx`, `social/Chrome.tsx` | "You were told something happened" had no exact destination | `focusNote`/`settleOnNote`; the Moment opens its conversation in the width's own shape, unfolds/widens to include the named response, the landing owns focus; `accepted` → person surface; stale targets keep the truthful announce | `social-s4-signal.js` 13/13 |
+| 2026-09-25 | S5 | `social/store.tsx`, `social/Moment.tsx`, `social/Chrome.tsx`, `social/SocialPreview.tsx` (frozen Phase 4) | No private keep-this; no native share | `saved: string[]` + save/unsave (delete purges — no ghost bookmark); Save leads both ⋯ menus (paused in preview); `SavedPanel` in the account menu (a TransientSurface in the exclusivity family; entries land exactly); Share… via `navigator.share` only where it exists, Copy link universal, NO repost; 7 i18n keys ×8 + `data-sb-account-trigger` hook | `social-s5-moment.js` 15/15; supersessions below |
+| 2026-09-25 | S6 | `world/PersonCard.tsx`, `world/ChatSurface.tsx` | No person-level report; /chat?c=<unknown> opened a dead conversation with the unavailable identity | Quiet, last Report action (announced; a report is not a block); the unknown deep link lands on the truthful list; 2 i18n keys ×8. BLOCK stays an OWNER DECISION (ledger) | `social-s6-safety.js` 8/8 |
+| 2026-09-25 | S8 | `src/lib/entitlements/` (new), `docs/handover/monetization-foundation.md` (new) | Monetization needed architecture without billing | `Entitlement` union / `EntitlementSource` / `FREE_PLAN` / `can()`; the free core is complete by construction (core capabilities are not entitlements at all); NO billing, no fake checkout | tsc; doc |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):**
+
+- `person-life-identity.js` §6 — "connected visitor density" rows now assert **0 for every
+  non-owner** (S1 §5.6 retires the `connected` unlock pending the friends backend contract —
+  the stricter direction). §4 request-notification identity initials follow the fixture
+  (Francesca, "FM"). Count unchanged at 47.
+- `social-connection-final.js` §10 — the Hero request-in walk now runs on Francesca via
+  `?profile=p-rory` (the request-in fixture moved so the connected circle could be coherent);
+  the state machine asserted is unchanged. 44 → 45.
+- `social-4-4a-truth.js` §3 — View-as-public composition now asserts S1's stricter truth
+  (no friends-privacy content for the stranger row, every rendered Moment the owner's own);
+  §9 asserts the S1 Life policy (current band, no non-owner density branch). 125/125.
+- `social-final.js` §7/§9 — the others' menu reads `Save|Report|Hide|Copy link|View in Life
+  — later` and the account menu gains the real `Saved` surface first; no item was removed.
+- `social-4-4a-truth.js` §preview-menu — the paused stranger menu includes Save, paused; both
+  this and social-final's others'-menu expectation are CAPABILITY-AWARE: `Share…` appears
+  exactly when the platform has `navigator.share`. §7 menu keys — the menu opens on **Save**
+  (the new first item); the keyboard invariant is asserted unchanged. 125/125 · 180/180.
+- `complete-my-world.js` / `s4-people.js` / `s5-discovery.js` / `s6-motion.js` — fixture
+  vocabulary only (Beatrice as the stranger, Francesca as the request), invariants unchanged.
+
+**New suites (the S-SOCIAL acceptance):** `social-s1-trust.js` 24 · `social-s2-respond.js` 29 ·
+`social-s3-people.js` 14 · `social-s4-signal.js` 13 · `social-s5-moment.js` 15 ·
+`social-s6-safety.js` 8 · `social-s7-polish.js` 8. Final full-fleet verification (every suite,
+tsc, eslint, `next build`) recorded in `SOCIAL-COMPLETION-LOOP.md`.
+
+
+# Phase UC — Universal Social Post Composer (owner-directed · 2026-09-28)
+
+One owner-directed implementation pass making the Composer SIMPLE ON THE SURFACE, INTELLIGENT
+UNDERNEATH: text posts in seconds with no Human Record by default; media becomes one Life
+Moment automatically; seven classifications adapt the SAME composer behind a quiet **Record
+details** affordance; shared work survives category exploration; one POST creates exactly zero
+or one record; Circle placement stays automatic; a PROTOTYPE-HEURISTIC suggestion assists
+quietly. Full contract: `references/social-composer/UNIVERSAL-SOCIAL-COMPOSER-HANDOVER.md`.
+Audited first (six parallel readers): NO Memory/EXIF/upload/vision code exists in this repo —
+the mock library `takenAt` + FROM THE PHOTO flow is the metadata seam; nothing was faked.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-28 | UC §6/§15 | `social/Composer.tsx` (frozen Phase 4) | The composer opened onto seven categories — "what kind of database record is this?" | Opening state = words + three quiet context actions (`data-sb-composer-actions`: media · people · details); the classification row (`data-sb-kind-row`, now 8 chips incl. **Social only** and **Life Moment**) reveals behind `data-sb-record-details` (aria-expanded); same chip language, ≤36px, sb-reveal | `social-composer.js` §1, §4, §10; superseded assertions below |
+| 2026-09-28 | UC §28/§29 | `social/data.ts`, `social/store.tsx`, `social/Composer.tsx` (frozen) | Every post WAS a Human Record; text-only social posts and the explicit "Social only" media override had no model | `Moment.record?: "none"` (absent = real record — every fixture byte-identical); `Draft.socialOnly`/`recordChosen`; resolution: explicit intent → media → Life Moment → words alone → social-only; edit carries the classification truthfully both ways | `social-composer.js` §1–§4; `social-4-4a-truth.js` 126 |
+| 2026-09-28 | UC §31 | `social/view-model.ts`, `circle/model.ts`, `social/CircleModule.tsx` (frozen zones) | A social-only post is NOT a Human Record — it must not exist to Life | `record:"none"` excluded from ringViewFor density/ticks/probes, `visibleMoments` (full Circle + Day Almanac) and the module's this-month count; fixtures unaffected (none carry the field) | `social-composer.js` §3, §8; `circle.js` 132; `person-life-identity.js` 47 |
+| 2026-09-28 | UC (Circle doorway) | `circle/CirclePreview.tsx` (frozen Phase 5) | "Record here" opened a draft that words alone would resolve to social-only — invisible to the very Almanac it was recorded from | The Circle's own doorway seeds `recordChosen: true` (recording at a life coordinate IS explicit record intent) | `circle.js` §11 (132/132) |
+| 2026-09-28 | UC §34 | `social/Composer.tsx`, `social/Moment.tsx` (frozen) | People were kind-scoped (meal/meeting only) and undiscoverable on plain posts | A common People chip (count stated) edits the SAME `fields.with`; the chip focuses the kind's own field when visible (one input ever); `with` travels on ANY post when set (scopedFields); the "with N" doorway (extracted `withControl`) now renders on kind-less Moments too | `social-composer.js` §5, §7 |
+| 2026-09-28 | UC §14/§23 | `social/Composer.tsx` | All kind fields rendered at once | `MORE_FIELDS` (activity→duration, project→since) waits behind "A little more" (aria-expanded, values kept either way); every required field stays quick; kinds with no genuine extras carry no drawer | `social-composer.js` §4 |
+| 2026-09-28 | UC §25/§26 | `social/suggest-record.ts` (new), `social/Composer.tsx` | Category inference does not exist in this repo | A REPLACEABLE PROTOTYPE HEURISTIC (labeled as such): ≥0.75 confidence or silence; one passive row, debounced 900ms; accept keeps all state; Keep dismisses for the composition; never in edit, never once classified | `social-composer.js` §6 (incl. low-confidence silence) |
+| 2026-09-28 | UC §40 | `social/SocialPreview.tsx` | Success was only the landing motion | `PostToast` + announce: "Posted" / "Posted · Added to your Life" / "Posted · Recorded as {kind}" — one quiet line, 2.4s, no record ids, no Circle mechanics | `social-composer.js` §1, §2, §4 |
+| 2026-09-28 | UC (defect, environmental) | `social/LifeRing.tsx` (frozen — My World 2030) | The host browser's V8 updated; its `Math.cos` now differs from Node's in the last ULP → the engraved ticks' float attributes stopped matching SSR (a real hydration mismatch, PROVEN pre-existing by probing the stashed tree) | `polar()` rounds to 1e-4 px — invisible, deterministic across engines | zero console errors on /world and /life; `s6-motion.js` §11; ring suites green |
+| 2026-09-28 | UC | catalogs ×8 | New surfaces must speak every locale | 24 keys ×8 (recordDetails, socialOnly, kindMoment, peopleChip, aLittleMore, suggest*, posted*…), 429 keys each, key-complete; en byte-identical wherever accepted suites look | `social-composer.js` §10 (ne) |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):**
+
+- `social-final.js` §10/§corrections — "the kind row is visible at open with words media,meal,…" →
+  "the composer opens SOCIAL (no classification row; context actions media,people,details), and
+  Record details reveals social,life,meal,activity,problem,health,project,meeting at the same
+  11px/500 quiet-chip contract"; kind flows open the disclosure first. 180 → **184**.
+- `s6-motion.js` §5 — "seven quiet kind chips at open" → "three quiet context actions at open;
+  eight quiet chips (≤36px, every word intact) behind Record details"; the memory-first order,
+  un-boxed coordinate and sb-reveal checks are unchanged. 53 → **55**.
+- `s3-moments.js` — the localisation checks open Record details first; 7 words → 8. 17/17.
+- `social-4-4a-truth.js` §5 — kind flows open the disclosure first; "an ordinary Moment carries
+  no kind fields" → "…no SPECIALIST fields — People only" + a new check that words alone stay a
+  social post (`record:"none"`); "a kind posts only its own fields" → "…plus the common People"
+  (venue/what still never leak). 125 → **126**.
+
+**Documented decisions/carryovers:** social-only posts keep the Almanac readout and LifeCursor
+presence in the FEED (presentation, not Life record surfaces — only Circle/density/Almanac
+exclude them); Life Moment has no "A little more" (Story/Milestone/Chapter/Travel/Soundtrack
+exist only in the live product — adapting, not inventing, per §3C); `composer.suggestDismiss`
+is reserved for a future ✕ affordance (Keep-as-post is the dismiss today); the heuristic
+adapter is the documented seam for real AI (§26 honesty rule).
+
+
+# Phase UC-G — Universal Social Post Composer, GREENFIELD (owner-directed · 2026-09-29)
+
+**Supersedes yesterday's Phase UC pass in full** (owner master prompt: "the existing prototype
+Composer was exploratory… do NOT preserve its UI, interaction model, field structure, menu
+structure, layout, state architecture or domain-form design merely because it exists"). The
+old `social/Composer.tsx` is DELETED; the Composer is rebuilt as the module
+`src/components/style-lab/social/composer/` (types · domains · submit · UniversalComposer).
+Brief: `references/social-composer/GREENFIELD-BRIEF.md`; handover:
+`references/social-composer/UNIVERSAL-SOCIAL-COMPOSER-GREENFIELD-HANDOVER.md`.
+
+AS EASY AS SOCIAL MEDIA: Create post · identity + Audience ▾ · "What's happening?" ·
+Photo/Video · People · Place · Record Details · POST — and NOTHING else at open (no Life age
+anywhere in creation, no dates, no Feeling, no category list, no Circle vocabulary). AS DEEP
+AS A HUMAN LIFE: one common state + seven domain adapters; media → one Life Moment by
+default with a quiet "Recording as… · Change"; photo metadata reviewed (Use / Not this),
+never auto-published; eventTime ≠ postedAt with provenance; Human-Record privacy a separate
+axis from the social audience (specialist records owner-private by default; record depth
+never rendered); §29 projection allowlists; one POST → zero or one record; Stop sharing /
+Share later on the same record; drafts in-memory until POST.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-29 | UC-G §4 | `social/Composer.tsx` **deleted**; `store.tsx` (old Draft/draft/"draft" purged, `udraft` + `shareState` added) | The old composer was exploratory, not the approved product | The greenfield module is the ONE composer for Social, Circle Record-here and the Day Almanac's edit; `state.udraft` is the kept draft; `shareState` flips a projection's `unshared` | `social-composer.js` 67/67 |
+| 2026-09-29 | UC-G §5/§22 | `composer/UniversalComposer.tsx` (new), `SocialPreview.tsx` (entry bar) | "New moment" + "What happened at {Life age}?" violated the north star | "Create post"/"Edit post"; the writing area and entry bar ask "What's happening?" (per-domain questions §14–§19); the Audience listbox sits in the identity row; four quiet context actions; Record details holds Social mode APART from the seven records | `social-composer.js` §1/§4; `social-final` §14 |
+| 2026-09-29 | UC-G §6/§7/§26 | `composer/types.ts`, `composer/domains.tsx` | Seven independent forms and duplicated fields were the wrong architecture | ONE ComposerDraft (+intentSource, eventTime{provenance}, per-domain drafts) + adapters; People/Place/media/audience/text have one source of truth (no Meal Venue, no Meeting participants field); switching restores every domain draft | `social-composer.js` §5/§6 |
+| 2026-09-29 | UC-G §14–§19 | `composer/domains.tsx` | The old kind fields (what/venue/with/measurement…) were not the approved quick sets | Meal: Occasion(6)+items; Activity: type(12)+ADAPTIVE metrics; Health: bodyArea+type(4)+severity+PRIVATE note; Problem: words only, Status=Open internal; Project: title+goal; Meeting: subject+When-now; A LITTLE MORE per kind, optional, values kept | `social-composer.js` §5; `social-final` §10 |
+| 2026-09-29 | UC-G §21/§23/§24 | `composer/UniversalComposer.tsx`, `composer/submit.ts` | Event time was a visible coordinate; photo dates auto-applied after Confirm gating | When lives behind A-little-more (Meeting: quick; Circle-origin and edits open with it); photo EXIF surfaces as "From the photo … Use / Not this" — place never auto-published, ignored metadata stays unknown, POST waits for the review; future/before-birth refusals kept (A11) | `social-4-4a-truth` §5; `social-composer` §3/§8 |
+| 2026-09-29 | UC-G §28/§29 | `data.ts` (`recordPrivacy`, KindFields Universal keys), `submit.ts`, `Moment.tsx` (kindLine) | Social audience and record access were one axis; projections were implicit | `recordPrivacy:"private"` on specialist Social-origin records; per-kind projection allowlists; privateNote/severity/bodyArea stored at record depth and NEVER rendered; kindLine renders occasion/items/type/metrics/subject/goal additively (fixtures byte-identical) | `social-composer` §5 (health) · §9 |
+| 2026-09-29 | UC-G §35/§36 | `data.ts` (`unshared`), `store.tsx`, `Moment.tsx` (Stop sharing), `circle/DayAlmanac.tsx` (Share), `Chrome.tsx` (search filter), `store.composeFeed` | A record could not leave the stream without dying | Stop sharing removes the Social projection (feed + search); the record stays in Life/Circle/density; the Day Almanac offers Share on an own unshared record — the SAME record, never a duplicate | `social-composer` §11 |
+| 2026-09-29 | UC-G §45 | `SocialPreview.tsx` (PostToast) | Success vocabulary changed | "Posted" · "Posted · Saved as a Life Moment" · "Posted · Saved to {Kind} & your Life" | `social-composer` §2/§3/§5 |
+| 2026-09-29 | UC-G (A4 refinement) | `composer/UniversalComposer.tsx` | Found by the re-pointed truth suite: Cancel was disabled while Posting, and the failed footer had no way out | Cancel stays live during Posting (it cancels the pending publication); the failed footer carries Cancel beside Retry | `social-4-4a-truth` §2 (125/125) |
+| 2026-09-29 | UC-G §43 | catalogs ×8 | New surfaces must speak every locale | 96 `ucomposer.*` keys ×8 — **525 keys each, key-complete**; ne verified end-to-end; ru at 320 fits | `social-composer` §12 |
+| 2026-09-29 | UC-G wiring | `SocialPreview.tsx`, `circle/CirclePreview.tsx`, `circle/DayAlmanac.tsx` | One composer everywhere | `emptyUDraft`/`uDraftFromMoment`/`circleUDraft`; `?composer=1` harness kept | `circle.js` 132; `s7-device-mastery` 56 |
+
+**Owner-superseded assertions (§48 of the brief — obsolete-UX checks replaced; every
+PRODUCT-TRUTH check kept and re-pointed; recorded, never silent):**
+
+- `social-final.js` §10/§14 (180→**194**): kind chips/required-fields/Only-me-defaults/readout
+  checks → the seven adapters' approved quick shapes, aria-disabled POST with a stated reason
+  (§44), metadata review instead of the readout (with an explicit no-Life-age assertion §22),
+  Use instead of Confirm, caption-in-place instead of Burn-date, feeling in the Life Moment's
+  A-little-more, "Discard this post?", "Edit post", the four context-action words, record
+  names Life Moment…Meeting, and the When-path date grammar. KEPT verbatim: shell geometry,
+  thumbs order/reorder/remove, ten-photo limit, posting phase, photo-date landing, failure,
+  Keep-draft, Devanagari edit, Tab trap/Escape return, backdated landing.
+- `social-4-4a-truth.js` §5 (rebuilt on the new contract, 125/125): before-birth via When
+  (+ §21's new cleared-When-means-NOW truth), unmatched names via the common People, ordinary
+  post carries People only + `record:"none"`, kind scoping on the new field keys, one-media
+  unchanged, caption/record separation on the new Problem shape; §2's kept draft reads
+  `state.udraft`.
+- `s6-motion.js` §5 (53→**55**): memory-first restated as words-first-and-focused with NO
+  coordinate readout/date/place at open; four context actions; seven ≤36px record chips with
+  Social mode apart; sb-reveal kept.
+- `s3-moments.js`: date grammar through the When path; record names localised (7).
+- `social-shell.js`: "date grammar + kind words at open" → "opens social; Record details
+  carries the records".
+- `final-app.js` §98: the stream's entry prompt is "What's happening?" (§22 — no Life age).
+- `s3-s4-loops.js`: Post found by its name, not button order.
+
+**Documented decisions/carryovers:** Life Moment's Story/Chapter/Travel/Soundtrack and the
+"Open in Meal/…" specialist worlds exist only in the live product (adapting, not inventing —
+§3 reuse rule); milestone is stored but not yet projected; Health bodyArea is record-only
+even when entered in quick (§29's "only if explicitly intended" is resolved conservatively);
+autosave is in-memory (`udraft`) — local persistence is a live seam; the suggestion adapter
+remains the labeled PROTOTYPE HEURISTIC behind the real-AI seam (§26).
+
+# Phase UC-C — Universal Composer, CANONICAL WORKBOOK PASS (owner-directed · 2026-09-29)
+
+The owner's FINAL CANONICAL MASTER IMPLEMENTATION PROMPT, driven by `references/8 Task
+details.xlsx` (ALL 50 sheets read in authority order — 11_UNIVERSAL_RECORD_RULES first).
+First artifact: `references/social-composer/CANONICAL-COMPOSER-FIELD-CONTRACT.md` (every
+canonical field × tier/provenance/social-eligibility/privacy/Circle/AI/persistence/status);
+completion report: `references/social-composer/UNIVERSAL-SOCIAL-COMPOSER-CANONICAL-HANDOVER.md`
+(incl. the §111 adversarial audit, all 18 answered with live probes). The greenfield UC-G
+composer is the base; this pass closes every workbook gap a client-side prototype can
+truthfully build and names the rest as seams. No commit/push (owner rule); no screenshots
+(owner performs review).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-29 | UC-C §18 | `composer/types.ts`, `composer/submit.ts`, `social/data.ts`, `social/Moment.tsx` (frozen — recorded exception), `social/SocialPreview.tsx`, `lib/i18n/format.ts` (`sbDateCoarse`) | Only day/minute precision existed; a month/year/approximate/unknown event date could not be stated truthfully | `Moment.timePrecision` (additive): month → "JUL 2019", year → "2015", approximate → "around 14 JUL 2019", unknown → "Date unknown"; the picked date stays a noon SORT ANCHOR only; no exact-age claim under any coarse claim; no recording-clock claim for unknown; a coarse/unknown Moment always states its own date rule | `social-composer-canonical.js` C2 |
+| 2026-09-29 | UC-C §18 UNPLACED | `circle/model.ts` (frozen Phase 5 — one filter), `social/view-model.ts`, `social/CircleModule.tsx` | An unknown-date record would land in the Circle at its recording date — a fabricated coordinate | `timePrecision:"unknown"` is excluded from `visibleMoments` (Circle + Day Almanac), ring density and the this-month count; the record stays reachable in the stream; a dedicated Unplaced tray is a documented live seam | C2 (month count unchanged across an unknown post) |
+| 2026-09-29 | UC-C §17 | `composer/UniversalComposer.tsx`, `composer/types.ts`, `social/data.ts` | Place was a bare string with no precision claim | A stated place offers venue / city–region / country / approximate; stored additively (`Moment.placePrecision`) for the live disclosure engine; exact GPS stays a device seam | C1 |
+| 2026-09-29 | UC-C §12 | `composer/UniversalComposer.tsx` | No cover choice (§12 media manager) | Make-cover per thumb moves the photo to the lead position — the mosaic's lead IS the cover in this media model; device capture/upload retry stay FUTURE-SEAM (no pipeline — never faked) | C1 |
+| 2026-09-29 | UC-C §21 labels | `composer/UniversalComposer.tsx`, `composer/domains.tsx`, catalogs ×8 | "A little more" vs the canonical depth vocabulary | The depths read "More details" and "Advanced details" (never LEVEL 1/2/3, no completion %); sheet 46's informal "A little more" is superseded by the universal label rule — recorded, not silent | C1 |
+| 2026-09-29 | UC-C Life Moment (46/MOMENT-007) | `composer/domains.tsx`, `composer/types.ts`, `composer/submit.ts` | Story and Chapter were missing from the Social More set | Story (textarea) + Chapter captured at record depth (`fields.story/chapter`), never rendered by the projection; Travel/Soundtrack/Favourite stay OUT-OF-COMPOSER per 46 | C3 |
+| 2026-09-29 | UC-C Meal (13/14) | `composer/domains.tsx`, `composer/types.ts`, `composer/submit.ts`, catalogs ×8 | Six contexts (Takeaway/Delivery split, three canonical contexts missing); no custom occasion; no depth; items flattened | The canonical EIGHT contexts; Occasion=Other opens the person's own wording; More adds preparation/ingredients/experience/cost (record-only); NEW Advanced details accordion holds the structured MealFoodItems list (0..N, name+portion — "do not flatten"); nutrition/allergens/product/recipe = FUTURE-SEAM (no reference data — never simulated) | C4 |
+| 2026-09-29 | UC-C Activity (04) | `composer/domains.tsx`, `composer/types.ts`, `composer/submit.ts` | More details ignored the per-subtype contract | `activityMoreExtras`: walk→steps · run→pace+elevation · cycle→avg speed+elevation · hike→elevation · gym→exercises · sport→match/training+team+opponent · swim→pool/open+laps+stroke · mind&body→style · hobby→worked-on · learning→topic+learned · travel→transport; + purpose and how-it-felt; ALL record-only (routes/series stay private by canon); device/connected metrics = FUTURE-SEAM | C5 |
+| 2026-09-29 | UC-C Health (38, 34–36) | `composer/domains.tsx`, `composer/types.ts`, `composer/submit.ts`, catalogs ×8 | 4 types stood in for the canonical 17; no type-adaptive capture; §22 boundary unstated | The 17 canonical record types (Episode deliberately excluded — HEALTH-010 grouping layer); Measurement→value+unit, Medication→identity only; the More panel states "Shared in this post" vs "Private record details" in place; all Health fields record-only + `recordPrivacy:"private"`; server-side enforcement remains the documented LIVE/BACKEND CONTRACT (no compliance claims) | C6 |
+| 2026-09-29 | UC-C Problem (18) | `composer/domains.tsx`, `composer/types.ts`, `composer/submit.ts` | IMPACT≠URGENCY and ATTEMPT≠NEXT ACTION had no fields | urgency + what-have-you-tried (attempt) + next action captured as distinct record-only facts; Status=Open stays internal; the living thread stays the Problem world | C7 |
+| 2026-09-29 | UC-C Project (23) | `composer/submit.ts`, `composer/domains.tsx`, `social/data.ts` (status union) | No creation-time status; no target | `fields.status:"active"` internal default (never asked); Target captured (record-only words; date-object + change history = live) | C8 |
+| 2026-09-29 | UC-C i18n | catalogs ×8 | New canonical surfaces must speak every locale | 74 new keys ×8 (**601 keys/catalog, key-complete**); `ctxDelivery` retired from all eight; four context relabels; non-en values draft pending native review | C11 (ne), ru probed at 360, `i18n.js` 45/45 |
+
+**Owner-superseded assertions (recorded, never silent; invariants unchanged):**
+`social-composer.js` and `social-final.js` asserted the greenfield's 4 Health types → both
+now assert the canonical **17** (38_HEALTH_FIELDS). The invariant — optional body area + an
+optional type that never blocks capture — is unchanged; the canonical suite additionally
+asserts the full list, the type-adaptive fields and the Episode exclusion.
+
+**New suite:** `prototype-tests/social-composer-canonical.js` — **59 checks derived from the
+field contract** (§100), covering cover/place-precision/labels, the §18 time model +
+UNPLACED, Story/Chapter, the canonical Meal depth + structured items, per-subtype Activity
+adaptivity, the 17-type Health capture + §22 grouping, Problem/Project additions, Meeting
+Social-Basic containment, §74 reclassification (media/time/place/audience preserved, old
+fields dropped, same id), and ne localization.
+
+**Verified green on final source:** social-composer-canonical 59 · social-composer 67 ·
+social-4-4a-truth 125 · social-final 194 · s3-moments 17 · s6-motion 55 · circle 132 ·
+s3-s4-loops 14 · social-shell 68 · final-app 31 · i18n 45 · person-life-identity 49 ·
+complete-my-world 62 · s7-device-mastery 56 · one-application 40 · my-world-2030 27 ·
+social-connection-final 45 · social-2030 31 · social-2030-final 35 · s2-person-world 47 ·
+locale-resolution 21 · s4-people 20 · s5-discovery 48 · social-s1–s7 (24/29/14/13/15/8/8) ·
+social-4-4a1-p06 · the R2/R3 expression chain and Celestial suites unchanged (fixtures carry
+no `timePrecision`, so their rendering is byte-identical) — final full-fleet run recorded in
+`SOCIAL-COMPLETION-LOOP.md`; tsc 0 · eslint 0 errors · `next build` passes.
+
+
+# Phase UC-C3 — Final UX / Media / Smart Assist / Canonical Field Convergence (owner-directed · 2026-09-29)
+
+Same day as UC-C, this pass redesigns the COMPOSER'S INTERACTION LAYER only — no rebuild.
+The canonical data model (seven Human Record types, temporal precision + Unplaced, place
+precision, the §29 projection allowlists, record privacy) is unchanged; every field stays
+reachable at the correct depth, presented through a new "UC-C3 presentation classification"
+(AUTO/INLINE/CONTEXTUAL/ADDABLE/PICKER/DELIBERATE EDITOR) recorded in
+`CANONICAL-COMPOSER-FIELD-CONTRACT.md`. Full handover:
+`references/social-composer/UNIVERSAL-SOCIAL-COMPOSER-CANONICAL-HANDOVER.md` (the "UC-C3"
+section appended to the canonical handover). Not committed, not pushed (owner rule); no
+screenshots generated (owner performs the visual review).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-29 | UC-C3 §4–§8 | `composer/UniversalComposer.tsx` | Default composer was unnecessarily tall; action words were generic lowercase chips; a permanently visible Social/Record row followed the action row | Compact opening (~330px desktop); human-worded actions (Media/People/Place/Add details) + a subtle ✦ Smart Assist control; the record classification moves entirely into a focused chooser SHEET, never persistent inline UI | `social-composer.js` §1/§4; `s6-motion.js` §5 |
+| 2026-09-29 | UC-C3 §6–§8 | `composer/UniversalComposer.tsx` (Record chooser sheet) | Seven categories plus Social-only were shown together below the compose box | A dedicated sheet: "Just post" (with its honest hint) leads, then the seven records each as a readable ≥44px row with icon + name + one human-sentence description (`ucomposer.desc*`); selecting one closes the sheet | `social-composer.js` §4; `s6-motion.js` §5 (recorded supersession — rows were ≤36px chips, now ≥44px readable rows) |
+| 2026-09-29 | UC-C3 §7 | `composer/UniversalComposer.tsx` (record pill) | After choosing a record, all seven categories stayed visible | Selection COLLAPSES to one smart pill ("Meal · Dinner · Change") — the subtype grows in as soon as the domain's own quick field supplies one | `social-composer.js` §4 (all seven walked; the chooser and kind-row are gone after every one) |
+| 2026-09-29 | UC-C3 §9–§17 | `composer/media-assets.ts` (new), `social/data.ts` (`GalleryItem`, `Media.kind:"gallery"`, video `LibraryPhoto`s), `composer/submit.ts` (`buildMedia` rewritten), `social/Media.tsx` (gallery render + video tiles) | Media had no reusable-asset model, no real multi-select, no device source, no My Media, no organizer; photos/video/link were three fixed tabs | Photos and videos are now interchangeable ASSET REFERENCES (`MediaAsset`); mixed sets post as a new `"gallery"` media kind (single-video and all-photo posts stay byte-identical to the canonical shape); a real `<input type=file multiple accept="image/*,video/*">` (Upload) and `capture="environment"` (Camera) register session-scoped assets via `registerUploads()`; ONE configurable `MEDIA_LIMIT` (10) replaces scattered "10"s; a link is a separate reference row, never a competing media-source tab | `social-composer.js` §12; `social-composer-canonical.js` C1/C10; `social-4-4a-truth.js` §5 (A10 restated for gallery) |
+| 2026-09-29 | UC-C3 §12 | `composer/UniversalComposer.tsx` (My Media sheet) | No way to reuse an existing SYSTEMBOOM asset without a duplicate flow | `MyMediaSheet`: All/Photos/Videos filter, live search, numbered selection badges, video play-mark + duration, "Add {n}" footer; selection is REUSE by reference (`assetById`) — never a duplicate copy | `social-composer.js` §12 (the same asset stays in My Media after Remove from a post) |
+| 2026-09-29 | UC-C3 §16–§17 | `composer/UniversalComposer.tsx` (Media organizer sheet) | Reorder/remove/caption lived inline on the collage, cramped once media grew | A dedicated organizer sheet: cover/reorder/remove per asset, kept accessible (real buttons, never drag-only); Remove explicitly unlinks from THIS draft only — the asset itself stays in My Media | `social-composer.js` §12; `social-final.js` §10 (reorder/remove re-pointed to the organizer) |
+| 2026-09-29 | UC-C3 §57 | `composer/UniversalComposer.tsx` (`Thumb`), `composer/media-assets.ts` | A file the browser cannot decode would show a native broken-image icon in the composer, inconsistent with the product's own `SafeImg` convention | New `Thumb` component (collage/organizer/My-Media grid): `onError` swaps to the same quiet labeled-placeholder pattern `Media.tsx` already uses in the feed. True network-upload failure/retry is documented as a live seam — this prototype has no transport for a file to fail against | code review (adversarial §84 Q16); honest limitation recorded in the handover, not faked |
+| 2026-09-29 | UC-C3 §22–§23, §73 | `composer/UniversalComposer.tsx` (People picker sheet) | People was `<input placeholder="Names, comma-separated">` | A real picker: search (reusing `matchPeople`), Recent, selected chips (in-sheet and in the composer body), Done. An unmatched name is said out loud via `ucomposer.noPeopleMatch` and never becomes selectable — A12 held through the redesign | `social-composer.js` §6; `social-4-4a-truth.js` §5 (A12 re-verified with zero result rows for an unmatched name) |
+| 2026-09-29 | UC-C3 §24, §74 | `composer/UniversalComposer.tsx` (Place picker sheet) | Place was a bare text input with no precision surfaced until typed | A real picker: search/type, a quiet "Place found" offer from the attached photo's own EXIF place (Use, never silent), Suggested/Recent lists, the accepted §17 precision chips once a place is set, "No place" to clear. No exact-GPS/current-location control | `social-composer.js` §6, C1 |
+| 2026-09-29 | UC-C3 §25–§38, §68–§70 | `composer/smart-assist.ts` (new) | No native intelligence layer existed; the AI capability was invisible | `extractAssist()` — a clearly-labeled PROTOTYPE HEURISTIC reusing the accepted `suggestRecordType` signal, extended to read distance/duration/occasion/a real matched place/real matched people/a soft yesterday cue from the person's own words. One suggestion, debounced, above the 0.75 confidence floor, dismissible (Use details / Ignore, final per composition). A real global switch (`smartAssistEnabled`/`setSmartAssist`, `localStorage`) reachable from a subtle ✦ menu; with it OFF every composer capability works unchanged. `ASSIST_CAPABILITIES` names CORE (implemented) vs ENHANCED/PREMIUM-FUTURE (not implemented, never faked) tiers behind one `assistCan()` gate for future entitlements | `social-composer.js` §7 (ON: one suggestion, Use details fills without posting, Ignore is final; OFF: identical record posts by hand; the ✦ menu offers Turn on/off) |
+| 2026-09-29 | UC-C3 §37 | `composer/types.ts` (`EventTime.provenance`) | AI-derived time had no provenance value | `"ai"` added alongside `user`/`exif`/`circle` (architecture preserved per §37; not surfaced in Quick UI) | code review |
+| 2026-09-29 | UC-C3 §39–§49 | `composer/domains.tsx` (rewritten: `AddableFields`, `WhenControl`, activity common-four + `ACTIVITY_EXTRAS`, Health common-six picker, `MEAL_CONTEXT_PRIORITY`) | Activity/Health showed their full canonical lists persistently; every domain's More rendered a field matrix of empty boxes; Health's depth was unlabeled | Activity/Health quick lead with a common subset + a focused type-picker sheet for the rest (§39/§47); every More-details field across Life Moment/Meal/Activity/Problem/Project/Meeting is now an ADDABLE "+ Field" chip that reveals focused, or CONTEXTUAL (Meal's context pre-opens only its own relevant fields, §45); Health's depth panel reads "Private health details", never "Advanced details" (§49) | `social-composer.js` §5 (all seven domains); `social-composer-canonical.js` C4–C9 |
+| 2026-09-29 | UC-C3 §42 | `composer/domains.tsx` (`WhenControl`) | The date instrument was an always-visible empty box + a free-standing "Date unknown" link | One understandable control: collapsed states its truth ("Today" / the date's own grammar / "Date unknown") beside "Change"; opened, offers the §18 precisions and "I don't know" | `social-composer-canonical.js` C2; `social-composer.js` §8 |
+| 2026-09-29 | UC-C3 §46 | `composer/domains.tsx` (`FoodItemsEditor`) | The structured food-item list appeared inline as soon as Meal was chosen | Reached through its own "+ Foods & drinks" ADDABLE chip — a DELIBERATE EDITOR, never inline in the linear flow; human item cards (name + portion) replace the database-row layout | `social-composer-canonical.js` C4 |
+| 2026-09-29 | UC-C3 §54–§56 | `composer/UniversalComposer.tsx` | Character count was always visible; the idle footer carried a redundant "X + Cancel"; the discard dialog's "Back" was ambiguous; nested pickers had no consistent return path | Count appears only within 200 chars of the limit; the idle footer carries exactly Post (Cancel exists only while Posting, per A4); the recovery ask reads "Keep this draft?" / Keep draft / Discard / **Continue editing**; every sheet's own Back returns to the composer, never closes it | `social-composer.js` §1/§10; recorded supersession in `social-final.js` ("Discard this post?" → "Keep this draft?") |
+| 2026-09-29 | UC-C3 §64 | catalogs ×8 | New surfaces needed every locale | 66 new `ucomposer.*` keys × 8 (**670 keys/catalog, key-complete**), incl. 3 video-control keys added post-review for the organizer's video rows | `social-composer.js` §13 (ne, zero leaks) |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):**
+
+- `s6-motion.js` §5 — action words were lowercase quiet-chip text ("media,people,place,
+  details") → capitalized human words ("Media,People,Place,Add details"); record rows
+  were ≤36px quiet chips → ≥44px readable rows inside a focused chooser sheet. The
+  invariants (nothing but the four actions at open; Social apart from the seven; every
+  record named) are unchanged. 53 → 55.
+- `social-final.js` §10/§14 — Photos/Video/Link tab UI → the Media sources sheet + My
+  Media + the organizer; the discard ask's wording → "Keep this draft?" /
+  Keep draft/Discard/**Continue editing** (never "Back"); the When input → the When
+  control's collapsed/Change pattern. Every underlying truth (reorder, remove, limit,
+  metadata review, posting phase, backdated landing, edit prefill, Devanagari intact) is
+  re-verified unchanged. 194/194.
+- `social-4-4a-truth.js` §5 — A10 ("video/link disabled by an attached photo") restated
+  for the new gallery model: a photo now disables only the Link row (photos and videos
+  may combine); A9/A11/A12 re-verified through the People picker and the When control's
+  Change button. 125/125.
+- `s3-moments.js` §3–§5 — the date-grammar probe moves from `[data-sb-date-display]` to
+  `[data-sb-when-value]`; the kind-word probes move from `span.text-[11px]` to
+  `[data-sb-kind-label]` (the sheet's own readable rows). 17/17.
+
+**New/changed files:** `composer/media-assets.ts` (new), `composer/smart-assist.ts` (new);
+`composer/UniversalComposer.tsx` (rewritten interaction layer + `Thumb` fallback + sheets);
+`composer/domains.tsx` (rewritten: `AddableFields`, `WhenControl`, per-subtype pickers);
+`composer/types.ts` (`mediaIds` replaces `photoIds`/`video`; `revealed`; `EventTime`
+provenance `"ai"`); `composer/submit.ts` (`buildMedia` rewritten for mixed assets);
+`social/data.ts` (`GalleryItem`, `Media.kind:"gallery"`, video `LibraryPhoto`s,
+`MediaAsset` alias); `social/Media.tsx` (gallery + video-tile rendering); catalogs ×8.
+
+**Verified on final source:** social-composer 112 · social-composer-canonical 62 ·
+social-4-4a-truth 125 · s6-motion 55 · s3-moments 17 · social-final 194 · social-shell 68 ·
+s3-s4-loops 14 · final-app 31 · circle 132 · complete-my-world 62 · s7-device-mastery 56 ·
+i18n 45 · s2-person-world 47 · person-life-identity 47 · one-application 40 ·
+my-world-2030 27 · social-connection-final 45 · social-2030 31 · social-2030-final 35 ·
+locale-resolution 21 · s4-people 20 · s5-discovery 48 · social-s1-trust 24 ·
+social-s2-respond 29 · social-s3-people 14 · social-s4-signal 13 · social-s5-moment 15 ·
+social-s6-safety 8 · social-s7-polish 8 · social-4-4a1-p06 599 · social-r2 43 · r3 80 ·
+r3.1 69 · r3.2 92 · r3.3 102 · r3.5 20 · r3.6 21 · r3.7 37 · r3.8 34 · r3.9 31 ·
+devanagari crops PASS · celestial-s0 64 · celestial-s2-field 40 · celestial-s3-s6 32 ·
+celestial-s7-constellation 114 · gate-desktop/mobile/fallback PASS · identity-model 13.
+tsc 0 · eslint 0 errors · `next build` passes.
+
+
+# Phase UC-C4 — Zero-Effort Capture (owner-directed · 2026-09-29)
+
+A non-negotiable rule pasted after UC-C3: "CAN SYSTEMBOOM KNOW OR SUGGEST THIS WITHOUT
+MAKING THE USER TYPE IT?" in priority order (1. trusted existing Human Record/context,
+2. original media metadata, 3. device/connected data, 4. the person's own text,
+5. lightweight AI suggestion, 6. explicit manual entry — the fallback, never the first
+design choice). This pass audited the composer against that order and fixed two genuine
+gaps; everything else already matched (Smart Assist's text extraction was already
+priority #4/#5; manual chips/inputs were already the last resort).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-29 | UC-C4 (priority #2) | `composer/UniversalComposer.tsx` (`applyDetectedMetadata`, `useMetadata`, `ignoreMetadata`) | An attached photo's own EXIF date/place required an explicit "Use" click before POST would even become available (`needsReview` gated `canPost`) — this outranked the person's own words as the thing blocking submission, and directly contradicted the UC-C3 brief's own §20 ("Do not force confirmation for obvious harmless metadata"), now made explicit and non-negotiable by this rule's date/GPS examples | EXIF date/place are now PREFILLED the instant a dated asset is attached (at every entry point: My Media, Upload, Camera) — never a value the person already set themselves. POST is never gated on this. The provenance banner ("From the photo: …") stays visible and never silently invisible; "Use" simply dismisses it (already applied); "Not this" REVERTS exactly what was auto-filled back to unknown/NOW — never leaving a stuck fabricated value | `social-composer.js` §13 (posts land with the photo's date/place WITHOUT any click; Not-this reverts to minute-precision NOW with no place) |
+| 2026-09-29 | UC-C4 (priority #1) | `composer/recall.ts` (new): `recentPeopleIds`, `recentPlaces`, `commonActivityTypes` | "Recent" in the People picker, "Recent places" in the Place picker, and Activity's leading common-four were all static fixture-order slices — never actually "recent" to the person using them, and priority source #1 ("trusted existing Human Record/context") outranks everything below it, including AI suggestion | All three now derive from the ACTING PERSON's own real posted history (most-recent-first for people/places, most-frequently-used for Activity types), reading only their own Moments and excluding Health/Problem (QUIET_KINDS — a private record never leaks into a casual convenience list, even as an innocuous place name). Falls back to the existing static default whenever there is no usable history yet, so a fresh viewer's experience (and every existing test assertion) is byte-identical to before | `social-composer.js` §13 (a real tagged person/place from the SAME session leads Recent on the next open); verified safe against fixtures: the owner's fixture data carries no `fields.with`/`fields.activityType` today, so the fallback path is exercised by every pre-existing suite unchanged |
+| 2026-09-29 | UC-C4 (i18n correctness, found during audit) | `composer/smart-assist.ts`, `composer/UniversalComposer.tsx` | The Meal-occasion Smart Assist suggestion rendered the raw lowercase enum ("dinner") instead of a localized label — inconsistent with every other occasion display in the product (`t(occasionKey(o))`) | `extractAssist()` no longer pushes the raw enum into its free-text `parts`; the component builds the display line with `t(occasionKey(sugg.occasion))` prepended — distance/duration/a real place/a real first name stay as free text (already locale-neutral) | `social-composer.js` §13 ("Dinner", not "dinner", in the suggestion row) |
+
+**Owner-superseded assertions:** none in other suites — the metadata-review UI (`data-sb-metadata-review`/`data-sb-meta-use`/`data-sb-meta-ignore`) and its Use/Not-this workflow steps are unchanged in every suite that exercises them (`social-final.js`, `social-4-4a-truth.js`, `social-composer-canonical.js`); only the BLOCKING behavior around it was removed, and no suite asserted that block explicitly (confirmed by inventory before the change).
+
+**New file:** `composer/recall.ts`. **Changed:** `composer/UniversalComposer.tsx`
+(`applyDetectedMetadata` at all three media-attach entry points; People/Place "Recent"
+lists; Activity's `activityCommon` prop; the suggestion's localized display line),
+`composer/domains.tsx` (`DomainQuick` accepts an optional `activityCommon` override),
+`composer/smart-assist.ts` (occasion no longer pre-baked into `parts`).
+
+**New test section:** `social-composer.js` §13 "Zero-effort capture" (8 checks) — renamed
+the former §13 (Mobile/A11y/L10n) to §14 to keep numbering sequential; total 120/120.
+
+**Verified on final source:** social-composer 120/120 · social-composer-canonical 62/62 ·
+social-4-4a-truth 125/125 · social-final 194/194 · s6-motion 55/55 · s3-moments 17/17.
+tsc 0 · eslint 0 errors · `next build` passes. Not committed, not pushed.
+
+# Phase UC-C4.1 — Metadata Truth + Social Disclosure Hardening (owner-directed · 2026-09-29)
+
+A correction to two remaining UC-C4 semantics, not a new feature: (1) rejecting metadata
+must restore the EXACT pre-autofill state, never a hardcoded "revert to NOW/no-place"; (2)
+a metadata-derived Place may quietly enrich the Human Record but must never auto-become
+Social disclosure. User corrections stay authoritative throughout.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-29 | UC-C4.1 | `composer/types.ts` (`UDraft.placeConfirmed`, `uDraftFromMoment`) | There was no way to distinguish a place the person deliberately chose from one metadata silently prefilled | New composer-only `placeConfirmed?: boolean`. Typing, picking a Recent/Suggested row, choosing a precision, accepting a Smart Assist suggestion, or "Use" on the metadata banner all set it; a Moment already carrying a posted place (edit mode) is confirmed by construction | `social-composer.js` §13 |
+| 2026-09-29 | UC-C4.1 | `composer/UniversalComposer.tsx` (`applyDetectedMetadata` → `MetaSnapshot`, `ignoreMetadata`) | "Not this" compared the CURRENT value to what autofill had applied — fragile, and described in the UC-C4 row above as reverting to a generic "unknown/NOW" | `applyDetectedMetadata` now captures the EXACT pre-autofill state (eventTime, timeUnknown, place, placePrecision, placeConfirmed) the moment it actually changes something; "Not this" restores that captured state precisely — an already-unknown time, an already-approximate date, or an already-set place is never touched by autofill in the first place (the trigger guard was and remains conservative), and whatever WAS auto-applied is restored exactly, never a fabricated NOW/no-place value | `social-composer.js` §13 (regressions A/B/C/F/G) |
+| 2026-09-29 | UC-C4.1 | `composer/UniversalComposer.tsx` (`submit`) | A metadata-derived Place travelled straight to the posted Social record with no confirmation — private-record context becoming social disclosure by accident | Before `buildSubmission`, an unconfirmed `place`/`placePrecision` is stripped from the submitted draft. The record/composer itself keeps the quiet enrichment (visible on the action row, zero-effort, no click) the whole time; only the SOCIAL projection is gated on deliberate confirmation | `social-composer.js` §13 |
+
+**Owner-superseded documentation:** the UC-C4 row above ("`applyDetectedMetadata`, `useMetadata`,
+`ignoreMetadata`") said `"Not this" REVERTS exactly what was auto-filled back to unknown/NOW`
+and implied a metadata-derived place always travels with the post. Both are superseded: "Not
+this" restores the EXACT pre-autofill state (which happens to equal unknown/NOW only when
+that was the actual pre-state), and a metadata-derived place never reaches the Social record
+until the person deliberately confirms it. No existing UC-C4 assertion was weakened — §13's
+two affected checks were split/corrected in place and six new regression checks were added.
+
+**Files touched:** `composer/types.ts`, `composer/UniversalComposer.tsx`. Not touched:
+`recall.ts`, `domains.tsx`, `submit.ts`'s own `buildSubmission`, `data.ts`'s `Moment` type,
+`Moment.tsx`, Circle.
+
+**Verified on final source:** social-composer 129/129 (was 120; §13's zero-effort-capture
+assertions corrected + 9 new regression checks). tsc 0 · eslint(composer) 0 · `next build`
+passes. The wider 40+ suite fleet was intentionally not re-run — this pass touches no shared
+primitive beyond `UDraft`/`applyDetectedMetadata`, both already scoped to the composer. Not
+committed, not pushed.

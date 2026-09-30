@@ -47,9 +47,19 @@ export interface Photo {
   alt: string;
 }
 
+/** UC-C3 §9/§15 — one gallery item; `videoDuration` marks a video (poster = the frame). */
+export interface GalleryItem extends Photo {
+  videoDuration?: string;
+}
+
 export type Media =
   | { kind: "photos"; items: Photo[] }
   | { kind: "video"; poster: Photo; duration: string; caption?: string }
+  /* UC-C3 §9 (owner-directed — supersedes the one-media-kind contract for photos/videos):
+     mixed photos + videos in ONE post. All-photo sets still emit "photos" and a single
+     video still emits "video", so every accepted fixture and rendering stays byte-identical;
+     "gallery" appears only for the new mixed/multi-video sets. */
+  | { kind: "gallery"; items: GalleryItem[] }
   | { kind: "link"; url: string; title: string; description: string; image?: Photo; host: string };
 
 export interface KindFields {
@@ -59,12 +69,92 @@ export interface KindFields {
   measure?: string;
   duration?: string;
   title?: string;
-  status?: "open" | "resolved";
+  status?: "open" | "resolved" | "active";
   measurement?: string;
   value?: string;
   name?: string;
   progress?: [number, number];
   since?: string;
+  /* ---- Universal Composer (greenfield · 2026-09-29) — additive record fields.
+     Legacy keys above remain for the accepted fixtures; new posts write these. ---- */
+  /** Meal: breakfast | lunch | dinner | snack | drink | other */
+  occasion?: string;
+  /** Meal: what was eaten/drunk, the person's own words. */
+  items?: string;
+  /** Meal: home | restaurant | takeaway | delivery | event | other */
+  context?: string;
+  /** Activity: run | walk | cycling | gym | hiking | swimming | sport | mindbody | travel | learning | hobby | other */
+  activityType?: string;
+  distance?: string;
+  intensity?: string;
+  route?: string;
+  goal?: string;
+  /** Health (record-only): body area — NEVER rendered in the Social projection. */
+  bodyArea?: string;
+  /** Health: symptom | injury | appointment | other */
+  healthType?: string;
+  /** Health (record-only): user-reported severity — never rendered socially. */
+  severity?: string;
+  /** Health (record-only): the PRIVATE note — enriches the record, never the projection. */
+  privateNote?: string;
+  /** Problem: category / impact / when-it-started context. */
+  category?: string;
+  impact?: string;
+  relatedProject?: string;
+  /** Project / Meeting */
+  milestone?: string;
+  subject?: string;
+  purpose?: string;
+  online?: boolean;
+  /** Free notes at record depth (More details). Meeting/Problem/Meal/Activity. */
+  notes?: string;
+  /* ---- Canonical pass (workbook-driven · 2026-09-29) — additive record fields.
+     Every key below is RECORD-ONLY unless a projection surface explicitly renders it
+     (none do today): stored on the Human Record, never rendered by Moment.tsx. ---- */
+  /** Life Moment: the richer account, distinct from the caption (MOMENT-007). */
+  story?: string;
+  /** Life Moment: life period in the person's own words. */
+  chapter?: string;
+  /** Meal: the person's own occasion wording when Occasion = other. */
+  occasionCustom?: string;
+  preparation?: string;
+  ingredients?: string;
+  experience?: string;
+  /** Meal: cost context — sensitive, never auto-published. */
+  cost?: string;
+  /** Meal Advanced: structured food/drink items (13_MEAL_FIELDS "do not flatten"). */
+  foodItems?: { name: string; quantity?: string }[];
+  /* Activity — adaptive per-subtype More-details fields (04_ACTIVITY_TYPES). */
+  felt?: string;
+  steps?: string;
+  pace?: string;
+  avgSpeed?: string;
+  elevation?: string;
+  exercises?: string;
+  matchKind?: string;
+  team?: string;
+  opponent?: string;
+  water?: string;
+  laps?: string;
+  stroke?: string;
+  style?: string;
+  workedOn?: string;
+  topic?: string;
+  learned?: string;
+  transport?: string;
+  /* Health — type-adaptive (38_HEALTH_FIELDS); record-only, never rendered. */
+  measureValue?: string;
+  measureUnit?: string;
+  medication?: string;
+  /* Problem — IMPACT ≠ URGENCY; ATTEMPT (tried) ≠ NEXT ACTION (intent). */
+  urgency?: string;
+  attempt?: string;
+  nextAction?: string;
+  /** Project: aimed completion in the person's words. */
+  target?: string;
+  /** Project (UC-C3 §52): human-readable current work; a related Problem in words. */
+  focus?: string;
+  relatedProblem?: string;
 }
 
 export interface Note {
@@ -76,6 +166,19 @@ export interface Note {
   responses: number;
   respondedByViewer?: boolean;
   edited?: boolean;
+  /** S2 §6.1 — Response Boom: person id → expression id. ONE per person (the invariant lives in
+   *  the reducer); the same registry and single-active rule as a Moment's Boom, at conversation
+   *  weight. Never a Like: no ranking, no score, participation only. */
+  expressions?: Record<string, string>;
+  /** S2 §6.4 — a deleted response with replies keeps its place as a quiet tombstone; the
+   *  conversation under it survives. Content fields are CLEARED, not hidden. */
+  removed?: true;
+  /** S2 §6.6 — at most one image: Respond stays lighter than the Moment Composer. */
+  photo?: Photo;
+  /** S2 §6.5 — the ids of people actually mentioned, resolved when the mention was chosen from
+   *  the suggestions (never scanned from free text at render time; the names in `text` are
+   *  linkified only when their id is in this list). */
+  mentions?: string[];
 }
 
 export interface Moment {
@@ -90,6 +193,42 @@ export interface Moment {
    * `at` is a sort anchor (12:00) and is NEVER displayed. Absent = "minute" (a real event time).
    */
   atPrecision?: "day" | "minute";
+  /**
+   * Canonical §18 — the CLAIMED precision of the event's time, beyond day/minute:
+   * "month"/"year": only that much is known — `at` keeps the picked date purely as a sort
+   * anchor and display renders the month/year grammar only. "approximate": the date is a
+   * best guess ("around …"). "unknown": the person stated the event's date is not known —
+   * `at` is the RECORDING time (provenance, never the claim) and the record is UNPLACED:
+   * excluded from the Circle, the Day Almanac and every Life density. Absent = the
+   * existing day/minute model. Exact-age claims are suppressed for any value here.
+   */
+  timePrecision?: "month" | "year" | "approximate" | "unknown";
+  /**
+   * Canonical §17 — how precise the stated `place` is (venue · city/region · country ·
+   * approximate). Captured for the live disclosure engine; absent = unstated.
+   */
+  placePrecision?: "venue" | "cityRegion" | "country" | "approximate";
+  /**
+   * Universal Composer — what this Social entry IS underneath. Absent (every fixture and every
+   * classified post): a real Human Record that belongs to Life/Circle. `"none"`: a SOCIAL POST
+   * ONLY — the text-only default and the explicit "Social only" media override; it lives in the
+   * stream but never enters the Circle, the Day Almanac or any Life density.
+   * LIVE CONTRACT: Social Post → zero or one Human Record; this field is the prototype's stand-in
+   * for that link (a real record id in the live system).
+   */
+  record?: "none";
+  /**
+   * Universal Composer §28 — HUMAN RECORD PRIVACY, a separate axis from the social audience
+   * (`privacy`). A specialist record created from Social defaults to "private": the audience
+   * sees only the Social projection; the record's own depth (privateNote, severity, bodyArea…)
+   * is never rendered to anyone but the owner. LIVE CONTRACT: enforced server-side.
+   */
+  recordPrivacy?: "private";
+  /**
+   * Universal Composer §36 — STOP SHARING removed this post's Social projection. The Human
+   * Record remains (Life/Circle/density keep it); only the social stream lets go of it.
+   */
+  unshared?: true;
   place?: string;
   text?: string;
   kind: Kind;
@@ -123,7 +262,18 @@ export interface Notification {
   momentId?: string;
   /** "request": a friend request — the row itself offers Accept / Decline.
    *  "resonance": a Celestial Resonance on one of your Moments (Stage 23, Signal tier). */
-  kind?: "request" | "resonance";
+  /**
+   * S4 — the meaningful event kinds. `request` and `resonance` render their own rows;
+   * `reply` / `mention` / `response-boom` land INSIDE the Moment's conversation on the exact
+   * response (`noteId`); `moment-boom` lands on the Moment; `accepted` opens the person.
+   * LIVE CONTRACT: event text below is fixture grammar standing in for backend-provided
+   * event strings (documented S5/S6 carryover) — the LIVE system supplies kind + refs.
+   * Chat messages are deliberately NOT bell events: message-unread has its own truthful
+   * badge (accepted complete-My-World rule — never a combined total).
+   */
+  kind?: "request" | "resonance" | "reply" | "mention" | "response-boom" | "moment-boom" | "accepted";
+  /** S4 — the exact response an event is about; landing opens the conversation on it. */
+  noteId?: string;
   /** Stage 23 — the resonanceId for a `kind: "resonance"` row. Semantic id only: never copy,
    *  never any Life-derived field. */
   resonanceId?: string;
@@ -303,14 +453,20 @@ export function matchPeople(term: string, excludeId?: string, limit?: number): P
   return limit ? found.slice(0, limit) : found;
 }
 
-/* ---------- photo library (what the composer's picker offers) ---------- */
+/* ---------- media library (the account's MY MEDIA — reusable Media Assets, UC-C3 §12) ---------- */
 
 export interface LibraryPhoto extends Photo {
   id: string;
+  /** UC-C3 §9 — the asset's own kind. Absent = photo (every pre-UC-C3 asset). */
+  mediaKind?: "photo" | "video";
+  /** Video assets only — the clip length shown on tiles and in the feed. */
+  duration?: string;
   /** File metadata when the file carries it — drives the confirmable readout. */
   takenAt?: string;
   takenPlace?: string;
 }
+/** The canonical name going forward: MEDIA ASSET ≠ HUMAN RECORD ≠ SOCIAL POST (§13). */
+export type MediaAsset = LibraryPhoto;
 
 const ph = (id: string, src: string, w: number, h: number, alt: string, takenAt?: string, takenPlace?: string): LibraryPhoto => ({
   id,
@@ -320,6 +476,13 @@ const ph = (id: string, src: string, w: number, h: number, alt: string, takenAt?
   alt,
   takenAt,
   takenPlace,
+});
+
+/** A fixture VIDEO asset: a real poster frame + duration (the prototype's honest video). */
+const vid = (id: string, src: string, w: number, h: number, alt: string, duration: string, takenAt?: string, takenPlace?: string): LibraryPhoto => ({
+  ...ph(id, src, w, h, alt, takenAt, takenPlace),
+  mediaKind: "video",
+  duration,
 });
 
 export const LIBRARY: LibraryPhoto[] = [
@@ -342,6 +505,11 @@ export const LIBRARY: LibraryPhoto[] = [
   ...Array.from({ length: 10 }, (_, i) =>
     ph(`jatra${i + 1}`, `jatra-${pad(i + 1)}.jpg`, i === 6 || i === 7 ? 1280 : 1920, i === 6 || i === 7 ? 720 : i === 5 || i === 8 ? 1440 : 1280, `Bisket Jatra, Bhaktapur — frame ${i + 1}`, "2026-04-13T15:00:00", "Bhaktapur"),
   ),
+  /* UC-C3 §9/§12 — fixture VIDEO assets in My Media (poster frame + duration; the honest
+     prototype video, same model the accepted m-video fixture uses). */
+  vid("vid-phewa", "video-poster-9x16.jpg", 675, 1200, "Dusk over Phewa lake, portrait video", "1:24", "2026-09-09T18:24:00", "Phewa Tal, Pokhara"),
+  vid("vid-kora", "boudha-night.jpg", 1920, 1280, "Evening kora around Boudhanath, video", "0:42", "2026-09-08T21:35:00", "Boudhanath, Kathmandu"),
+  vid("vid-terrace", "terraces.jpg", 1920, 1440, "Wind over the rice terraces, video", "2:05"),
 ];
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -410,7 +578,9 @@ export const SEED_MOMENTS: Moment[] = [
     media: { kind: "photos", items: [lib("rain")] },
     responses: 3,
     responders: ["p-asha", "p-bikash", "p-prakash"],
-    notes: [n("n-rain-1", "p-asha", "Come to Pokhara — it is still raining here too.", "2026-09-10T08:02:00")],
+    // S2 — one seeded Response Boom so the conversation-weight expression is visible on the
+    // first screen without interaction (Luca felt Sofia's response).
+    notes: [{ ...n("n-rain-1", "p-asha", "Come to Pokhara — it is still raining here too.", "2026-09-10T08:02:00"), expressions: { "p-bikash": "care" } }],
   }),
   M({
     id: "m-1983",
@@ -504,7 +674,7 @@ export const SEED_MOMENTS: Moment[] = [
     responses: 21,
     responders: ["u-demo-001", "p-bikash", "p-sunita", "p-prakash", "p-krishna", "p-ramesh"],
     notes: [
-      n("n-vid-1", "p-prakash", "Machhapuchhre showing off again.", "2026-09-09T20:14:00"),
+      { ...n("n-vid-1", "p-prakash", "Machhapuchhre showing off again, @Giulia Bianchi.", "2026-09-09T20:14:00"), mentions: ["u-demo-001"] },
       n("n-vid-2", "u-demo-001", "Every time.", "2026-09-09T20:30:00", "n-vid-1"),
     ],
   }),
@@ -789,7 +959,9 @@ function fortyNotes(): Note[] {
     const parent = i > 0 && i % 3 === 2 ? notes.filter((x) => !x.parentId).slice(-1)[0]?.id : undefined;
     // Phase 4.4-A (A15) — local wall-clock time, like every other fixture. `toISOString()` wrote
     // UTC as if it were local, so responses read as written before the Moment itself (11:18 under 16:40).
-    notes.push({ id, authorId: authors[i % authors.length], text: lines[i], at: localWallClock(new Date(t)), parentId: parent, responses: i % 5 === 0 ? 2 : 0 });
+    // S4 — Elena's thanks on Giulia's own welcome (n-forty-22), the response-boom event's truth.
+    const expressions = i === 22 ? { "p-sunita": "thanks" as const } : undefined;
+    notes.push({ id, authorId: authors[i % authors.length], text: lines[i], at: localWallClock(new Date(t)), parentId: parent, responses: i % 5 === 0 ? 2 : 0, expressions });
   }
   return notes;
 }
@@ -799,15 +971,25 @@ function fortyNotes(): Note[] {
 export const SEED_NOTIFICATIONS: Notification[] = [
   // The live system has friends; a request arrives as a notification and is
   // answered where it appears (complete-My-World pass, recorded exception).
-  { id: "n-request", whoId: "p-prakash", text: "asked to be your friend", at: "2026-09-11T08:05:00", unread: true, kind: "request" },
-  { id: "nt1", whoId: "p-asha", text: "responded to your Thamel moment", at: "2026-09-10T08:02:00", unread: true, momentId: "m-rain" },
+  // S1: the single incoming request is Francesca (p-rory) — Chiara joined the connected circle
+  // when My World composition became owner + accepted connections only.
+  { id: "n-request", whoId: "p-rory", text: "asked to be your friend", at: "2026-09-11T08:05:00", unread: true, kind: "request" },
+  { id: "nt1", whoId: "p-asha", text: "responded to your Thamel moment", at: "2026-09-10T08:02:00", unread: true, momentId: "m-rain", noteId: "n-rain-1" },
   { id: "nt2", whoId: "p-sunita", text: "shared a moment", at: "2026-09-10T09:12:00", unread: true, momentId: "m-1983" },
-  { id: "nt3", whoId: "p-bikash", text: "responded to your Mustang panorama", at: "2026-09-10T10:30:00", unread: true, momentId: "m-panorama" },
-  { id: "nt4", whoId: "p-prakash", text: "mentioned you in a note", at: "2026-09-09T20:30:00", unread: false, momentId: "m-video" },
-  { id: "nt5", whoId: "p-krishna", text: "responded to your स्वयम्भू moment", at: "2026-09-09T07:15:00", unread: false, momentId: "m-nepali-1" },
+  { id: "nt3", whoId: "p-bikash", text: "responded to your Mustang panorama", at: "2026-09-10T10:30:00", unread: true, momentId: "m-panorama", noteId: "n-panorama-1" },
+  { id: "nt4", whoId: "p-prakash", text: "mentioned you in a response", at: "2026-09-09T20:14:00", unread: false, momentId: "m-video", noteId: "n-vid-1", kind: "mention" },
+  { id: "nt5", whoId: "p-krishna", text: "responded to your स्वयम्भू moment", at: "2026-09-09T07:15:00", unread: false, momentId: "m-nepali-1", noteId: "n-nepali-1-1" },
   { id: "nt6", whoId: "p-ramesh", text: "shared a moment", at: "2026-09-08T12:25:00", unread: false, momentId: "m-sameage" },
   { id: "nt7", whoId: "p-sunita", text: "added you to a meeting at Ratmate school", at: "2026-09-08T11:05:00", unread: false, momentId: "m-meeting" },
-  { id: "nt8", whoId: "p-m", text: "responded to your snow trek", at: "2026-09-07T22:40:00", unread: false, momentId: "m-snow" },
+  { id: "nt8", whoId: "p-m", text: "responded to your snow trek", at: "2026-09-07T22:40:00", unread: false, momentId: "m-snow", noteId: "n-snow-1" },
+  // S4 — the remaining meaningful event kinds, each truthful against a real fixture:
+  // Sofia's n-forty-23 IS a reply to Giulia's n-forty-22; Elena's thanks IS on n-forty-22
+  // (seeded below in fortyNotes); Luca's joy IS on m-rain (the R2 Moment-Boom seed);
+  // Matteo IS a friend today. All read — no accepted unread-count contract changes.
+  { id: "nt-reply", whoId: "p-asha", text: "replied to your response", at: "2026-09-06T21:40:00", unread: false, momentId: "m-forty", noteId: "n-forty-23", kind: "reply" },
+  { id: "nt-response-boom", whoId: "p-sunita", text: "felt thanks about your response", at: "2026-09-06T21:20:00", unread: false, momentId: "m-forty", noteId: "n-forty-22", kind: "response-boom" },
+  { id: "nt-moment-boom", whoId: "p-bikash", text: "felt joy about your Thamel moment", at: "2026-09-06T20:10:00", unread: false, momentId: "m-rain", kind: "moment-boom" },
+  { id: "nt-accepted", whoId: "p-marcus", text: "accepted your friend request", at: "2026-09-05T18:30:00", unread: false, kind: "accepted" },
 ];
 
 export const RECENT_SEARCHES = ["Boudha", "Elena Ricci", "Mustang", "भदौ"];

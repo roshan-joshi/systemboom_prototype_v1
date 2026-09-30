@@ -159,7 +159,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     console.log("4. Notification identity");
     await open(page, SOCIAL, { theme: "dark", w: 390, extra: { bell: "1" } });
     const notifRow = await identityOf(page, "[data-sb-notification-request]");
-    ok(notifRow.initials === "PL" || notifRow.photo, `the request notification carries the same real-photo/initials identity (${notifRow.initials ?? notifRow.photo})`);
+    ok(notifRow.initials === "FM" || notifRow.photo, `the request notification carries the same real-photo/initials identity (${notifRow.initials ?? notifRow.photo})`);
     await shot(page, "13-notification-photo-ring");
 
     /* ---- 5. Owner precise / visitor band-only ---- */
@@ -185,22 +185,16 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     const density = (id, connected) => page.evaluate((i, c) => window.__SB_RING_DENSITY(i, c), id, connected);
     const densitySelf = (id) => page.evaluate((i) => window.__SB_RING_DENSITY_SELF(i), id);
 
-    // Social Freeze Delta (2026-09-12): the friends-privacy → connected-visitor density path was
-    // removed — that backend contract is unverified (recorded as FRIENDS PRIVACY BACKEND CONTRACT
-    // — VERIFY DURING LIVE PORT in view-model.ts). A visitor's density is public-only now,
-    // regardless of `connected` — these assertions prove `connected` truly changes nothing today.
-    const krishnaConnected = await density("p-krishna", true);
-    const krishnaStranger = await density("p-krishna", false);
-    ok(total(krishnaConnected) === 0 && total(krishnaStranger) === 0, `Krishna's only Moment is friends-privacy — unverified, so nobody but Krishna sees it in density (connected ${total(krishnaConnected)}, stranger ${total(krishnaStranger)})`);
-
-    const prakashConnected = await density("p-prakash", true);
-    const prakashStranger = await density("p-prakash", false);
-    ok(total(prakashConnected) === 3 && total(prakashStranger) === 3, `a connected viewer and a stranger see the same 3 public Moments of Prakash's 5 — friends-privacy ones never count (${total(prakashConnected)} vs ${total(prakashStranger)})`);
-    ok(total(prakashConnected) === total(prakashStranger), "connected changes nothing about density until the friends-visibility contract is verified");
-
-    const bikashConnected = await density("p-bikash", true);
-    const bikashStranger = await density("p-bikash", false);
-    ok(total(bikashConnected) === 2 && total(bikashStranger) === 2, `Bikash's Moments are public — a stranger and a friend see the same density (${total(bikashStranger)})`);
+    // Social Wall S1 §5.6 (owner-decided, 2026-09-25) — supersedes both the connected-density
+    // opt-in AND the Social Freeze Delta's public-only compromise: another person's ring carries
+    // NO per-band density at all. Bucketing someone's dated Moments by band is a set of
+    // birth-date constraints whatever subset feeds it; no relationship unlocks it. The probes
+    // prove `connected` and relationship truly change nothing: the density set is empty.
+    for (const [id, who] of [["p-krishna", "Federico"], ["p-prakash", "Chiara"], ["p-bikash", "Luca"]]) {
+      const conn = await density(id, true);
+      const stranger = await density(id, false);
+      ok(total(conn) === 0 && total(stranger) === 0, `${who}'s ring carries no density for ANY other viewer — connected ${total(conn)}, stranger ${total(stranger)} (S1 §5.6)`);
+    }
 
     // A genuine third party (Asha, a friend — "ashaVisitor" mode: me = Asha, subject = Maya) —
     // `density()` closes over whoever `me` currently is, so this needs the store's viewer actually
@@ -209,8 +203,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
     await open(page, SOCIAL, { theme: "dark", extra: { viewer: "ashaVisitor" } });
     const mayaConnected = await density("u-demo-001", true);
     const mayaSelf = await densitySelf("u-demo-001");
-    ok(total(mayaSelf) > total(mayaConnected), `Maya's own density (${total(mayaSelf)}) includes her private Health/Problem Moments — even a connected visitor's (${total(mayaConnected)}) never does`);
-    ok(total(mayaConnected) === total(mayaSelf) - 2, "exactly the two only-me Health/Problem Moments are excluded from a visitor's ring — nothing else (§9)");
+    ok(total(mayaSelf) > 0 && total(mayaConnected) === 0, `only Giulia's OWN ring carries her density (${total(mayaSelf)}); a visitor's — connected or not — carries none (${total(mayaConnected)}) (S1 §5.6)`);
     await open(page, SOCIAL, { theme: "dark" });
 
     await typeSearch(page, "Luca");
@@ -229,7 +222,7 @@ const total = (arr) => arr.reduce((a, b) => a + b, 0);
 
     /* ---- 7. Ring never encodes relationship or presence ---- */
     console.log("7. Ring geometry stays Life-only");
-    for (const [id, term, rel] of [["p-bikash", "Luca", "friend"], ["p-ramesh", "Marco", "none"], ["p-prakash", "Chiara", "request-in"]]) {
+    for (const [id, term, rel] of [["p-bikash", "Luca", "friend"], ["p-walt", "Beatrice", "none"], ["p-rory", "Francesca", "request-in"]]) {
       await typeSearch(page, term);
       await page.click(`[data-sb-search-person='${id}']`);
       await sleep(400);

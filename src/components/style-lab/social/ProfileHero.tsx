@@ -51,6 +51,7 @@ export function ProfileHero({
   connected = false,
   moments,
   relationship,
+  relationshipWith,
   canPreviewPublic = false,
   selfPreview = false,
   onEnterPreview,
@@ -63,6 +64,10 @@ export function ProfileHero({
   moments?: Moment[];
   /** The acting viewer's relationship to this subject — shown only when it's a stable, symmetric one (friend/family); request/none states stay silent here, PersonCard is the actionable surface. */
   relationship?: Relationship;
+  /** S1 §5.2 — the person a relationship action here acts ON (the pair's non-anchor participant,
+   *  from `relationshipKeyFor`): the subject when the owner opens someone's World, the acting
+   *  visitor themself in a harness visitor mode. Defaults to the visitor for compatibility. */
+  relationshipWith?: string;
   /** The real owner, looking at their own profile, not yet previewing — offer the entry. */
   canPreviewPublic?: boolean;
   /** The owner is currently previewing their own profile through the public's eyes. */
@@ -91,11 +96,11 @@ export function ProfileHero({
   // (§26) — it renders entirely in this text/action row, exactly as the design model requires.
   const relKey = !owner && relationship ? REL_WORD_KEY[relationship] : undefined;
   const relWord = relKey ? t(relKey) : undefined;
-  // `connected` already carries world.canMessage(me.id) from the caller (SocialPreview) — the
-  // same check heroConnected/heroRelationship are built from; recomputing it against `subject`
-  // here would ask the wrong question (subject is always the profile owner, never "the other
-  // person" the real signed-in viewer has a relationship with). The same is true of every
-  // relationship-changing dispatch below: the id is always `viewer.id`.
+  // `connected` and `relationship` carry the caller's direction-aware truth (SocialPreview's
+  // `relationshipBetween(me, profile)`); recomputing either against `subject` here would ask the
+  // wrong question in half the cases. Every relationship-changing dispatch below acts on
+  // `relActsOn` — the pair's one non-anchor participant (S1 §5.2).
+  const relActsOn = relationshipWith ?? viewer.id;
   const canMessage = !owner && !!world && connected;
   const canAct = !owner && !!world && !!relationship;
   const cover = forceNoCover ? undefined : person.cover;
@@ -107,15 +112,15 @@ export function ProfileHero({
 
   const message = () => {
     if (!world) return;
-    // The real other person, from world's perspective, is the viewer here (see `canMessage` above)
-    // — `subject` is always the profile's own owner, never the counterpart in the conversation.
-    if (window.matchMedia("(min-width: 1024px)").matches) world.dispatch({ type: "openMini", id: viewer.id });
-    else router.push(`/chat?c=${viewer.id}`);
+    // Conversations are keyed by the pair's non-anchor participant — the same key the
+    // relationship map uses (S1 §5.2).
+    if (window.matchMedia("(min-width: 1024px)").matches) world.dispatch({ type: "openMini", id: relActsOn });
+    else router.push(`/chat?c=${relActsOn}`);
   };
-  const addFriend = () => world?.dispatch({ type: "add", id: viewer.id });
-  const cancelRequest = () => world?.dispatch({ type: "cancel", id: viewer.id });
-  const acceptRequest = () => world?.dispatch({ type: "accept", id: viewer.id });
-  const declineRequest = () => world?.dispatch({ type: "decline", id: viewer.id });
+  const addFriend = () => world?.dispatch({ type: "add", id: relActsOn });
+  const cancelRequest = () => world?.dispatch({ type: "cancel", id: relActsOn });
+  const acceptRequest = () => world?.dispatch({ type: "accept", id: relActsOn });
+  const declineRequest = () => world?.dispatch({ type: "decline", id: relActsOn });
 
   return (
     <section aria-label={`${person.name} — profile`} className="overflow-hidden rounded-[24px] border border-[var(--card-edge)] bg-[var(--card)] shadow-[var(--card-shadow)] @2xl:rounded-[32px]" data-sb-hero={owner ? "owner" : "visitor"} data-sb-self-preview={selfPreview ? "" : undefined}>

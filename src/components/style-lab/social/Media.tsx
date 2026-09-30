@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Play } from "lucide-react";
 import { useT } from "@/lib/i18n/LocaleProvider";
-import type { Media as MediaT, Photo } from "./data";
+import type { GalleryItem, Media as MediaT, Photo } from "./data";
 
 /** A photo that cannot load keeps its place: same aspect, quiet ground, its own words. */
 function SafeImg({ photo }: { photo: Photo }) {
@@ -51,9 +51,25 @@ export function MediaBlock({ media, quiet = false }: { media: MediaT; quiet?: bo
   }, [expanded]);
   const radius = quiet ? "rounded-[4px]" : "@2xl:rounded-[4px]";
 
-  if (media.kind === "photos") {
-    const items = media.items;
-    if (items.length === 1) return <Frame photo={items[0]} className={radius} />;
+  if (media.kind === "photos" || media.kind === "gallery") {
+    const items: GalleryItem[] = media.items;
+    if (items.length === 1) {
+      const only = items[0];
+      if (!only.videoDuration) return <Frame photo={only} className={radius} />;
+      // A single video in a gallery reads exactly like the accepted video block.
+      const ar = only.w / only.h;
+      return (
+        <figure className={`sb-media relative max-w-full overflow-hidden bg-[var(--sheet-raised)] ${radius}`} style={{ aspectRatio: `${only.w} / ${only.h}`, maxHeight: MAX_H, width: ar < 1 ? Math.round(MAX_H * ar) : undefined }}>
+          <SafeImg photo={only} />
+          <button type="button" disabled aria-disabled="true" aria-label={t("media.playVideo", { duration: only.videoDuration })} className="absolute inset-0 flex cursor-default items-center justify-center focus-visible:outline-[var(--focus)]" data-sb-video-play>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/80 bg-[rgba(10,13,20,0.35)] text-white">
+              <Play size={20} fill="currentColor" strokeWidth={0} className="ml-1" />
+            </span>
+          </button>
+          <span className="absolute bottom-2 left-2 rounded-[3px] bg-[rgba(10,13,20,0.82)] px-1.5 py-0.5 text-[11px] font-medium text-white tabular-nums">{only.videoDuration}</span>
+        </figure>
+      );
+    }
     const shown = expanded ? items : items.slice(0, 4);
     const extra = items.length - shown.length;
     return (
@@ -74,6 +90,17 @@ export function MediaBlock({ media, quiet = false }: { media: MediaT; quiet?: bo
             return (
               <figure key={p.src + i} className="relative m-0 block overflow-hidden bg-[var(--sheet-raised)]" style={style} data-sb-media-tile>
                 <SafeImg photo={p} />
+                {/* UC-C3 §9 — a video tile says so: play mark + its clip length, never a bare photo */}
+                {p.videoDuration && (
+                  <>
+                    <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-[rgba(10,13,20,0.35)] text-white">
+                        <Play size={14} fill="currentColor" strokeWidth={0} className="ml-0.5" />
+                      </span>
+                    </span>
+                    <span className="absolute bottom-1.5 left-1.5 rounded-[3px] bg-[rgba(10,13,20,0.82)] px-1 py-0.5 text-[10px] font-medium text-white tabular-nums" data-sb-tile-duration>{p.videoDuration}</span>
+                  </>
+                )}
               </figure>
             );
           })}

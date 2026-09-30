@@ -97,7 +97,7 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   await open(page, { theme: "light" });
   await page.click("[data-sb-people]");
   await sleep(400);
-  await page.type("[data-sb-people-find]", "Marco");
+  await page.type("[data-sb-people-find]", "Beatrice");
   await sleep(400);
   const found = await page.$$eval("[data-sb-people-row]", (els) => els.map((e) => e.getAttribute("data-sb-people-row")));
   ok(found.length === 1, `Find someone narrows to the matching person (${found.length})`);
@@ -181,10 +181,17 @@ const heroRel = (page) => page.$eval("[data-sb-hero-relationship]", (e) => e.get
   ok(!(await page.$("[data-sb-hero-add-friend]")), "Add Friend never targets the owner's own profile while previewing");
   await shot(page, "21-owner-view-as-public");
 
-  /* ---- 10. Relationship states via the request-in seed (Prakash) directly on the Hero ---- */
+  /* ---- 10. Relationship states on the Hero — S1 (owner-decided) supersession: the request-in
+     surface is now exercised the semantically correct way round. The requester (Francesca) sees
+     "Requested + Cancel" on Giulia's Hero (you cannot accept your own request); the OWNER opens
+     the requester's World (§5.5 Open World) and Accept lives on THAT Hero. The invariant this
+     protected — every relationship state is a live STATE + ACTION on the Hero itself, and
+     accepting there really resolves to Friend — is unchanged, asserted on both sides. ---- */
   console.log("10. Full relationship state coverage on the Hero");
   await open(page, { theme: "light", extra: { viewer: "prakashVisitor" } });
-  ok((await heroRel(page)) === "request-in", "Hero shows request-in — Wants to connect + Accept/Decline, not silence");
+  ok((await heroRel(page)) === "friend", "a connected visitor's Hero states the stable relationship (Chiara → Giulia: Friends)");
+  await open(page, { theme: "light", extra: { profile: "p-rory" } });
+  ok((await heroRel(page)) === "request-in", "the requester's own World shows request-in to the owner — Wants to connect + Accept/Decline, not silence");
   ok(!!(await page.$("[data-sb-hero-accept]")) && !!(await page.$("[data-sb-hero-decline]")), "Accept/Decline are both real controls on the Person surface itself");
   await page.click("[data-sb-hero-accept]");
   await sleep(400);

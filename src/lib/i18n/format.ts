@@ -94,6 +94,21 @@ export function sbDate(locale: LocaleCode, iso: string): string {
   return `${day} ${mon} ${year}`;
 }
 
+/**
+ * Canonical §18 — the truthful COARSE date grammar: a month- or year-precision claim never
+ * prints a day it does not know. Same shipped month tables and determinism rules as sbDate.
+ */
+export function sbDateCoarse(locale: LocaleCode, iso: string, precision: "month" | "year"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const m = d.getMonth();
+  const year = d.getFullYear();
+  if (precision === "year") return locale === "zh-Hans" ? `${year}年` : String(year);
+  if (locale === "zh-Hans") return `${year}年${m + 1}月`;
+  if (LATIN.has(locale)) return `${(SHORT_MONTHS[locale] ?? EN_MONTHS)[m]} ${year}`;
+  return `${(LONG_MONTHS[locale] ?? EN_MONTHS)[m]} ${year}`;
+}
+
 /** 24-hour HH:MM — deterministic across runtimes (no locale am/pm ICU divergence, §23). */
 export function sbTime(locale: LocaleCode, iso: string): string {
   const d = new Date(iso);

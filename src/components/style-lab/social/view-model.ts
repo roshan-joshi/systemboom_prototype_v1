@@ -14,6 +14,7 @@
  * browser never needs another person's birth instant to render Social.
  */
 
+import { now } from "@/lib/clock";
 import { birthInstant, type BirthTruth } from "@/lib/identity/birth";
 import { CIRCLE_BANDS, computeLifeTime, currentBandIndex } from "@/lib/life-time";
 import type { Moment, Person } from "./data";
@@ -68,6 +69,37 @@ export interface RingView {
 
 const isOwner = (viewer: Person, subject: Person) => viewer.id === subject.id;
 
+/* ────────────────────────────── THE ACCESS SEAM ──────────────────────────────
+ * Social Wall S1 (owner-decided §5.3): ONE canonical audience matrix. Every surface — the feed,
+ * a person's World, View as public, Search, a notification landing — answers "may this viewer
+ * see this Moment?" HERE, never with its own re-implementation.
+ *
+ *                 PUBLIC   FRIENDS   ONLY ME
+ *   owner (self)   yes       yes       yes
+ *   friend         yes       yes       no
+ *   family         yes       yes       no
+ *   request-in     yes       no        no
+ *   request-out    yes       no        no
+ *   stranger       yes       no        no
+ *   View as public yes       no        no      (the stranger row, verbatim)
+ *
+ * PROTOTYPE ENFORCEMENT vs LIVE CONTRACT: here this filters client state; in the live system the
+ * SERVER must apply this same matrix before a Moment ever reaches a visitor payload
+ * (docs/handover/social-api-contract.md §D). Client filtering is presentation, not security.
+ * The matrix is deliberately extensible: a future audience type adds a row here, nowhere else. */
+
+export type ViewerRelationship = "self" | "friend" | "family" | "request-in" | "request-out" | "none";
+
+/** Family qualifies as CONNECTED for Friends-audience access (S1 §5.2). */
+export const connectedRel = (r: ViewerRelationship) => r === "self" || r === "friend" || r === "family";
+
+export function canSeeMoment(m: Moment, viewerId: string, rel: ViewerRelationship): boolean {
+  if (m.authorId === viewerId) return true;
+  if (m.privacy === "public") return true;
+  if (m.privacy === "friends") return connectedRel(rel);
+  return false; // "onlyme" — and any future audience type is invisible until a row above says otherwise
+}
+
 export function personViewFor(viewer: Person, subject: Person): PersonView {
   const v: PersonView = { id: subject.id, name: subject.name, home: subject.home };
   if (subject.avatar) v.avatar = subject.avatar;
@@ -109,10 +141,19 @@ export function lifeViewFor(viewer: Person, subject: Person, at: Date): LifeView
   };
 }
 
-/** The readout's life position for a moment: exact for the viewer's own, band for anyone else. */
+/**
+ * The readout's life position for a moment: exact-at-the-moment for the viewer's OWN Moments;
+ * for anyone else, the author's CURRENT band — never the band at the Moment's date. S1 §5.6
+ * (owner-decided): a historical band derived from a Moment date narrows a birth date (seeing
+ * "0–15" on a 1998 Moment brackets the birth year); the visitor-safe identity is the person's
+ * current band, which every other surface already discloses.
+ */
 export function momentLifeFor(viewer: Person, author: Person, at: Date): { exact?: string; band: string } {
-  const life = lifeViewFor(viewer, author, at);
-  return life.scope === "owner" ? { exact: life.exact, band: life.band } : { band: life.band };
+  if (isOwner(viewer, author)) {
+    const life = lifeViewFor(viewer, author, at);
+    return life.scope === "owner" ? { exact: life.exact, band: life.band } : { band: life.band };
+  }
+  return { band: bandAt(author, now()).band };
 }
 
 function bandCounts(subject: Person, moments: Moment[]): number[] {
@@ -125,53 +166,28 @@ function bandCounts(subject: Person, moments: Moment[]): number[] {
  * Ring data for a subject. Others get band-level fill only — no tick, no
  * calendar years, no exact age; that part is unconditional.
  *
- * Documented-memory density (`momentsByBand`) is two different rules depending
- * on whether the caller passes `connected`:
+ * Documented-memory density (`momentsByBand`) is OWNER-ONLY — Social Wall S1 §5.6
+ * (owner-decided, 2026-09-25), superseding the Person + Life Identity connected-density opt-in
+ * and closing the Social Freeze Delta's "flip on later" seam: a per-band count buckets another
+ * person's dated Moments by the band they were in AT THAT DATE, and every bucket is a birth-date
+ * constraint (three buckets can bracket a birth year to months). No relationship unlocks it.
+ * The `connected` parameter is kept so no call site churns; it changes nothing.
  *
- * - `connected` OMITTED (legacy call sites — `CircleModule`, the full Circle):
- *   unchanged since Phase 5 §23 — density only for the OWNER's own ring;
- *   nothing is computed for anyone else. Do not pass a fifth argument here
- *   merely to "try" the new behaviour — it is a deliberate opt-in.
- * - `connected` PASSED (Person + Life Identity pass, §8–§9 — `PersonIdentity`
- *   call sites: ProfileHero, PersonCard): a visitor's density is aggregated
- *   from Moments that viewer may actually see. Health/Problem content and an
- *   only-me Moment are NEVER included, regardless of relationship — that part
- *   is unconditional. `public` Moments always count.
- *
- *   `friends`-privacy Moments do NOT currently count toward a connected
- *   viewer's density, even when `connected` is true. **FRIENDS PRIVACY
- *   BACKEND CONTRACT — VERIFY DURING LIVE PORT** (Social Freeze Delta,
- *   2026-09-12): nothing in this repo's handover evidence (`social-api-
- *   contract.md`, `docs/SYSTEMBOOM-HANDOFF-BRIEF.md`) confirms that the live
- *   product's friend/family relationship is actually what gates visibility of
- *   a `privacy:"friends"` Moment — that is a real backend contract this
- *   prototype cannot verify. Per the owner's explicit instruction, an
- *   unverified relationship must never be assumed to unlock additional
- *   density: `connected` is threaded through every call site so that once the
- *   live contract is confirmed, turning it on is a one-line change to the
- *   filter below — not a redesign. Until then, relationship makes no
- *   difference to what a non-owner's ring shows.
- *
- *   The aggregation SET is the safeguard either way: we never compute a full
- *   count and hide entries after. Position (bandIndex/fraction) does not
- *   change either way — a visitor still gets no fraction, no tick, no
- *   calendar years, so this cannot narrow a birth date beyond what the band
- *   itself already discloses.
+ * The aggregation SET remains the safeguard for the owner too: Health/Problem and only-me
+ * content stand inside the owner's own counts because only the owner ever receives them.
  */
 export function ringViewFor(viewer: Person, subject: Person, at: Date, moments?: Moment[], connected?: boolean): RingView {
   const life = lifeViewFor(viewer, subject, at);
   const ring: RingView = { bandIndex: life.bandIndex };
   if (life.scope === "owner") ring.fraction = life.fraction;
   if (moments && life.scope === "owner") {
-    ring.momentsByBand = bandCounts(subject, moments.filter((m) => m.authorId === subject.id));
-  } else if (moments && life.scope === "other" && connected !== undefined) {
-    // FRIENDS PRIVACY BACKEND CONTRACT — VERIFY DURING LIVE PORT: only `public` counts here.
-    // `connected` is intentionally unused in this filter until that contract is confirmed (see
-    // the doc comment above) — it stays a real parameter, not a placeholder, so every call site
-    // is already correct the day the live team verifies the contract.
-    const visible = moments.filter((m) => m.authorId === subject.id && m.kind !== "health" && m.kind !== "problem" && m.privacy === "public");
-    ring.momentsByBand = bandCounts(subject, visible);
+    // Universal Composer: a social-only post (record "none") is not a Human Record — it never
+    // counts as documented life. Health/Problem and only-me records still stand (owner-only set).
+    // §18 — an unknown-date record cannot be banded truthfully: no density from an anchor.
+    ring.momentsByBand = bandCounts(subject, moments.filter((m) => m.authorId === subject.id && m.record !== "none" && m.timePrecision !== "unknown"));
   }
+  // S1 §5.6: no non-owner branch — another person's ring never carries per-band density.
+  void connected;
   return ring;
 }
 

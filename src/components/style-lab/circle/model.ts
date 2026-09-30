@@ -117,7 +117,11 @@ const stateOf = (f: number): SegmentState => (f >= 1 ? "lived" : f <= 0 ? "unwri
  */
 export function visibleMoments(viewer: Person, subject: Person, moments: Moment[], hidden: string[] = []): Moment[] {
   const own = viewer.id === subject.id;
-  return moments.filter((m) => m.authorId === subject.id && !hidden.includes(m.id) && (own || m.privacy !== "onlyme"));
+  // Universal Composer: a social-only post (record "none") is not a Human Record — it does not
+  // exist to the Circle at all (placement, density or the Day Almanac), for the owner too.
+  // Canonical §18 — an UNPLACED record (its event date is stated unknown) never lands at a
+  // fabricated Circle coordinate; it stays reachable in the stream until it can be placed.
+  return moments.filter((m) => m.authorId === subject.id && m.record !== "none" && m.timePrecision !== "unknown" && !hidden.includes(m.id) && (own || m.privacy !== "onlyme"));
 }
 
 const countIn = (moments: Moment[], start: Date, end: Date) => {

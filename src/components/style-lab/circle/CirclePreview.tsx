@@ -20,9 +20,10 @@ import { useReducedMotionPref } from "@/lib/use-reduced-motion";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { SystemboomLogo } from "@/components/ui/SystemboomLogo";
 import { WorldShell } from "@/components/shell/WorldShell";
-import { Composer, emptyDraft } from "../social/Composer";
+import { UniversalComposer } from "../social/composer/UniversalComposer";
+import { circleUDraft, type UDraft } from "../social/composer/types";
 import { LifeRing } from "../social/LifeRing";
-import { SocialStore, useSocial, type Draft } from "../social/store";
+import { SocialStore, useSocial } from "../social/store";
 import { lifeViewFor, personViewFor, ringViewFor } from "../social/view-model";
 import { CircleView } from "./CircleView";
 import { circleViewFor, decodeCoord, type Coord } from "./model";
@@ -79,7 +80,7 @@ function Inner({ product = false }: { product?: boolean }) {
   const [entry, setEntry] = useState<"ring" | "circle">("circle");
   const [initialCoord, setInitialCoord] = useState<Coord | undefined>(undefined);
   const [ready, setReady] = useState(false);
-  const [composer, setComposer] = useState<Draft | null>(null);
+  const [composer, setComposer] = useState<UDraft | null>(null);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -111,7 +112,10 @@ function Inner({ product = false }: { product?: boolean }) {
   const own = me.id === profile.id;
   const at = now();
   const life = lifeViewFor(me, profile, at);
-  const onRecordAt = useCallback((date: string) => setComposer(emptyDraft(date, me.home)), [me.home]);
+  // Universal Composer: "Record here" is the Circle's own doorway — the person is explicitly
+  // RECORDING at a life coordinate, so the draft opens as a chosen Life Moment (words alone
+  // would otherwise resolve to a social-only post that the Circle, correctly, never shows).
+  const onRecordAt = useCallback((date: string) => setComposer(circleUDraft(date)), []);
   const containerW = frame === "desktop" ? "100vw" : FRAME_PX[frame];
 
   return (
@@ -212,7 +216,7 @@ function Inner({ product = false }: { product?: boolean }) {
             </main>
             {composer && (
               <div className="sb-social">
-                <Composer open initial={composer} onClose={() => setComposer(null)} />
+                <UniversalComposer open initial={composer} onClose={() => setComposer(null)} />
               </div>
             )}
           </div>

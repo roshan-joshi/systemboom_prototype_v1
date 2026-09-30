@@ -126,7 +126,7 @@ const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollW
   /* ---- 9. Notification → Person, and back to the same row ---- */
   console.log("9. Notification → Person → back");
   await page.$eval("[data-sb-notification-request] button", (b) => b.click()); await sleep(400);
-  ok(!!(await page.$("[data-sb-person-card='p-prakash']")) && !!(await page.$("[data-sb-notifications]")), "a person event opens the Person surface over the still-open Notifications");
+  ok(!!(await page.$("[data-sb-person-card='p-rory']")) && !!(await page.$("[data-sb-notifications]")), "a person event opens the Person surface over the still-open Notifications");
   await page.keyboard.press("Escape"); await sleep(400);
   ok(await page.evaluate(() => !document.querySelector("[data-sb-person-card]") && !!document.activeElement?.closest("[data-sb-notifications]")), "closing the person returns focus into Notifications, where the reader was");
 

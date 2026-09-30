@@ -39,11 +39,11 @@ const openPeople = async (page) => { await page.click("[data-sb-people]"); await
   const found = await page.$$eval("[data-sb-people-row]", (n) => n.length);
   ok(found >= 1, `typing a name finds a person (${found})`);
 
-  /* ---- 3. none → request-out (Marco, p-ramesh, is unconnected) ---- */
+  /* ---- 3. none → request-out (Beatrice, p-walt, is unconnected — S1 made Marco a friend) ---- */
   console.log("3. none → request-out");
   await open(page, 1440, 900);
   await openPeople(page);
-  await page.type("[data-sb-people-find]", "marco");
+  await page.type("[data-sb-people-find]", "beatrice");
   await sleep(350);
   const addable = await page.$("[data-sb-people-add]");
   ok(!!addable, "an unconnected person offers a clear Add friend");

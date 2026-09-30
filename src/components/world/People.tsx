@@ -38,6 +38,7 @@ import { useSocial } from "@/components/style-lab/social/store";
 import { momentLifeFor } from "@/components/style-lab/social/view-model";
 import { now } from "@/lib/clock";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { relationshipBetween, relationshipKeyFor } from "./model";
 import { useWorld } from "./WorldProvider";
 import type { Relationship } from "./model";
 
@@ -45,7 +46,7 @@ export function PeopleButton({ open, onToggle }: { open: boolean; onToggle: () =
   const world = useWorld();
   const { me } = useSocial();
   const { t, tp } = useT();
-  const requests = Object.values(PEOPLE).filter((p) => p.id !== me.id && world.relationshipOf(p.id) === "request-in").length;
+  const requests = Object.values(PEOPLE).filter((p) => p.id !== me.id && relationshipBetween(world.relationships, me.id, p.id) === "request-in").length;
   return (
     <button
       type="button"
@@ -117,7 +118,7 @@ function PersonRow({ person, onOpen, onMessage, tier = "row" }: { person: Person
   const world = useWorld();
   const { me } = useSocial();
   const { t } = useT();
-  const rel = world.relationshipOf(person.id);
+  const rel = relationshipBetween(world.relationships, me.id, person.id);
   const life = momentLifeFor(me, person, now());
   const request = tier === "request";
   const town = person.home ? person.home.split(",")[0] : "";
@@ -141,7 +142,7 @@ function PersonRow({ person, onOpen, onMessage, tier = "row" }: { person: Person
         {/* A request's Accept/Decline drop under the person on a phone (one-handed, nothing
             squeezed beside a 48px face); beside them where there is room. */}
         <span className={request ? "basis-full pl-[64px] @2xl:basis-auto @2xl:pl-0" : ""}>
-          <RelationshipAction id={person.id} rel={rel} onMessage={onMessage} />
+          <RelationshipAction id={relationshipKeyFor(me.id, person.id)} rel={rel} onMessage={onMessage} />
         </span>
       </div>
     </li>
@@ -170,9 +171,12 @@ export function PeoplePanel({ onClose }: { onClose: () => void }) {
 
   const others = useMemo(() => Object.values(PEOPLE).filter((p) => p.id !== me.id), [me.id]);
   const found = matchPeople(term, me.id);
-  const incoming = others.filter((p) => world.relationshipOf(p.id) === "request-in");
-  const outgoing = others.filter((p) => world.relationshipOf(p.id) === "request-out");
-  const yourPeople = others.filter((p) => { const r = world.relationshipOf(p.id); return r === "friend" || r === "family"; });
+  // S1 §5.2 — the panel is the ACTING VIEWER's own people. Direction-aware: for anyone but the
+  // demo owner the prototype truthfully knows only their one edge to the owner.
+  const relOf = (id: string) => relationshipBetween(world.relationships, me.id, id);
+  const incoming = others.filter((p) => relOf(p.id) === "request-in");
+  const outgoing = others.filter((p) => relOf(p.id) === "request-out");
+  const yourPeople = others.filter((p) => { const r = relOf(p.id); return r === "friend" || r === "family"; });
 
   // S5 §49 return context: the Person surface opens OVER People; the panel stays, so closing
   // the person lands focus back on the row it came from, query and scroll intact.

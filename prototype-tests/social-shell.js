@@ -267,7 +267,14 @@ async function enterAsDemo(page) {
       await page.click("[data-sb-open-composer]");
       await page.waitForSelector("[data-sb-composer]");
       await sleep(500);
-      ok(await page.evaluate(() => !!document.querySelector("[data-sb-composer] [data-sb-date-display]") && [...document.querySelectorAll("[data-sb-kind-row] span")].some((s) => s.textContent === "meal")), `${name}: the composer keeps its date grammar and kind words`);
+      // GREENFIELD supersession (Universal Composer §5/§48): the composer opens SOCIAL — no
+      // date instrument, no category row — and Record details reveals the seven records.
+      ok(await page.evaluate(async () => {
+        if (document.querySelector("[data-sb-kind-row]")) return false;
+        document.querySelector("[data-sb-record-details]")?.click();
+        await new Promise((r) => setTimeout(r, 250));
+        return [...document.querySelectorAll("[data-sb-kind-row] button")].some((b) => b.getAttribute("aria-label") === "Meal");
+      }), `${name}: the composer opens social; Record details carries the records`);
       await shot(page, name);
       await page.keyboard.press("Escape");
       await sleep(200);

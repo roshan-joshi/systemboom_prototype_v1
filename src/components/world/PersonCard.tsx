@@ -17,15 +17,18 @@
  * change (§63–§64: pending → connected is perceptible, never bouncy).
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, UserCheck, UserPlus, X } from "lucide-react";
+import { Globe2, MessageCircle, UserCheck, UserPlus, X } from "lucide-react";
 import { now } from "@/lib/clock";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
 import { PEOPLE } from "@/components/style-lab/social/data";
 import { lifeViewFor, personViewFor } from "@/components/style-lab/social/view-model";
 import { useSocial } from "@/components/style-lab/social/store";
 import { useT } from "@/lib/i18n/LocaleProvider";
+import { announce } from "@/lib/announce";
+import { connectedRel } from "@/components/style-lab/social/view-model";
+import { relationshipBetween, relationshipKeyFor } from "./model";
 import { useWorld } from "./WorldProvider";
 
 /** Relationship → the stable state word (catalog keys; en byte-identical to the accepted words). */
@@ -39,11 +42,13 @@ const REL_KEY: Record<string, string> = {
 
 export function PersonCard() {
   const world = useWorld();
-  const { me, state } = useSocial();
+  const { me, state, dispatch } = useSocial();
   const { t } = useT();
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const id = world.person;
+  // S6 — the reported person's id (not a boolean), so opening another card never inherits it.
+  const [reported, setReported] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -81,13 +86,23 @@ export function PersonCard() {
   const at = now();
   const person = personViewFor(me, subject);
   const life = lifeViewFor(me, subject, at);
-  const rel = world.relationshipOf(id);
+  // S1 §5.2 — the direction-aware relationship truth for THIS pair (the same function the Hero,
+  // People and the feed composition read), never the owner-anchored map read raw: a visitor
+  // opening the owner's card used to see "Not connected" while the Hero said "Friends".
+  const rel = relationshipBetween(world.relationships, me.id, id);
+  const actsOn = relationshipKeyFor(me.id, id);
   const band = life.scope === "owner" ? life.band : life.band;
 
   const message = () => {
     world.closePerson();
-    if (window.matchMedia("(min-width: 1024px)").matches) world.dispatch({ type: "openMini", id });
-    else router.push(`/chat?c=${id}`);
+    if (window.matchMedia("(min-width: 1024px)").matches) world.dispatch({ type: "openMini", id: actsOn });
+    else router.push(`/chat?c=${actsOn}`);
+  };
+  // S1 §5.5 / §7.4 — the card is the junction to the person's own World.
+  const openWorld = () => {
+    world.closePerson();
+    dispatch({ type: "openWorld", id: id === me.id ? null : id });
+    window.scrollTo({ top: 0 });
   };
 
   const primary = "sb-press inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[var(--boom)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--boom-strong)] focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:px-3.5";
@@ -106,7 +121,7 @@ export function PersonCard() {
           <span className="block shrink-0 rounded-full bg-[var(--sheet-raised,var(--content))] p-[3px]">
             {/* §31: a person card is large enough for documented-memory nuance — a friend/family
                 viewer sees density from Moments visible to them; a stranger's ring stays geometry only. */}
-            <PersonIdentity viewer={me} subject={subject} at={at} size={56} connected={world.canMessage(id)} moments={state.moments} label={t("life.circleBand", { band })} />
+            <PersonIdentity viewer={me} subject={subject} at={at} size={56} connected={connectedRel(rel)} moments={state.moments} label={t("life.circleBand", { band })} />
           </span>
           <div className="min-w-0 pt-0.5">
             <p className="truncate text-[18px] leading-tight font-semibold text-text">{person.name}</p>
@@ -127,21 +142,21 @@ export function PersonCard() {
         <div key={rel} className="mt-4 flex flex-wrap items-center gap-2 [animation:sb-rel-resolve_220ms_ease-out_both]" data-sb-person-actions>
           {rel === "request-in" && (
             <>
-              <button type="button" className={primary} onClick={() => world.dispatch({ type: "accept", id })} data-sb-accept>
+              <button type="button" className={primary} onClick={() => world.dispatch({ type: "accept", id: actsOn })} data-sb-accept>
                 <UserCheck size={14} strokeWidth={2} aria-hidden /> {t("rel.accept")}
               </button>
-              <button type="button" className={quiet} onClick={() => world.dispatch({ type: "decline", id })} data-sb-decline>
+              <button type="button" className={quiet} onClick={() => world.dispatch({ type: "decline", id: actsOn })} data-sb-decline>
                 {t("rel.decline")}
               </button>
             </>
           )}
           {rel === "none" && (
-            <button type="button" className={primary} onClick={() => world.dispatch({ type: "add", id })} data-sb-add-friend>
+            <button type="button" className={primary} onClick={() => world.dispatch({ type: "add", id: actsOn })} data-sb-add-friend>
               <UserPlus size={14} strokeWidth={2} aria-hidden /> {t("person.addFriend")}
             </button>
           )}
           {rel === "request-out" && (
-            <button type="button" className={quiet} onClick={() => world.dispatch({ type: "cancel", id })} data-sb-cancel-request>
+            <button type="button" className={quiet} onClick={() => world.dispatch({ type: "cancel", id: actsOn })} data-sb-cancel-request>
               {t("rel.cancelRequest")}
             </button>
           )}
@@ -150,10 +165,22 @@ export function PersonCard() {
               <button type="button" className={primary} onClick={message} data-sb-message>
                 <MessageCircle size={14} strokeWidth={2} aria-hidden /> {t("rel.message")}
               </button>
-              <button type="button" className="sb-transition ml-1 inline-flex min-h-9 items-center rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" onClick={() => world.dispatch({ type: "remove", id })} data-sb-remove-friend>
+              <button type="button" className="sb-transition ml-1 inline-flex min-h-9 items-center rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" onClick={() => world.dispatch({ type: "remove", id: actsOn })} data-sb-remove-friend>
                 {t("rel.remove")}
               </button>
             </>
+          )}
+          <button type="button" className={quiet} onClick={openWorld} data-sb-open-world>
+            <Globe2 size={14} strokeWidth={1.75} aria-hidden /> {t("person.openWorld")}
+          </button>
+          {/* S6 — the safety seam every person surface owes: quiet, last, announced.
+              The live system receives the report; here the seam records intent truthfully. */}
+          {reported === id ? (
+            <span className="inline-flex min-h-9 items-center px-2 text-[12px] text-muted" data-sb-person-reported>{t("person.reported")}</span>
+          ) : (
+            <button type="button" className="sb-transition inline-flex min-h-9 items-center rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" onClick={() => { setReported(id); announce(t("person.reported")); }} data-sb-person-report>
+              {t("person.report")}
+            </button>
           )}
         </div>
       </div>

@@ -102,15 +102,15 @@ async function enterIdentity(page) {
     await page.evaluate(async () => {
       const i = document.querySelector("input[type=search]");
       i.focus();
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Marco");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, "Beatrice");
       i.dispatchEvent(new Event("input", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 400));
     });
-    await page.click("[data-sb-search-person='p-ramesh']");
+    await page.click("[data-sb-search-person='p-walt']");
     await sleep(400);
     let card = await page.$eval("[data-sb-person-card]", (e) => ({ rel: e.getAttribute("data-sb-person-rel"), text: e.textContent }));
     ok(card.rel === "none" && /Add Friend/.test(card.text) && !/Message/.test(card.text), "a stranger's card: Add Friend, no Message");
-    ok(/Circle band 30–45/.test(card.text.replace(/\s+/g, " ")) && !/\d+y \d\dm/.test(card.text), "person card stays band-only — no exact age for anyone else");
+    ok(/Circle band 15–30/.test(card.text.replace(/\s+/g, " ")) && !/\d+y \d\dm/.test(card.text), "person card stays band-only — no exact age for anyone else (Beatrice, 15–30)");
     await shot(page, "11-person-stranger");
     await page.click("[data-sb-add-friend]");
     await sleep(250);
@@ -159,15 +159,15 @@ async function enterIdentity(page) {
     await open(page, "/world", { theme: "light" });
     await page.click("[data-sb-bell]");
     await sleep(400);
-    const req = await page.$eval("[data-sb-notification-request='p-prakash']", (e) => e.textContent);
+    const req = await page.$eval("[data-sb-notification-request='p-rory']", (e) => e.textContent);
     ok(/asked to be your friend/.test(req) && (await page.$("[data-sb-notif-accept]")) !== null, "a friend request arrives as a notification with Accept / Decline");
     await shot(page, "13-friend-request");
     await shot(page, "16-notification-friend");
     await page.click("[data-sb-notif-accept]");
     await sleep(300);
-    const outcome = await page.$eval("[data-sb-notification-request='p-prakash']", (e) => e.textContent);
+    const outcome = await page.$eval("[data-sb-notification-request='p-rory']", (e) => e.textContent);
     ok(/Now friends/.test(outcome), "accepting updates the notification truthfully");
-    await page.$eval("[data-sb-notification-request='p-prakash'] button", (b) => b.click());
+    await page.$eval("[data-sb-notification-request='p-rory'] button", (b) => b.click());
     await sleep(400);
     const prakash = await page.$eval("[data-sb-person-card]", (e) => e.getAttribute("data-sb-person-rel"));
     ok(prakash === "friend", "…and the person surface agrees: now a friend");

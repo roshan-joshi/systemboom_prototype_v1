@@ -47,6 +47,8 @@ function Inner() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const c = q.get("c");
+    // S6 verified — this file's own personOf returns undefined for an unknown id, so an
+    // unknown ?c= deep link truthfully lands on the conversation list, never a dead thread.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot read of the deep link
     if (c && personOf(c)) setActive(c);
     setReady(true);

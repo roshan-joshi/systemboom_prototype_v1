@@ -9,14 +9,18 @@
 import { useMemo, useState } from "react";
 import { PenLine } from "lucide-react";
 import type { Moment } from "../social/data";
-import { Composer, draftFromMoment } from "../social/Composer";
+import { UniversalComposer } from "../social/composer/UniversalComposer";
+import { uDraftFromMoment, type UDraft } from "../social/composer/types";
 import { MomentEntry } from "../social/Moment";
-import type { Draft } from "../social/store";
+import { useSocial } from "../social/store";
+import { useT } from "@/lib/i18n/LocaleProvider";
 
 const KIND_WORD: Record<string, string> = { moment: "Plain", meal: "Meal", activity: "Activity", problem: "Problem", health: "Health", project: "Project", meeting: "Meeting" };
 
 export function DayAlmanac({ date, moments, kindFilter, onKindFilter, own, onRecord }: { date: string; moments: Moment[]; kindFilter: string | null; onKindFilter: (k: string | null) => void; own: boolean; onRecord?: () => void }) {
-  const [editing, setEditing] = useState<Draft | null>(null);
+  const [editing, setEditing] = useState<UDraft | null>(null);
+  const { dispatch } = useSocial();
+  const { t } = useT();
   const kinds = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of moments) counts.set(m.kind, (counts.get(m.kind) ?? 0) + 1);
@@ -57,7 +61,14 @@ export function DayAlmanac({ date, moments, kindFilter, onKindFilter, own, onRec
               <div className="flex flex-col gap-8">
                 {shown.map((m, i) => (
                   <div key={m.id} className={i > 0 ? "border-t border-[var(--hair)] pt-6" : ""}>
-                    <MomentEntry moment={m} showDate={false} onEdit={(mm) => setEditing(draftFromMoment(mm))} />
+                    <MomentEntry moment={m} showDate={false} onEdit={(mm) => setEditing(uDraftFromMoment(mm))} />
+                    {own && m.unshared && (
+                      /* §35 — SHARE LATER: the SAME Human Record returns to the stream as a new
+                         Social projection. Never a duplicate record. */
+                      <button type="button" onClick={() => dispatch({ type: "shareState", id: m.id, shared: true })} className="sb-press mt-1 inline-flex min-h-8 items-center rounded-full border border-[var(--hair)] px-2.5 text-[12px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]" data-sb-share-again={m.id}>
+                        {t("ucomposer.shareAgain")}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -65,7 +76,7 @@ export function DayAlmanac({ date, moments, kindFilter, onKindFilter, own, onRec
           )}
         </div>
       </div>
-      {editing && <Composer open initial={editing} onClose={() => setEditing(null)} />}
+      {editing && <UniversalComposer open initial={editing} onClose={() => setEditing(null)} />}
     </section>
   );
 }

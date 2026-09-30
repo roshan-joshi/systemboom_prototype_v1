@@ -39,7 +39,13 @@ re-pointed at their successors, none were weakened.
 ```
 
 One clean ACTION row (verb · feeling · secondary menu) that never wraps at 320/360, and
-beneath it one quiet PRESENCE line. Presence is information, not a row of actions — which
+beneath it one quiet PRESENCE line. *(Phase 4.4-A.1, P0-6: with Celestial on the row also carries
+Resonate — `[Respond] [Expression] [Resonate] … [⋯]`. It stays one line at 360–430 in every
+locale because below the `@lg` container (512px) Resonate is a compact 44×44 aperture, its word
+in the accessible name and title; the ⋯ owns a reserved first-line slot. Where the column is
+narrower still — 320px, very large text, Nepali in the Circle/Life Day Almanac at 360 — the
+Respond · Expression · Resonate cluster wraps inside itself and the ⋯ never moves or clips.
+Protected by `prototype-tests/social-4-4a1-p06.js`.)* Presence is information, not a row of actions — which
 is why it is not competing for the action row. It answers **"are people here?"**, never
 "how popular is this?" (§45, §39): at most three distinct mascot expressions, the number of
 people who felt something, and the response count. No percentages, no ranking, no "top",

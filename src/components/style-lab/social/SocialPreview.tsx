@@ -16,7 +16,8 @@ import { SystemboomLogo } from "@/components/ui/SystemboomLogo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { now } from "@/lib/clock";
 import { PEOPLE, simulateExpressions, simulateResonances, type Moment, type Person } from "./data";
-import { Composer, draftFromMoment, emptyDraft } from "./Composer";
+import { UniversalComposer } from "./composer/UniversalComposer";
+import { emptyUDraft, uDraftFromMoment, type UDraft } from "./composer/types";
 import { CircleModule } from "./CircleModule";
 import { LifeCounter } from "./LifeCounter";
 import { LifeCursor } from "./LifeCursor";
@@ -30,7 +31,12 @@ import { PersonCard } from "@/components/world/PersonCard";
 import { MessagesPanel, MiniChat } from "@/components/world/Messages";
 import { PeoplePanel } from "@/components/world/People";
 import { Scrim, TransientSurface } from "@/components/world/TransientSurface";
-import { PreviewScope, SocialStore, dateKey, localISO, useSocial, type Draft, type ViewerMode } from "./store";
+import { focusMoment } from "@/components/world/focus-moment";
+import { sbDate } from "@/lib/i18n/format";
+import { AudienceScope, PreviewScope, SocialStore, dateKey, useSocial, type ViewerMode } from "./store";
+import { announce } from "@/lib/announce";
+import { connectedRel, type ViewerRelationship } from "./view-model";
+import { relationshipBetween, relationshipKeyFor } from "@/components/world/model";
 import { lifeViewFor, momentLifeFor, ringViewFor } from "./view-model";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { CelestialEnvironment } from "@/components/celestial/CelestialEnvironment";
@@ -396,10 +402,25 @@ export function SocialPreview({ product = false }: { product?: boolean }) {
   return (
     <SocialStore>
       <WorldProvider>
-        <Inner product={product} />
+        <AudienceBridge>
+          <Inner product={product} />
+        </AudienceBridge>
       </WorldProvider>
     </SocialStore>
   );
+}
+
+/** S1 — feeds the LIVE relationship state into the store's one access seam, so the composed feed
+ *  (My World / a person's World) follows accept / decline / remove immediately. */
+function AudienceBridge({ children }: { children: React.ReactNode }) {
+  const world = useWorldMaybe();
+  const { me } = useSocial();
+  const relationships = world?.relationships;
+  const relTo = useCallback<(otherId: string) => ViewerRelationship>(
+    (otherId) => (relationships ? relationshipBetween(relationships, me.id, otherId) : "none"),
+    [relationships, me.id],
+  );
+  return <AudienceScope relTo={relTo}>{children}</AudienceScope>;
 }
 
 function Inner({ product = false }: { product?: boolean }) {
@@ -414,8 +435,9 @@ function Inner({ product = false }: { product?: boolean }) {
   const [messages, setMessages] = useState(false);
   const [people, setPeople] = useState(false);
   const [search, setSearch] = useState(false);
-  const closeSurfaces = useCallback(() => { setBell(false); setMessages(false); setPeople(false); setSearch(false); }, []);
-  const anySurface = bell || messages || people || search;
+  const [savedOpen, setSavedOpen] = useState(false);
+  const closeSurfaces = useCallback(() => { setBell(false); setMessages(false); setPeople(false); setSearch(false); setSavedOpen(false); }, []);
+  const anySurface = bell || messages || people || search || savedOpen;
   // The Cosmos → My World arrival: one controlled resolve, once, then never again.
   const [arrived] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -427,7 +449,7 @@ function Inner({ product = false }: { product?: boolean }) {
       return false;
     }
   });
-  const [composer, setComposer] = useState<Draft | null>(null);
+  const [composer, setComposer] = useState<UDraft | null>(null);
   const [harness, setHarness] = useState(!product);
   // Celestial arrival evidence — deterministic counter for the harness "+1 resonance" control.
   const arriveN = useRef(0);
@@ -486,18 +508,20 @@ function Inner({ product = false }: { product?: boolean }) {
     const nf = q.get("notifications");
     if (nf === "many" || nf === "empty") dispatch({ type: "notifications", mode: nf });
     if (q.get("fail") === "1") dispatch({ type: "simulateFailure", on: true });
-    if (q.get("composer") === "1") setComposer(emptyDraft(localISO(now()).slice(0, 10), ""));
+    if (q.get("composer") === "1") setComposer(emptyUDraft());
     if (q.get("harness") === "0") setHarness(false);
     if (q.get("nocover") === "1") setNoCover(true);
     const pn = q.get("profileName"); if (pn) setProfileName(pn);
     const ph = q.get("photo"); if (ph === "bad" || ph === "none" || ph === "broken") setPhotoMode(ph);
     const wl = q.get("wall"); if (wl === "bad" || wl === "broken") setWallMode(wl);
     const rl = q.get("rel"); if (rl === "none" || rl === "request-out" || rl === "request-in" || rl === "friend" || rl === "family") setRelOverride(rl);
+    // S1 — review-only: open a person's World directly (the product path is PersonCard → Open World).
+    const pf = q.get("profile"); if (pf) dispatch({ type: "openWorld", id: pf });
     const wlt = q.get("worldlight"); if (wlt === "warm" || wlt === "cool") setWorldLight(wlt);
   }, [dispatch, product]);
 
-  const openComposer = useCallback(() => setComposer(state.draft ?? emptyDraft(localISO(now()).slice(0, 10), me.home)), [state.draft, me.home]);
-  const editMoment = useCallback((m: Moment) => setComposer(draftFromMoment(m)), []);
+  const openComposer = useCallback(() => setComposer(state.udraft ?? emptyUDraft()), [state.udraft]);
+  const editMoment = useCallback((m: Moment) => setComposer(uDraftFromMoment(m)), []);
   const closeComposer = useCallback(() => setComposer(null), []);
 
   // Person + Life Identity pass (§8–§9): a visiting friend/family sees documented-memory
@@ -505,10 +529,14 @@ function Inner({ product = false }: { product?: boolean }) {
   // through the SAME WorldProvider relationship PersonCard uses (self-critique correction: two
   // separate "is this person connected" computations — one here, one in PersonCard — could have
   // drifted out of sync; there is now exactly one).
-  const heroConnected = !isOwnerView && !!world?.canMessage(me.id);
-  // Social 2030 Final Delta §1: ProfileHero's identity model gained RELATIONSHIP — the acting
-  // viewer's relationship to the subject, shown only for the stable, symmetric states.
-  const heroRelationship = !isOwnerView ? world?.relationshipOf(me.id) : undefined;
+  // S1 §5.2 — ONE direction-aware relationship truth for the Hero: the acting viewer's
+  // relationship to THIS SUBJECT (a visitor looking at Giulia, or the owner looking at an opened
+  // person's World), read from the same `relationshipBetween` every other surface uses.
+  const heroRelationship = !isOwnerView && world ? relationshipBetween(world.relationships, me.id, profile.id) : undefined;
+  const heroConnected = !isOwnerView && !!heroRelationship && connectedRel(heroRelationship);
+  // The map key a Hero relationship action writes / the conversation a Hero Message opens —
+  // always the non-anchor participant of the pair.
+  const heroRelationshipWith = relationshipKeyFor(me.id, profile.id);
   // Same stand-in for both ProfileHero and the Circle sidebar module — one preview, one model,
   // reused by an unrelated frozen component (CircleModule.tsx) with zero changes to it: passing
   // a non-self viewer already makes it render its existing "visitor" branch.
@@ -521,8 +549,9 @@ function Inner({ product = false }: { product?: boolean }) {
   // person's World, stated once, at the one place a person always looks first.
   const worldLabel = isOwnerView ? undefined : t("world.context.person", { name: profile.name.split(" ")[0] });
   // §19: a low-noise way back to the viewer's own World while visiting someone else's — present
-  // only then, offered from the account control rather than a second navigation row.
-  const onReturnHome = isOwnerView ? undefined : () => dispatch({ type: "viewer", viewer: "maya" });
+  // only then, offered from the account control rather than a second navigation row. An opened
+  // World simply closes (S1 §5.5); a harness visitor mode resets to the owner.
+  const onReturnHome = isOwnerView ? undefined : () => (state.profileId ? dispatch({ type: "openWorld", id: null }) : dispatch({ type: "viewer", viewer: "maya" }));
 
   // S2 harness overrides — a cloned subject (id preserved, so owner/visitor scope is unchanged)
   // and a forced relationship, used ONLY by the review harness to exercise name/photo/wall/
@@ -665,20 +694,27 @@ function Inner({ product = false }: { product?: boolean }) {
                     <TransientSurface id="people" label={t("people.title")} onClose={() => setPeople(false)} returnTo="[data-sb-people]">
                       <PeoplePanel onClose={() => setPeople(false)} />
                     </TransientSurface>
+                  ) : savedOpen ? (
+                    <TransientSurface id="saved" label={t("saved.title")} onClose={() => setSavedOpen(false)} returnTo="[data-sb-account-trigger]">
+                      <SavedPanel onClose={() => setSavedOpen(false)} />
+                    </TransientSurface>
                   ) : null
                 }
                 worldLabel={worldLabel}
                 onReturnHome={onReturnHome}
+                onOpenSaved={() => { closeSurfaces(); setSavedOpen(true); }}
               />
 
               <PersonCard />
               <MiniChat />
+              <PostToast />
               <main className={`mx-auto max-w-[1120px] px-3 pt-4 pb-24 @2xl:px-6 @5xl:pt-6 ${arrived ? "sb-arrive" : ""}`}>
                 <div ref={heroWrap} data-sb-perspective={selfPreview ? "public" : "own"}>
                 <ProfileHero
                   viewer={heroViewer}
                   subject={heroSubject}
                   connected={heroConnectedEff}
+                  relationshipWith={heroRelationshipWith}
                   moments={state.moments}
                   relationship={heroRel}
                   canPreviewPublic={isOwnerView && !previewPublic}
@@ -716,7 +752,7 @@ function Inner({ product = false }: { product?: boolean }) {
                 </div>
               </main>
 
-              {composer && <Composer open initial={composer} onClose={closeComposer} />}
+              {composer && <UniversalComposer open initial={composer} onClose={closeComposer} />}
               <span className="sr-only">{personOf(me.id).name}</span>
             </div>
           </div>
@@ -729,7 +765,7 @@ function Inner({ product = false }: { product?: boolean }) {
 /** The Moments sheet: the Life Cursor, the Almanac and its pagination. Reads the store it is
  *  rendered in — the owner's own, or the read-only public stand-in inside <PreviewScope>. */
 function MomentsSheet({ onEdit, onOpenComposer }: { onEdit: (m: Moment) => void; onOpenComposer: () => void }) {
-  const { state, dispatch, me, isOwnerView, previewing, feed, total, personOf } = useSocial();
+  const { state, dispatch, me, profile, isOwnerView, previewing, feed, total, personOf } = useSocial();
   const { t, tp } = useT();
   const posNow = momentLifeFor(me, me, now());
   const endReached = feed.length >= total;
@@ -756,7 +792,7 @@ function MomentsSheet({ onEdit, onOpenComposer }: { onEdit: (m: Moment) => void;
                 <span className="block rounded-full bg-[var(--sheet-bg)] p-[2px]"><PersonIdentity viewer={me} subject={me} size={24} label={posNow.exact ?? ""} /></span>
               </span>
               <button type="button" onClick={onOpenComposer} data-sb-open-composer className="sb-transition flex min-h-9 w-full items-center gap-3 pl-2 text-left text-[15px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">
-                <span className="flex-1 truncate">{state.draft ? t("moments.draftKept") : t("moments.whatHappenedAt", { age: posNow.exact ?? "" })}</span>
+                <span className="flex-1 truncate">{state.udraft ? t("ucomposer.draftKept") : t("ucomposer.whatsHappening")}</span>
               </button>
             </div>
           )}
@@ -764,9 +800,18 @@ function MomentsSheet({ onEdit, onOpenComposer }: { onEdit: (m: Moment) => void;
           {/* A preview writes nothing: said once, where the composer bar would be. */}
           {previewing && <p className="relative pl-[var(--gutter)] text-[13px] text-muted" data-sb-preview-note>{t("moments.previewPaused")}</p>}
           <div className={`${isOwnerView || previewing ? "mt-8" : ""} flex flex-col gap-8`}>
+            {/* S1 §5.5 / §10.4 — a World with nothing this viewer may see states it truthfully:
+                no dead end, no leak of what exists but is not shared with them. */}
+            {feed.length === 0 && !isOwnerView && (
+              <p className="py-6 text-center text-[14px] text-muted" data-sb-world-empty>
+                {t("world.emptyForViewer", { name: profile.name.split(" ")[0] })}
+              </p>
+            )}
             {feed.map((m, i) => {
               const prev = feed[i - 1];
-              const showDate = !prev || dateKey(m.at) !== dateKey(prev.at);
+              // §18 — a coarse/unknown time claim always states its own truthful grammar,
+              // even when its sort anchor happens to share a day with an exact Moment.
+              const showDate = !prev || dateKey(m.at) !== dateKey(prev.at) || !!m.timePrecision || !!prev.timePrecision;
               return (
                 <div key={m.id} className={i > 0 ? "border-t border-[var(--hair)] pt-6" : ""}>
                   <MomentEntry moment={m} showDate={showDate} onEdit={onEdit} />
@@ -804,5 +849,92 @@ function Seg({ label, value, onChange, options, labels }: { label: string; value
         ))}
       </span>
     </span>
+  );
+}
+
+/**
+ * S5 — the viewer's private Saved surface. A quiet list: no counts on any Moment, no social
+ * signal, nothing anyone else can see. Choosing an entry lands on that exact Moment (the same
+ * reveal + focus a notification landing uses); a deleted Moment simply is not here (the
+ * reducer purges bookmarks on delete — no ghost content).
+ */
+function SavedPanel({ onClose }: { onClose: () => void }) {
+  const { state, dispatch, personOf, canSee, me } = useSocial();
+  const { t, locale } = useT();
+  const rows = state.saved
+    .map((id) => state.moments.find((m) => m.id === id))
+    .filter((m): m is NonNullable<typeof m> => !!m && !state.hidden.includes(m.id) && canSee(m));
+  return (
+    <section aria-label={t("saved.title")} className="max-h-[min(calc(100dvh-var(--sb-bar-h,60px)-14px-env(safe-area-inset-bottom,0px)),42rem)] w-full overflow-y-auto overscroll-contain rounded-[20px] border border-[var(--card-edge)] bg-[var(--card)] p-3 shadow-[var(--card-shadow)] @2xl:w-[420px]" data-sb-saved-panel>
+      <h2 className="px-2 pt-1 pb-2 text-[13px] font-semibold tracking-wide text-text">{t("saved.title")}</h2>
+      {rows.length === 0 ? (
+        <p className="px-2 pb-2 text-[13px] text-muted" data-sb-saved-empty>{t("saved.empty")}</p>
+      ) : (
+        <ul className="flex flex-col">
+          {rows.map((m) => {
+            const author = personOf(m.authorId);
+            return (
+              <li key={m.id} className="border-b border-[var(--hair)] last:border-0">
+                <button
+                  type="button"
+                  className="sb-press flex w-full items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-steel/10 focus-visible:outline-[var(--focus)]"
+                  onClick={() => {
+                    onClose();
+                    if (state.profileId) dispatch({ type: "openWorld", id: null });
+                    dispatch({ type: "reveal", id: m.id });
+                    focusMoment(m.id);
+                  }}
+                  data-sb-saved-entry={m.id}
+                >
+                  <PersonIdentity viewer={me} subject={author} size={28} label="" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] text-text">{m.text}</span>
+                    <span className="block text-[12px] text-muted tabular-nums">{sbDate(locale, m.at)}{m.place ? ` · ${m.place}` : ""}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * UNIVERSAL COMPOSER §40 — the lightweight success line. One quiet chip, one announcement:
+ * "Posted" for a social-only post, "Added to your Life" for a Life Moment, "Recorded as X"
+ * for a specialist record. No record ids, no Circle mechanics, no second confirmation —
+ * the landing on the rule remains the real success motion.
+ */
+function PostToast() {
+  const { state } = useSocial();
+  const { t } = useT();
+  const [line, setLine] = useState<string | null>(null);
+  const lastShown = useRef<string | null>(null);
+  useEffect(() => {
+    const id = state.justPosted;
+    if (!id || id === lastShown.current) return;
+    lastShown.current = id;
+    const m = state.moments.find((x) => x.id === id);
+    if (!m || m.edited) return;
+    const said =
+      m.record === "none"
+        ? t("ucomposer.posted")
+        : m.kind === "moment"
+          ? t("ucomposer.postedMoment")
+          : t(`ucomposer.posted_${m.kind}`);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot line per landed post
+    setLine(said);
+    announce(said);
+    const timer = window.setTimeout(() => setLine(null), 2400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one line per landed post
+  }, [state.justPosted]);
+  if (!line) return null;
+  return (
+    <p role="status" data-sb-post-toast className="sb-surface-in pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] left-1/2 z-[70] -translate-x-1/2 rounded-full border border-[var(--card-edge)] bg-[var(--card)] px-4 py-2 text-[13px] whitespace-nowrap text-text shadow-[var(--card-shadow)]">
+      {line}
+    </p>
   );
 }

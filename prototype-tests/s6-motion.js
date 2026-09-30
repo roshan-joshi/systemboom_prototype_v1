@@ -78,13 +78,13 @@ const ringsAnimating = (page) => page.evaluate(() => [...document.querySelectorA
   /* ---- 4. Relationship motion ends in the right state ---- */
   console.log("4. Relationship final states");
   await page.click("[data-sb-people]"); await sleep(300);
-  await page.type("[data-sb-people-find]", "Marco"); await sleep(300);
+  await page.type("[data-sb-people-find]", "Beatrice"); await sleep(300);
   await page.click("[data-sb-people-add]"); await sleep(350);
   const rel = await page.$eval("[data-sb-people-row]", (e) => ({ rel: e.getAttribute("data-sb-people-rel"), anim: getComputedStyle(e.querySelector("[data-sb-people-requested]")?.parentElement ?? e).animationName, dur: parseFloat(getComputedStyle(e.querySelector("[data-sb-people-requested]")?.parentElement ?? e).animationDuration) }));
   ok(rel.rel === "request-out" && rel.anim === "sb-rel-resolve" && rel.dur <= 0.28, `Add friend → Requested: one ~200ms settle, final state true (${rel.anim} ${rel.dur}s)`);
   await page.evaluate(() => { const i = document.querySelector("[data-sb-people-find]"); i.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, ""); i.dispatchEvent(new Event("input", { bubbles: true })); }); await sleep(250);
   await page.click("[data-sb-people-accept]"); await sleep(350);
-  ok(!(await page.$("[data-sb-people-accept]")) && (await page.$$eval("[data-sb-people-yours] [data-sb-people-row]", (n) => n.some((r) => r.getAttribute("data-sb-people-row") === "p-prakash"))), "Accept: pending → connected, and the person now sits among Your people");
+  ok(!(await page.$("[data-sb-people-accept]")) && (await page.$$eval("[data-sb-people-yours] [data-sb-people-row]", (n) => n.some((r) => r.getAttribute("data-sb-people-row") === "p-rory"))), "Accept: pending → connected, and the person now sits among Your people");
   const press = await page.$eval("[data-sb-people-message]", (e) => getComputedStyle(e).transitionDuration);
   ok(/^0\.1[0-5]s/.test(press), `touch/press feedback is immediate (${press})`);
   await page.keyboard.press("Escape");
@@ -101,16 +101,35 @@ const ringsAnimating = (page) => page.evaluate(() => [...document.querySelectorA
       const boxed = ro ? getComputedStyle(ro).borderTopWidth !== "0px" : true;
       const label = [...document.querySelectorAll("[data-sb-composer] *")].find((e) => e.childNodes.length === 1 && /^Where this sits$/i.test(e.textContent.trim()));
       const kinds = [...document.querySelectorAll("[data-sb-kind-row] button")].map((b) => Math.round(b.getBoundingClientRect().height));
-      const words = [...document.querySelectorAll("[data-sb-kind-row] span.text-\\[11px\\]")].map((s) => s.textContent.trim());
+      // Universal Composer: at open the row is the four context actions; kinds wait behind details
+      const words = [...document.querySelectorAll("[data-sb-composer-actions] [aria-label]")].map((s) => s.getAttribute("aria-label")).filter((x) => x !== "Smart Assist");
       const shell = document.querySelector("[data-sb-composer]");
       return { focused: document.activeElement === ta, order: !!order, boxed, labelHidden: !label || label.className.includes("sr-only"), kinds, words, opacity: getComputedStyle(shell).opacity, hasDate: !!document.querySelector("[data-sb-composer] input[type=date]"), hasPlace: !!document.querySelector("[data-sb-composer] input[list='sb-places']") };
     });
-    ok(c.focused && c.order, `${w}: the words come first and hold focus; the coordinate follows`);
-    ok(!c.boxed && c.labelHidden, `${w}: the coordinate is a sentence, not a boxed "WHERE THIS SITS" block`);
-    ok(c.hasDate && c.hasPlace, `${w}: the date and place instruments are still real and present`);
-    ok(c.kinds.length === 7 && c.kinds.every((k) => k <= 36) && c.words.join(",") === "media,meal,activity,problem,health,project,meeting", `${w}: seven quiet kind chips (≤36px), every word intact (${c.kinds.join("/")})`);
+    // GREENFIELD supersession (Universal Composer brief §5/§48, recorded in AGENTS.md): the
+    // opening state is ordinary Social — words first and focused; NO coordinate readout, NO
+    // date/place inputs, NO Life age; four human action words; the seven records wait behind
+    // Add details.
+    // UC-C3 supersession (owner-directed, recorded in AGENTS.md "UC-C3"): the action words
+    // read as human language ("Media"/"People"/"Place"/"Add details"), not lowercase quiet
+    // chips; the seven records open in a FOCUSED CHOOSER SHEET as readable ≥44px rows (never
+    // ≤36px quiet chips) — a redesign toward "easier than ordinary social media", not toward
+    // density. The invariants — nothing but four actions at open, Social mode apart from the
+    // seven, every record named — are unchanged and asserted below.
+    ok(c.focused, `${w}: the words come first and hold focus`);
+    ok(await page.evaluate(() => !document.querySelector("[data-sb-readout-state]") && !/\d+y \d+m \d+d/.test(document.querySelector("[data-sb-composer]").textContent)), `${w}: no coordinate readout, no Life age — the composer opens social (§5/§22)`);
+    ok(!c.hasDate && !c.hasPlace, `${w}: date and place stay quiet until asked (§5) — place is a common action, When lives behind more`);
+    ok(c.kinds.length === 0 && c.words.join(",") === "Media,People,Place,Add details", `${w}: four human action words, no classification row (${c.words.join(", ")})`);
     ok(c.opacity === "1", `${w}: the composer has arrived (opacity 1)`);
-    await page.click("[data-sb-composer] button[aria-label='Meal']"); await sleep(100);
+    await page.click("[data-sb-composer] [data-sb-record-details]"); await sleep(300);
+    const row = await page.evaluate(() => ({
+      kinds: [...document.querySelectorAll("[data-sb-kind-row] button")].map((b) => b.getBoundingClientRect().height),
+      words: [...document.querySelectorAll("[data-sb-kind-row] [data-sb-kind-label]")].map((x) => x.textContent.trim()),
+      social: !!document.querySelector("[data-sb-record-social-only]"),
+      sheet: !!document.querySelector("[data-sb-sheet-panel='record']"),
+    }));
+    ok(row.kinds.length === 7 && row.kinds.every((k) => k >= 44) && row.social && row.sheet && row.words.join("|") === "Life Moment|Meal|Activity|Health|Problem|Project|Meeting", `${w}: the chooser sheet reveals the seven records as readable ≥44px rows, Social mode apart (${row.kinds.map(Math.round).join("/")})`);
+    await page.click("[data-sb-kind-row] button[aria-label='Meal']"); await sleep(100);
     const reveal = await page.$eval("[data-sb-kind-fields='meal']", (e) => ({ name: getComputedStyle(e).animationName, dur: parseFloat(getComputedStyle(e).animationDuration) }));
     ok(reveal.name === "sb-reveal" && reveal.dur <= 0.2, `${w}: kind fields reveal as one measured group (${reveal.name} ${reveal.dur}s)`);
     await page.keyboard.press("Escape"); await sleep(300);
