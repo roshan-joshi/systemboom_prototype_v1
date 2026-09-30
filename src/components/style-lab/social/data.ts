@@ -181,6 +181,27 @@ export interface Note {
   mentions?: string[];
 }
 
+/**
+ * UC-C4.2 — who supplied the CURRENT canonical `Moment.recordPlace` value below. "import" is
+ * reserved for a future migration seam and "ai" for Smart Assist's own place acceptance —
+ * neither is produced anywhere else in this phase. Exactly these four, no others.
+ */
+export type RecordPlaceSource = "metadata" | "user" | "ai" | "import";
+
+/**
+ * UC-C4.2 — the canonical HUMAN RECORD place, distinct from the Social-visible `place` below
+ * and from a `MediaAsset`'s own original (immutable) metadata. `precision` is OPTIONAL BY
+ * OWNER APPROVAL: a record place can be valid when SYSTEMBOOM knows a meaningful
+ * human-readable location but does not know — and must never fabricate — its exact
+ * precision tier. One nested field; never flattened into
+ * `recordPlaceValue`/`recordPlacePrecision`/`recordPlaceSource`.
+ */
+export interface RecordPlace {
+  value: string;
+  precision?: "venue" | "cityRegion" | "country" | "approximate";
+  source: RecordPlaceSource;
+}
+
 export interface Moment {
   id: string;
   authorId: string;
@@ -229,6 +250,13 @@ export interface Moment {
    * Record remains (Life/Circle/density keep it); only the social stream lets go of it.
    */
   unshared?: true;
+  /**
+   * UC-C4.2 — the canonical Human Record place. Distinct from `place` below (the current
+   * Social-visible place) and never derived from it: absent on every pre-UC-C4.2 legacy
+   * Moment, and a first edit that does not touch Place must not auto-promote one into
+   * existence (§16). `recordPlace?.value ?? place` is the read-compatible fallback shape.
+   */
+  recordPlace?: RecordPlace;
   place?: string;
   text?: string;
   kind: Kind;
@@ -455,6 +483,29 @@ export function matchPeople(term: string, excludeId?: string, limit?: number): P
 
 /* ---------- media library (the account's MY MEDIA — reusable Media Assets, UC-C3 §12) ---------- */
 
+/**
+ * UC-C4.4 — the real, immutable evidence read from an asset's OWN embedded file metadata
+ * (EXIF or equivalent). Never rewritten by anything the person does afterward (changing
+ * Place, changing event time, editing, resubmitting) — a completely separate concept from
+ * `Moment.recordPlace` (SYSTEMBOOM's canonical interpretation) and `place` (the current
+ * Social-visible choice). `normalized` is the stable, JSON-safe SYSTEMBOOM shape; fields
+ * genuinely already tracked elsewhere on the asset (`w`/`h`/`duration`) are deliberately
+ * NOT duplicated here.
+ */
+export interface SourceMetadata {
+  schemaVersion: 1;
+  normalized: {
+    /** ISO 8601 — the media's own DateTimeOriginal (or equivalent), never the posting clock. */
+    capturedAt?: string;
+    gps?: { latitude: number; longitude: number; altitude?: number };
+    device?: { make?: string; model?: string; lens?: string };
+    /** EXIF Orientation tag (1-8); a live seam for correct-rotation rendering. */
+    orientation?: number;
+    mimeType?: string;
+    fileSize?: number;
+  };
+}
+
 export interface LibraryPhoto extends Photo {
   id: string;
   /** UC-C3 §9 — the asset's own kind. Absent = photo (every pre-UC-C3 asset). */
@@ -464,6 +515,12 @@ export interface LibraryPhoto extends Photo {
   /** File metadata when the file carries it — drives the confirmable readout. */
   takenAt?: string;
   takenPlace?: string;
+  /**
+   * UC-C4.4 — the asset's own real, immutable source metadata (present only for a real
+   * uploaded file whose EXIF was successfully read; absent for fixture/library assets,
+   * whose `takenAt`/`takenPlace` remain the accepted hand-authored simulation).
+   */
+  sourceMetadata?: SourceMetadata;
 }
 /** The canonical name going forward: MEDIA ASSET ≠ HUMAN RECORD ≠ SOCIAL POST (§13). */
 export type MediaAsset = LibraryPhoto;

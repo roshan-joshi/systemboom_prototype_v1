@@ -20,6 +20,8 @@
  * the asset stays selected rather than silently vanishing.
  */
 import { LIBRARY, type MediaAsset } from "../data";
+import { extractSourceMetadata } from "./media-metadata";
+import { reverseGeocode } from "./geocode-client";
 
 /** ONE configurable technical limit (§11) — never a "10" scattered through the UI. */
 export const MEDIA_LIMIT = 10;
@@ -40,8 +42,19 @@ export function assetById(id: string): MediaAsset | undefined {
  * §10/§11 — register device files (multi-select, photos and videos mixed) as assets.
  * Dimensions/durations are read from the real file when the browser has decoded it;
  * until then a sane frame ratio stands in (presentation only — never record truth).
+ *
+ * UC-C4.4 — for a real PHOTO, real EXIF is read here too (the only point the raw `File`
+ * reference is still in scope — it is never retained on the asset itself). Extraction is
+ * async and best-effort: a photo with no EXIF, or one whose metadata is corrupted, simply
+ * never gets `takenAt`/`takenPlace` populated — the SAME quiet, error-free path a fixture
+ * asset with no hand-authored metadata already takes. `onMetadataReady` (optional) is
+ * called once time resolves and again if/when a place resolves, so the Composer can
+ * re-derive its draft state from the now-populated asset — reusing the EXISTING
+ * `applyDetectedMetadata` mechanism verbatim; nothing about that logic changes here.
+ * Video EXIF/GPS extraction is a documented live seam, not attempted in this pass (see
+ * AGENTS.md "Phase UC-C4.4").
  */
-export function registerUploads(files: FileList | File[]): MediaAsset[] {
+export function registerUploads(files: FileList | File[], onMetadataReady?: (id: string) => void): MediaAsset[] {
   const added: MediaAsset[] = [];
   for (const f of Array.from(files)) {
     const isVideo = f.type.startsWith("video/");
@@ -73,6 +86,20 @@ export function registerUploads(files: FileList | File[]): MediaAsset[] {
         asset.h = img.naturalHeight || asset.h;
       };
       img.src = url;
+      extractSourceMetadata(f).then((meta) => {
+        asset.sourceMetadata = meta;
+        if (meta.normalized.capturedAt) asset.takenAt = meta.normalized.capturedAt;
+        if (meta.normalized.capturedAt) onMetadataReady?.(asset.id);
+        const { gps } = meta.normalized;
+        if (gps) {
+          reverseGeocode(gps.latitude, gps.longitude).then((place) => {
+            if (place) {
+              asset.takenPlace = place;
+              onMetadataReady?.(asset.id);
+            }
+          });
+        }
+      });
     }
     session.push(asset);
     added.push(asset);

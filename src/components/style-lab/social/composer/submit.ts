@@ -251,6 +251,10 @@ export function buildSubmission(d: UDraft, original: Moment | undefined, linkTit
         feeling,
         place: d.place || undefined,
         placePrecision,
+        // UC-C4.2 §16/§17 — carried through exactly as the draft holds it: untouched by this
+        // edit unless the person's own Place action in this session changed it (see
+        // `uDraftFromMoment` for how a legacy Moment's absence of recordPlace is preserved).
+        recordPlace: d.recordPlace,
         media,
         ...temporal,
         timePrecision,
@@ -273,6 +277,8 @@ export function buildSubmission(d: UDraft, original: Moment | undefined, linkTit
       timePrecision,
       place: d.place || undefined,
       placePrecision,
+      // UC-C4.2 §1/§5 — persists regardless of Social state; there is no confirmation gate.
+      recordPlace: d.recordPlace,
       text: d.text.trim() || undefined,
       kind,
       record,

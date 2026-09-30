@@ -57,7 +57,9 @@ interface MetaSnapshot {
   prevTimeUnknown: UDraft["timeUnknown"];
   prevPlace: UDraft["place"];
   prevPlacePrecision: UDraft["placePrecision"];
-  prevPlaceConfirmed: UDraft["placeConfirmed"];
+  /** UC-C4.2 — recordPlace/placeSource are part of the same exact-restore contract. */
+  prevRecordPlace: UDraft["recordPlace"];
+  prevPlaceSource: UDraft["placeSource"];
 }
 
 const CHIP = "sb-press inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-2 focus-visible:outline-[var(--focus)] @2xl:min-h-8 @2xl:px-1.5";
@@ -129,6 +131,12 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const { t, locale } = useT();
   // Remounted per open — `initial` is read once.
   const [d, setD] = useState<UDraft>(initial);
+  // UC-C4.4 — real metadata extraction/geocoding resolve ASYNCHRONOUSLY, after this
+  // render's own `d` has gone stale; this ref always holds the latest draft so the
+  // resolve callback (registered once, at attach time) can read current state rather
+  // than a captured snapshot from when the file was first attached.
+  const dRef = useRef(d);
+  useEffect(() => { dRef.current = d; }, [d]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [sheet, setSheet] = useState<SheetId>(null);
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -170,6 +178,12 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     postTimer.current = null;
   };
   useEffect(() => () => cancelPosting(), []);
+  // UC-C4.2 test seam (§6/§14 — real object-level immutability proof, never UI banner text):
+  // a read-only deep-clone snapshot of every current MediaAsset, in the same spirit as the
+  // existing __SB_SOCIAL_STATE/__SB_RING_DENSITY debug globals. No schema/behavior change.
+  useEffect(() => {
+    (window as unknown as { __SB_ASSET_SNAPSHOT?: () => unknown }).__SB_ASSET_SNAPSHOT = () => JSON.parse(JSON.stringify(allAssets()));
+  }, []);
 
   const openSheet = (id: Exclude<SheetId, null>, opener?: HTMLElement | null) => {
     sheetOpener.current = opener ?? (document.activeElement as HTMLElement | null);
@@ -217,38 +231,71 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
 
   /**
    * Zero-effort capture (§2: original media metadata) — called at every point new media
-   * enters the draft (My Media, Upload, Camera). Prefills the event date/place from the
-   * FIRST attached asset that carries them, ONLY into fields that are genuinely empty right
-   * now — never overwriting a value the person already set (deliberately or via an earlier
-   * autofill they've since edited: user corrections win, UC-C4.1 §7), and never overriding
-   * an explicit "I don't know" (`timeUnknown`). Never re-applies after the person explicitly
-   * reverted it via "Not this" for the same asset (§38 — the same question never returns).
+   * enters the draft (My Media, Upload, Camera). Prefills the event date from the FIRST
+   * attached asset that carries one, ONLY into a genuinely empty field — never overwriting a
+   * value the person already set, and never overriding an explicit "I don't know"
+   * (`timeUnknown`).
    *
-   * UC-C4.1 §2/§10: returns the PRE-AUTOFILL state alongside the result whenever it actually
-   * changes something, so the caller can snapshot exactly what to restore on "Not this" —
-   * never a generic "unknown"/"NOW" rollback.
+   * UC-C4.2 §4/§5/§9/§10/§11 — the canonical record place AND the Social-visible default are
+   * BOTH recomputed here from EVERY currently attached asset's own metadata place, never just
+   * the first (never first- or last-write-wins): a single consistent place across all
+   * metadata-bearing assets is used IMMEDIATELY, no confirmation gate; a conflict among them
+   * leaves neither populated rather than fabricating a winner; no usable metadata at all
+   * leaves both exactly as they were (the normal, unremarkable case, §13). A place the person
+   * has themselves supplied (`placeSource === "user"`) — including one already on a legacy
+   * Moment being edited, see `uDraftFromMoment` — is never touched by this recomputation
+   * (§11 user override precedence), whichever order metadata and the person's own action
+   * happen in. Nothing here ever reads or writes an asset's own metadata — only derives from
+   * it (§3/§6 media metadata truth stays immutable).
+   *
+   * UC-C4.1 §2/§10: returns the PRE-recomputation state alongside the result whenever a
+   * banner would show for it, so the caller can snapshot exactly what to restore on
+   * "Not this" — never a generic "unknown"/"NOW" rollback.
    */
   const applyDetectedMetadata = (x: UDraft, ids: string[]): { next: UDraft; snapshot: MetaSnapshot | null } => {
+    let place = x.place;
+    let placePrecision = x.placePrecision;
+    let recordPlace = x.recordPlace;
+    let placeSource = x.placeSource;
+    if (x.placeSource !== "user") {
+      const places = new Set(ids.map((id) => assetById(id)?.takenPlace).filter((p): p is string => !!p));
+      if (places.size === 1) {
+        const [value] = places;
+        place = value;
+        placePrecision = undefined; // never fabricate a precision metadata never supplied
+        recordPlace = { value, source: "metadata" };
+        placeSource = "metadata";
+      } else if (places.size > 1) {
+        // §10 — do not fabricate a winner: neither field is populated from conflicting
+        // metadata (never the first attached asset, never the last).
+        place = undefined;
+        placePrecision = undefined;
+        recordPlace = undefined;
+        placeSource = undefined;
+      }
+      // places.size === 0 — no metadata place signal among currently attached assets;
+      // `place`/`recordPlace` stay exactly as they were (§13 — nothing to derive, nothing to
+      // retract; a photo with no usable location is a completely normal, unremarkable state).
+    }
     const found = ids.map((id) => assetById(id)).find((a) => a?.takenAt && metaReview?.id !== a.id);
-    if (!found) return { next: x, snapshot: null };
+    if (!found) return { next: { ...x, place, placePrecision, recordPlace, placeSource }, snapshot: null };
     const canFillTime = !x.eventTime && !x.timeUnknown;
-    const canFillPlace = !x.place && !!found.takenPlace;
-    if (!canFillTime && !canFillPlace) return { next: x, snapshot: null };
     const snapshot: MetaSnapshot = {
       assetId: found.id,
       prevEventTime: x.eventTime,
       prevTimeUnknown: x.timeUnknown,
       prevPlace: x.place,
       prevPlacePrecision: x.placePrecision,
-      prevPlaceConfirmed: x.placeConfirmed,
+      prevRecordPlace: x.recordPlace,
+      prevPlaceSource: x.placeSource,
     };
     const next: UDraft = {
       ...x,
       eventTime: canFillTime && found.takenAt ? { date: found.takenAt.slice(0, 10), precision: "day", provenance: "exif" } : x.eventTime,
-      // UC-C4.1 §6/§8 — metadata Place enriches the record (and the composer's own display)
-      // immediately, but stays UNCONFIRMED: `submit()` withholds an unconfirmed place from
-      // the posted Social projection until the person deliberately acts on it.
-      place: canFillPlace ? found.takenPlace : x.place,
+      place,
+      placePrecision,
+      recordPlace,
+      placeSource,
     };
     return { next, snapshot };
   };
@@ -275,9 +322,20 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       const [id] = ids.splice(i, 1);
       return { ...x, mediaIds: [id, ...ids] };
     });
+  // UC-C4.4 — called once real time resolves and again if/when a real place resolves for
+  // a just-attached asset (registerUploads' `onMetadataReady`). Re-runs the EXACT SAME
+  // `applyDetectedMetadata` derivation against the LATEST draft — no new logic, just a
+  // re-trigger now that the asset's own takenAt/takenPlace are populated for real.
+  const rederiveFromAsset = (assetId: string) => {
+    const x = dRef.current;
+    if (!x.mediaIds.includes(assetId)) return; // removed from the draft before metadata arrived
+    const { next, snapshot } = applyDetectedMetadata(x, x.mediaIds);
+    if (snapshot) setMetaSnapshot(snapshot);
+    setD(next);
+  };
   const addUploads = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const added = registerUploads(files);
+    const added = registerUploads(files, rederiveFromAsset);
     const mediaIds = [...d.mediaIds, ...added.map((a) => a.id)].slice(0, MEDIA_LIMIT);
     const { next, snapshot } = applyDetectedMetadata({ ...d, mediaIds, link: undefined }, mediaIds);
     if (snapshot) setMetaSnapshot(snapshot);
@@ -298,12 +356,10 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
    */
   const detected = editing ? undefined : draftMedia.find((p) => p.takenAt);
   const showMetaBanner = !!detected && metaReview?.id !== detected.id;
-  // "Use" states nothing changes (the value is already applied) — it also CONFIRMS a
-  // metadata-derived place, since the person has now deliberately reviewed and accepted it
-  // (UC-C4.1 §5/§6): from here it is eligible for Social disclosure like any other place.
+  // UC-C4.2 §5/§18 — no confirmation gate exists: the date/place were already applied the
+  // instant the metadata was read. "Use" is purely a review dismissal — it changes nothing.
   const useMetadata = () => {
     if (!detected) return;
-    setD((x) => (x.place ? { ...x, placeConfirmed: true } : x));
     setMetaReview({ id: detected.id, resolution: "used" });
   };
   // UC-C4.1 §2/§8/§10 — "Not this" restores the EXACT snapshot taken before this asset's
@@ -322,7 +378,8 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         timeUnknown: snap.prevTimeUnknown,
         place: snap.prevPlace,
         placePrecision: snap.prevPlacePrecision,
-        placeConfirmed: snap.prevPlaceConfirmed,
+        recordPlace: snap.prevRecordPlace,
+        placeSource: snap.prevPlaceSource,
       }));
     }
     setMetaReview({ id: detected.id, resolution: "ignored" });
@@ -361,7 +418,10 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       if (s.kind === "activity") next = { ...next, domains: { ...next.domains, activity: { ...next.domains.activity, type: s.activityType ?? next.domains.activity.type, distance: s.distance ?? next.domains.activity.distance, duration: s.duration ?? next.domains.activity.duration } } };
       if (s.kind === "meal" && s.occasion) next = { ...next, domains: { ...next.domains, meal: { ...next.domains.meal, occasion: s.occasion } } };
       // UC-C4.1 §5/§6 — accepting "Use details" IS the person's deliberate confirmation.
-      if (s.place && !next.place) next = { ...next, place: s.place, placeConfirmed: true };
+      // UC-C4.2 §12 — provenance consistency only: the words were the person's own, Smart
+      // Assist only read them, so the canonical record place is tagged 'ai' (the schema's
+      // reserved value for exactly this), never silently folded into 'user'.
+      if (s.place && !next.place) next = { ...next, place: s.place, placeSource: "ai", recordPlace: { value: s.place, source: "ai" } };
       if (s.people.length) next = { ...next, people: [...new Set([...next.people, ...s.people])] };
       if (s.when === "yesterday" && !next.eventTime && !next.timeUnknown) {
         const y = new Date(now());
@@ -403,13 +463,9 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         requestAnimationFrame(() => retryBtn.current?.focus());
         return;
       }
-      // UC-C4.1 §6/§8 — a metadata-derived place enriches the draft and the composer's own
-      // display, but never becomes Social disclosure on its own: only a place the person has
-      // deliberately confirmed (typed, picked, "Use"d, or already-posted in edit mode) is
-      // handed to the submission. An unconfirmed one is withheld here — the Human Record
-      // itself is never asked to carry a place it wasn't given permission to show.
-      const submitDraft = d.placeConfirmed || !d.place ? d : { ...d, place: undefined, placePrecision: undefined };
-      const action = buildSubmission(submitDraft, original, linkTitle, me.id, newId);
+      // UC-C4.2 §5/§18 — no confirmation gate: `d.place` already carries whatever the person
+      // is currently shown (typed, picked, or the metadata default), and travels exactly as-is.
+      const action = buildSubmission(d, original, linkTitle, me.id, newId);
       dispatch(action.type === "post" ? { type: "post", moment: action.moment } : { type: "edit", id: action.id, patch: action.patch });
       if (!editing) dispatch({ type: "udraft", draft: null });
       setPhase("idle");
@@ -976,13 +1032,13 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                   <label htmlFor="sb-place-common" className="sr-only">{t("ucomposer.searchPlace")}</label>
                   <div className="flex items-center gap-1.5">
                     <MapPin size={14} className="shrink-0 text-muted" aria-hidden />
-                    <input id="sb-place-common" value={d.place ?? ""} onChange={(e) => setD((x) => ({ ...x, place: e.target.value || undefined, placeConfirmed: e.target.value ? true : undefined }))} placeholder={t("ucomposer.searchPlace")} className={`${FIELD} w-full`} autoFocus />
+                    <input id="sb-place-common" value={d.place ?? ""} onChange={(e) => setD((x) => ({ ...x, place: e.target.value || undefined, placeSource: e.target.value ? "user" : x.placeSource, recordPlace: e.target.value ? { value: e.target.value, precision: x.placePrecision, source: "user" } : x.recordPlace }))} placeholder={t("ucomposer.searchPlace")} className={`${FIELD} w-full`} autoFocus />
                   </div>
                   {/* §24 — a found place is offered, never silently applied */}
                   {detected?.takenPlace && !d.place && (
                     <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[12px] text-muted" data-sb-place-found>
                       <span>{t("ucomposer.placeFound")}: <span className="text-text">{detected.takenPlace}</span></span>
-                      <button type="button" onClick={() => setD((x) => ({ ...x, place: detected.takenPlace, placeConfirmed: true }))} className="sb-press min-h-7 rounded-full px-1.5 font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]">{t("ucomposer.use")}</button>
+                      <button type="button" onClick={() => setD((x) => ({ ...x, place: detected.takenPlace, placeSource: "metadata", recordPlace: { value: detected.takenPlace!, source: "metadata" } }))} className="sb-press min-h-7 rounded-full px-1.5 font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]">{t("ucomposer.use")}</button>
                     </p>
                   )}
                   <div className="mt-2.5">
@@ -993,7 +1049,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                           usable history. */}
                       {(d.place ? PLACES.filter((p) => p.toLowerCase().includes(d.place!.toLowerCase()) && p !== d.place) : (ownRecentPlaces.length ? ownRecentPlaces : PLACES.slice(0, 5))).slice(0, 6).map((p) => (
                         <li key={p}>
-                          <button type="button" onClick={() => setD((x) => ({ ...x, place: p, placeConfirmed: true }))} className="sb-press flex min-h-9 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[13px] text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-place-option={p}>
+                          <button type="button" onClick={() => setD((x) => ({ ...x, place: p, placeSource: "user", recordPlace: { value: p, precision: x.placePrecision, source: "user" } }))} className="sb-press flex min-h-9 w-full items-center gap-2 rounded-[10px] px-2 text-left text-[13px] text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-place-option={p}>
                             <MapPin size={13} className="shrink-0 text-muted" aria-hidden /> {p}
                           </button>
                         </li>
@@ -1007,11 +1063,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                         label={t("ucomposer.placePrecision")}
                         options={["venue", "cityRegion", "country", "approximate"]}
                         value={d.placePrecision}
-                        onChange={(v) => setD((x) => ({ ...x, placePrecision: v as UDraft["placePrecision"], placeConfirmed: true }))}
+                        onChange={(v) => setD((x) => ({ ...x, placePrecision: v as UDraft["placePrecision"], recordPlace: x.recordPlace ? { ...x.recordPlace, precision: v as UDraft["placePrecision"] } : x.recordPlace }))}
                         nameOf={(p) => t(p === "venue" ? "ucomposer.ppVenue" : p === "cityRegion" ? "ucomposer.ppCityRegion" : p === "country" ? "ucomposer.ppCountry" : "ucomposer.ppApprox")}
                         hook="placePrecision"
                       />
-                      <button type="button" onClick={() => setD((x) => ({ ...x, place: undefined, placePrecision: undefined, placeConfirmed: undefined }))} className="sb-press mt-2 min-h-8 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-place-clear>
+                      {/* UC-C4.2 §8 — this control removes SOCIAL disclosure only; `recordPlace`/
+                          `placeSource` are deliberately not touched here (never invent a
+                          second control for the record-level place in this pass). */}
+                      <button type="button" onClick={() => setD((x) => ({ ...x, place: undefined, placePrecision: undefined }))} className="sb-press mt-2 min-h-8 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-place-clear>
                         {t("ucomposer.noPlace")}
                       </button>
                     </div>

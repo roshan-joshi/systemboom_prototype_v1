@@ -30,6 +30,13 @@
  *     People/Place "Recent" derive from the person's OWN real history; unaffected by
  *     Smart Assist OFF (metadata/context, never AI)
  * §14 MOBILE · A11Y · LOCALIZATION (§83)
+ * §15 UC-C4.2 — CANONICAL MEDIA TRUTH / RECORD PLACE / SOCIAL PLACE (owner-directed,
+ *     2026-09-30) — Moment.recordPlace is a real, directly-typed canonical field (data.ts);
+ *     a metadata-derived Place defaults into BOTH recordPlace and the Social place
+ *     immediately, no confirmation gate; the user's own Place always outranks metadata;
+ *     conflicting metadata fabricates no winner for either field; original MediaAsset
+ *     metadata is proven immutable by real deep-clone comparison; legacy Moments are never
+ *     auto-migrated. Exactly 11 checks (see the UC-C4.2 brief).
  */
 const { launch, sleep } = require("./celestial-lib");
 
@@ -616,19 +623,19 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
     ok(/03 AUG 2026/.test(bannerShown) && /Bhaktapur/.test(bannerShown), `the photo's own date/place surface immediately (“${bannerShown}”)`);
     const postGate = await page.evaluate(() => [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post")?.getAttribute("aria-disabled"));
     ok(postGate !== "true", "POST is never blocked on reviewing obvious harmless metadata (UC-C3 §20)");
-    // UC-C4.1 §5/§6 — the place quietly enriches the RECORD (and the composer's own action
-    // row) the instant the metadata is read, zero-effort, no click — but that is not yet a
-    // deliberate choice, so it stays out of the Social projection until the person confirms
-    // it one way or another (typing, picking, or "Use").
+    // UC-C4.2 §5 — the place enriches the RECORD (and the composer's own action row) the
+    // instant the metadata is read, zero-effort, no click — and (superseding UC-C4.1's
+    // confirmation gate, owner-directed) the SAME value is the Social default immediately:
+    // there is no separate step the person must take before it is shown.
     const preConfirmPlace = await page.evaluate(() => [...document.querySelectorAll("[data-sb-composer-actions] button")].find((b) => b.getAttribute("aria-label") === "Place")?.textContent.trim());
-    ok(preConfirmPlace === "Bhaktapur", "the record is quietly enriched with the photo's place, zero-effort, before any click (UC-C4.1 §5)");
+    ok(preConfirmPlace === "Bhaktapur", "the record is quietly enriched with the photo's place, zero-effort, before any click (UC-C4.2 §5)");
     await setText(page, "Zero-effort proof: never asked to retype the date");
     await post(page);
     m = await newest(page);
     ok(m?.at === "2026-08-03T12:00:00" && m.atPrecision === "day", "the date applied WITHOUT any explicit Use click — no privacy implication, never gated (UC-C4.1 §5)");
-    ok(!m?.place, "…but the metadata-derived place stays private to the record until deliberately confirmed — never auto-disclosed (UC-C4.1 §6/§8)");
-    // confirming with "Use" is the person's deliberate act — the SAME place now travels
-    // to the Social record (UC-C4.1 §5/§7).
+    ok(m?.place === "Bhaktapur", "…and the metadata-derived place is ALSO the Social default immediately — no confirmation gate exists (UC-C4.2 §1/§5, supersedes UC-C4.1 §6/§8)");
+    // UC-C4.2 §18 — "Use" is now PURELY a review dismissal: it changes nothing, since the
+    // place was already the Social default the instant the metadata was read.
     await openComposer(page);
     await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
     await page.evaluate(() => document.querySelector("[data-sb-meta-use]")?.click());
@@ -636,7 +643,7 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
     await setText(page, "Confirmed metadata place proof");
     await post(page);
     m = await newest(page);
-    ok(m?.place === "Bhaktapur", "Use details is a deliberate confirmation — the place now travels to the Social record (UC-C4.1 §5)");
+    ok(m?.place === "Bhaktapur", "clicking \"Use\" dismisses the review banner only — the place was already travelling to the Social record with or without it (UC-C4.2 §18)");
     // "Not this" restores the EXACT state that existed before this asset's autofill touched
     // it — never a generic "revert to NOW/no-place" (UC-C4.1 §2/§10). Here the pre-state
     // already WAS empty, so the observable result is unchanged; the mechanism underneath is
@@ -808,6 +815,183 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
     });
     ok(neKinds, "ne: all seven records named in Devanagari, descriptions included");
     await page.setCookie({ name: "sb-locale", value: "en", url: HOST });
+
+    /* ================= §15 UC-C4.2 — RECORD PLACE / SOCIAL PLACE / MEDIA TRUTH ================= */
+    console.log("§15 UC-C4.2 — recordPlace: canonical, immediate-default, conflict-safe, immutable media");
+    await open(page, DESKTOP, "light", "en");
+    const editMoment = async (frag) => {
+      await page.evaluate((f) => {
+        const el = [...document.querySelectorAll("[data-sb-moment]")].find((x) => x.textContent.includes(f));
+        el?.querySelector("button[aria-label='More']")?.click();
+      }, frag);
+      await sleep(300);
+      await page.evaluate(() => [...document.querySelectorAll("[role=menuitem]")].find((b) => b.textContent.trim() === "Edit")?.click());
+      await sleep(450);
+    };
+    const placeChipText = () => page.evaluate(() => [...document.querySelectorAll("[data-sb-composer-actions] button")].find((b) => b.getAttribute("aria-label") === "Place")?.textContent.trim());
+    const openPlaceSheet = () => page.evaluate(() => [...document.querySelectorAll("[data-sb-composer-actions] button")].find((b) => b.getAttribute("aria-label") === "Place")?.click());
+    const typePlace = (v) => page.evaluate((val) => { const i = document.getElementById("sb-place-common"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, val); i.dispatchEvent(new Event("input", { bubbles: true })); }, v);
+
+    // 1 — METADATA PLACE, DEFAULT USE (no confirmation gate)
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    const postGate1 = await page.evaluate(() => [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post")?.getAttribute("aria-disabled"));
+    await setText(page, "UC-C4.2 test 1 — metadata place defaults immediately");
+    await post(page);
+    const m1 = await newest(page);
+    ok(postGate1 !== "true" && m1?.recordPlace?.value === "Bhaktapur" && m1.recordPlace?.source === "metadata" && m1.place === "Bhaktapur",
+      "1. a usable metadata place persists as recordPlace (source: metadata) AND Social place uses the same value by default — no confirmation, POST never gated");
+
+    // 2 — METADATA PLACE, USER CHANGES IT
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await openPlaceSheet();
+    await sleep(300);
+    await typePlace("Kathmandu (test 2)");
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 2 — user changes the metadata place");
+    await post(page);
+    const m2 = await newest(page);
+    ok(m2?.recordPlace?.value === "Kathmandu (test 2)" && m2.recordPlace?.source === "user" && m2.place === "Kathmandu (test 2)",
+      "2. the user's own Place change outranks metadata: recordPlace.source becomes 'user' and Social place follows it — the original asset kept Bhaktapur (proven in check 6)");
+
+    // 3 — PLACE PICKER DEFAULT
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await openPlaceSheet();
+    await sleep(300);
+    const picker3 = await page.evaluate(() => ({
+      value: document.getElementById("sb-place-common")?.value,
+      postGate: [...document.querySelectorAll("[data-sb-composer] footer button")].find((b) => b.textContent.trim() === "Post")?.getAttribute("aria-disabled"),
+    }));
+    await typePlace("Picker Edited Place");
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 3 — the picker opened prefilled, then was edited");
+    await post(page);
+    const m3 = await newest(page);
+    ok(picker3.value === "Bhaktapur" && picker3.postGate !== "true" && m3?.place === "Picker Edited Place" && m3.recordPlace?.source === "user",
+      "3. opening Place with usable metadata shows the derived value by default, no gate; the person can edit it and POST");
+
+    // 4 — CLEARING SOCIAL PLACE
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await openPlaceSheet();
+    await sleep(300);
+    await page.click("[data-sb-place-clear]");
+    await sleep(200);
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 4 — clearing Social place");
+    await post(page);
+    const m4 = await newest(page);
+    ok(!m4?.place && m4?.recordPlace?.value === "Bhaktapur" && m4.recordPlace?.source === "metadata",
+      "4. clearing the Social place never destroys a valid recordPlace or silently changes its source");
+
+    // 5 — CONFLICTING METADATA, REAL SUBMIT PATH
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur", "Dusk over Phewa lake"]);
+    const liveChip5 = await placeChipText();
+    await setText(page, "UC-C4.2 test 5 — two conflicting metadata places, no user input");
+    await post(page);
+    const m5 = await newest(page);
+    ok(liveChip5 === "Place" && m5?.recordPlace === undefined && !m5?.place,
+      "5. two materially different metadata places, with no user input, leave BOTH recordPlace and the Social place unfabricated (never the first asset, never the last) — the live draft chip never shows a place at all");
+
+    // 6 — ORIGINAL MEDIA METADATA IMMUTABILITY (real deep-clone/deep-compare, not UI text)
+    await openComposer(page);
+    const before6 = await page.evaluate(() => window.__SB_ASSET_SNAPSHOT?.());
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await setText(page, "UC-C4.2 test 6 — original media metadata immutability");
+    await post(page);
+    const m6 = await newest(page);
+    await openComposer(page);
+    const after6 = await page.evaluate(() => window.__SB_ASSET_SNAPSHOT?.());
+    await page.evaluate(() => document.querySelector("[data-sb-composer] header button")?.click());
+    await sleep(300);
+    ok(!!before6 && !!after6 && JSON.stringify(before6) === JSON.stringify(after6) && m6?.recordPlace?.value === "Bhaktapur",
+      "6. deep-comparing every MediaAsset before and after a full recordPlace-deriving submission shows them byte-for-byte identical — proven on the real asset objects, never UI banner text");
+
+    // 7 — CANONICAL MOMENT SCHEMA (recordPlace?.value ?? place, on a real persisted Moment)
+    ok((m4.recordPlace?.value ?? m4.place) === "Bhaktapur",
+      "7. recordPlace?.value ?? place resolves correctly on a real, directly-typed Moment field (check 4's Moment, where place is cleared but recordPlace survives) — no structural-read/object-widening, no Circle code change needed");
+
+    // 8 — SOCIAL / RECORD SEPARATION (through legitimate user editing)
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await openPlaceSheet();
+    await sleep(300);
+    await typePlace("Kathmandu (test 8)");
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await openPlaceSheet();
+    await sleep(300);
+    await page.click("[data-sb-place-clear]");
+    await sleep(200);
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 8 — recordPlace and Social place diverge through editing");
+    await post(page);
+    const m8 = await newest(page);
+    ok(!m8?.place && m8?.recordPlace?.value === "Kathmandu (test 8)" && m8.recordPlace?.source === "user",
+      "8. recordPlace retains the person's own selected value/source even while the current Social choice (cleared) differs from it");
+
+    // 9 — LEGACY EDIT PATH, SCHEMA-DEPENDENT (not a trivial "recordPlace absent" observation)
+    await openComposer(page);
+    await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
+    await setText(page, "UC-C4.2 test 9 base — carries a real recordPlace");
+    await post(page);
+    await editMoment("UC-C4.2 test 9 base");
+    await setText(page, "UC-C4.2 test 9 base — carries a real recordPlace (edited, place untouched)");
+    await post(page);
+    const m9a = (await state(page)).moments.find((x) => x.text?.startsWith("UC-C4.2 test 9 base"));
+    await editMoment("Thamel smelled of rain");
+    await setText(page, "Thamel smelled of rain and juniper before the shops opened. (edited, place untouched)");
+    await post(page);
+    const m9b = (await state(page)).moments.find((x) => x.id === "m-rain");
+    ok(m9a?.recordPlace?.value === "Bhaktapur" && m9a.recordPlace?.source === "metadata" && m9a.place === "Bhaktapur" && m9b?.recordPlace === undefined && m9b?.place === "Thamel, Kathmandu",
+      "9. editing something unrelated to Place carries a real recordPlace through UNCHANGED (schema-dependent — fails without it) and leaves a legacy Moment's recordPlace genuinely absent, place unchanged");
+
+    // 10 — LEGACY PLACE EDIT (explicit)
+    await editMoment("Thamel smelled of rain");
+    await openPlaceSheet();
+    await sleep(300);
+    await typePlace("Legacy Edit Place");
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await post(page);
+    const m10 = (await state(page)).moments.find((x) => x.id === "m-rain");
+    ok(m10?.recordPlace?.value === "Legacy Edit Place" && m10.recordPlace?.source === "user" && m10.place === "Legacy Edit Place",
+      "10. explicitly touching a legacy Moment's Place creates recordPlace from that action (source: user); Social place follows it too");
+
+    // 11 — NO USABLE METADATA (a completely normal, unremarkable state)
+    await openComposer(page);
+    await pickMedia(page, ["Dal bhat tarkari on a steel plate"]);
+    await openPlaceSheet();
+    await sleep(300);
+    const noMeta11 = await page.evaluate(() => ({
+      bannerAbsent: !document.querySelector("[data-sb-metadata-review]"),
+      inputEmpty: document.getElementById("sb-place-common")?.value === "",
+      noErrorText: !/Unknown|Location not found|No metadata/i.test(document.querySelector("[data-sb-composer]")?.textContent ?? ""),
+    }));
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 11a — no usable metadata, left untouched");
+    await post(page);
+    const m11a = await newest(page);
+    await openComposer(page);
+    await pickMedia(page, ["Dal bhat tarkari on a steel plate"]);
+    await openPlaceSheet();
+    await sleep(300);
+    await typePlace("Typed Despite No Metadata");
+    await page.click("[data-sb-place-done]");
+    await sleep(200);
+    await setText(page, "UC-C4.2 test 11b — no metadata, but the person typed a place anyway");
+    await post(page);
+    const m11b = await newest(page);
+    ok(noMeta11.bannerAbsent && noMeta11.inputEmpty && noMeta11.noErrorText && m11a?.recordPlace === undefined && !m11a?.place && m11b?.recordPlace?.value === "Typed Despite No Metadata" && m11b.recordPlace?.source === "user",
+      "11. no usable metadata is a normal state — no banner, no error, an empty usable picker, POST works, and leaving Place untouched creates no recordPlace at all; typing one anyway still works correctly");
 
     console.log("page health");
     ok(errs.length === 0, `zero page errors (${errs.length})${errs[0] ? " — " + errs[0].slice(0, 90) : ""}`);

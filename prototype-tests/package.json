@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "jimp": "^0.22.12",
+    "piexifjs": "^1.0.6",
     "puppeteer-core": "^25.10.0"
   }
 }

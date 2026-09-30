@@ -245,3 +245,93 @@ metadata place, including a SECOND later metadata event; postedAt stays independ
 rejected metadata timestamp; "Use" is shown as the genuine confirmation path) · tsc 0 ·
 eslint(composer) 0 · next build ✓. The wider 40+ suite fleet was intentionally not re-run
 (no shared primitive beyond the composer's own `UDraft` was touched).
+
+## Phase UC-C4.2 — Canonical Media Truth / Record Place / Social Place (owner-directed · 2026-09-30)
+STATUS: COMPLETE. Supersedes an unaccepted first UC-C4.2 attempt from earlier the same day
+(discarded via `git stash`, never committed) whose two defects — `recordPlace` smuggled onto
+`Moment` via a structural-read/object-widening cast instead of a real declared field, and only
+7/10 pre-implementation tests genuinely failing — this pass explicitly corrects. `data.ts`'s
+`Moment` interface now directly declares `recordPlace?: RecordPlace` (`RecordPlace = {value;
+precision?; source}`, `RecordPlaceSource = 'metadata'|'user'|'ai'|'import'`, precision optional
+BY OWNER APPROVAL — never fabricated). Three truths kept separate: a MediaAsset's own original
+metadata (immutable) ≠ `recordPlace` (canonical Human Record place) ≠ `place` (current
+Social-visible place). Owner-directed behavioural reversal of UC-C4.1: a metadata-derived
+place now defaults into BOTH `recordPlace` AND the Social `place` immediately, with NO
+confirmation gate — `UDraft.placeConfirmed` is deleted, and `useMetadata`'s "Use" button is now
+a pure review-dismissal with no state effect. The recomputation is conflict-aware across EVERY
+currently-attached asset (never just the first): a single consistent metadata place populates
+both fields; two+ materially different places leave both unfabricated (never first-, never
+last-write-wins); no metadata at all is the normal, untouched case. A user-supplied place
+(`placeSource: "user"`) is never overwritten by metadata, in either order; Smart Assist's own
+place acceptance is tagged `placeSource: "ai"` (provenance only, no new AI behaviour). "No
+place" (Social clear) deliberately still does not touch `recordPlace`/`placeSource`. Legacy
+Moments are never auto-migrated (`recordPlace?.value ?? place` is the read-compatible shape,
+Circle untouched); a legacy Moment's bare `place` with no `recordPlace` is treated as
+already-established so an in-session media re-attach during an edit can't silently clobber it.
+One new test-only debug global, `window.__SB_ASSET_SNAPSHOT` (inside UniversalComposer.tsx,
+same spirit as the existing `__SB_SOCIAL_STATE`), lets check 6 deep-clone/deep-compare the
+real MediaAsset objects rather than reading UI banner text, per the owner's explicit
+correction. Records: AGENTS.md "Phase UC-C4.2". Files touched: data.ts, composer/types.ts,
+composer/UniversalComposer.tsx, composer/submit.ts only — recall.ts, domains.tsx, Circle,
+MediaAsset's schema and buildSubmission's public signature untouched; no new visible UI. Not
+committed, not pushed; no screenshots generated.
+VERIFIED: social-composer 140/140 (127 untouched existing + 2 existing modified in §13,
+recorded and justified — the confirmation-gate assertions are owner-superseded, not weakened
+— + 11 new UC-C4.2 checks = 140 exact). Pre-implementation proof: 129 existing green, all 11
+new checks genuinely failed (140 present); checks 5 and 6 specifically depend on real runtime
+behaviour (the live draft's Place chip staying empty on conflict; a real object-level
+deep-clone/compare) so they cannot trivially pass merely because the field is absent · tsc 0 ·
+eslint (the exact combined `composer` + `data.ts` invocation the brief specified) 0 ·
+next build ✓. The wider 40+ suite fleet was intentionally not re-run (no shared primitive
+beyond the composer's own `UDraft` and `data.ts`'s additive `Moment.recordPlace` field was
+touched, and no failing test pointed elsewhere). Rollback: not triggered.
+
+## Phase UC-C4.3 — Runtime Metadata → Place Pipeline (investigation only · 2026-09-30)
+STATUS: STOPPED AFTER INVESTIGATION, BY DESIGN. Zero files changed. Root cause: no code
+anywhere in this repo has ever read EXIF/GPS from an uploaded file — `registerUploads` only
+ever read image/video dimensions; the "zero-effort metadata" feature has always worked
+exclusively off hand-authored `takenAt`/`takenPlace` strings on the mock `LIBRARY` fixture
+array. A real reverse-geocoder exists (`src/lib/earth/locate.ts`, Nominatim) but serves only
+the unrelated Earth/globe feature. Building the real pipeline is a new subsystem (an EXIF
+parser dependency + a server-side geocode boundary), not a "broken link" repair, so per the
+brief's own stop clause it was reported rather than built unilaterally — became the UC-C4.4
+brief below. Records: AGENTS.md "Phase UC-C4.3". No test added; no rollback (nothing built).
+
+## Phase UC-C4.4 — Ambient Media Intelligence Foundation (owner-directed · 2026-09-30)
+STATUS: COMPLETE. Builds the real EXIF/GPS → reverse-geocode → recordPlace/Social-place
+pipeline UC-C4.3 found entirely missing, reusing UC-C4.2's existing conflict/priority logic
+verbatim (zero changes to `applyDetectedMetadata`'s own rules). New: `exifr@7.1.3` (real
+production dependency, chosen over unmaintained `exif-js`/a hand-rolled parser); `data.ts`
+gains `SourceMetadata` (one coherent, JSON-safe, immutable-evidence shape — `capturedAt`,
+`gps`, `device`, `orientation`, `mimeType`, `fileSize`; never duplicating `w`/`h`/`duration`
+already tracked) and `LibraryPhoto.sourceMetadata?`; two new small modules
+(`composer/media-metadata.ts` extraction, `composer/geocode-client.ts` the Composer's own
+geocode caller, deliberately independent of the Earth feature's client-only geocoder); one new
+minimal route `src/app/api/geocode/route.ts` (the privacy boundary — only `lat`/`lon` ever
+leave the browser toward the real provider, never image/filename/asset/user/caption data);
+`registerUploads` now extracts real metadata for a real photo upload (video extraction is a
+documented, honest limitation — not attempted) and populates the SAME `takenAt`/`takenPlace`
+fields the existing pipeline already reads; `UniversalComposer.tsx` gains a small
+`dRef`/`rederiveFromAsset` re-trigger so the Composer picks up metadata that resolves
+asynchronously, after the attaching render. A `?mockgeo=1` page-URL test-only seam (read
+directly inside `geocode-client.ts`, never touching `store.tsx`/`SocialPreview.tsx`) makes
+tests deterministic with zero real network calls. Test fixtures: real JPEGs with genuinely
+embedded EXIF GPS/time/device, generated via `piexifjs` (a devDependency of
+`prototype-tests/package.json` only, never shipped) at the owner's own stated coordinates
+27.658875/85.293442 (verified to encode to the owner's own quoted DMS values exactly) — never
+a fixture with `takenPlace` pre-filled. Records: AGENTS.md "Phase UC-C4.4". Files touched:
+data.ts, composer/media-metadata.ts (new), composer/geocode-client.ts (new),
+src/app/api/geocode/route.ts (new), composer/media-assets.ts, composer/UniversalComposer.tsx,
+package.json — Moment.tsx, recall.ts, domains.tsx, Circle, store.tsx, SocialPreview.tsx,
+src/lib/earth/locate.ts, and the UC-C4.2 recordPlace schema all untouched. Not committed, not
+pushed; no screenshots generated.
+VERIFIED: social-composer 140/140, byte-identical to before this pass (this pass's own tests
+live in a SEPARATE new file, so the existing exact count carries zero regression risk) +
+media-intelligence.js 14/14 (new suite, real end-to-end EXIF/GPS/geocode pipeline checks) ·
+tsc 0 · eslint (composer + data.ts + app/api/geocode) 0 · next build ✓ (the new route
+registers correctly). Pre-implementation: 6/14 new checks genuinely failed for the missing
+capability; the other 8 legitimately passed before implementation too — some test EXISTING
+protected behaviour that must keep holding (user override, user-time priority), others are
+inherent "absence" checks trivially true before any pipeline exists (no-EXIF, geocode-failure-
+shaped, conflicting-GPS-shaped, corrupted-EXIF, no-raw-GPS-leak) — disclosed honestly, the
+same category recorded for UC-C4.2's checks 5/6/9. Rollback: not triggered.

@@ -8,7 +8,7 @@
  *
  * Nothing here is a Post or a Human Record: until POST everything is draft (§27).
  */
-import type { Moment, Privacy } from "../data";
+import type { Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
 import { LIBRARY } from "../data";
 
 /** §6 — the eight resolutions of one composition. `social` = no Human Record at all. */
@@ -39,6 +39,9 @@ export interface EventTime {
 
 /** §17 — place precision tiers (exact GPS is a live seam; unknown = no place given). */
 export type PlacePrecision = "venue" | "cityRegion" | "country" | "approximate";
+
+/** UC-C4.2 — the canonical Moment.recordPlace shape, re-exported for the composer's own use. */
+export type { RecordPlace, RecordPlaceSource };
 
 /** §24 — a metadata finding awaiting the person's review (never auto-published, §23). */
 export interface MetadataFinding {
@@ -188,15 +191,21 @@ export interface UDraft {
   /** §17 — how precise the given place is (stored on the record for live disclosure). */
   placePrecision?: PlacePrecision;
   /**
-   * UC-C4.1 — whether `place` has been DELIBERATELY confirmed by the person (typed,
-   * selected from a list, or explicitly "Use"d from a metadata/AI suggestion). A place
-   * that is still exactly what metadata silently prefilled — and nothing more — stays
-   * private to the record: it may enrich the Human Record and the composer's own display,
-   * but is withheld from the Social projection until confirmed (§6/§8 of the metadata
-   * hardening pass). Manual entry sets this immediately; a Moment already carrying a
-   * posted place (edit mode) is confirmed by construction — see `uDraftFromMoment`.
+   * UC-C4.2 — provenance of the CURRENT `place` value. Set only by the handlers that
+   * actually assign `place` in this phase: metadata autofill ('metadata'), the person's own
+   * typed/picked/precision action ('user'), a Smart Assist acceptance ('ai'). A metadata
+   * source is never overwritten by later metadata once the person's own action has set this
+   * to 'user' (user override precedence) — see `applyDetectedMetadata`.
    */
-  placeConfirmed?: boolean;
+  placeSource?: RecordPlaceSource;
+  /**
+   * UC-C4.2 — the canonical Human Record place, tracked in PARALLEL to `place` above and
+   * NEVER cleared merely by the person hiding/removing the Social place (the "No place"
+   * clear handler intentionally does not touch this field): only an unambiguous, explicit
+   * replacement of the record-level place changes it. Absent on every legacy/pre-UC-C4.2
+   * draft; a first edit that does not touch Place keeps it that way (see `uDraftFromMoment`).
+   */
+  recordPlace?: RecordPlace;
   /* intent */
   intent: RecordIntent;
   intentSource: IntentSource;
@@ -284,10 +293,16 @@ export function uDraftFromMoment(m: Moment): UDraft {
     link: m.media?.kind === "link" ? m.media.url : undefined,
     people: (f.with as string[] | undefined) ?? [],
     place: m.place,
-    // UC-C4.1 — a place already posted on the Moment was already disclosed; editing must
-    // never retroactively hide it behind the metadata-confirmation gate.
-    placeConfirmed: m.place ? true : undefined,
     placePrecision: m.placePrecision,
+    // UC-C4.2 §16 — carry the Moment's own recordPlace over EXACTLY as it is (a legacy
+    // Moment predating this schema simply has none). Never auto-promote `m.place` into a
+    // fabricated recordPlace here: it stays unset until the person's OWN Place action in
+    // this edit creates one. `placeSource` mirrors the Moment's own recordPlace provenance
+    // when it exists; a legacy Moment's bare `place` (no recordPlace at all) is treated as
+    // already-established — never silently overwritten by incidental new metadata should
+    // the person attach media in this same edit without touching Place themselves.
+    recordPlace: m.recordPlace,
+    placeSource: m.recordPlace?.source ?? (m.place ? "user" : undefined),
     intent,
     intentSource: "user",
     // A2 — the Moment's own time is carried, never re-derived from the posting clock.

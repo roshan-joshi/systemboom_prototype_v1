@@ -1630,3 +1630,177 @@ assertions corrected + 9 new regression checks). tsc 0 · eslint(composer) 0 · 
 passes. The wider 40+ suite fleet was intentionally not re-run — this pass touches no shared
 primitive beyond `UDraft`/`applyDetectedMetadata`, both already scoped to the composer. Not
 committed, not pushed.
+
+# Phase UC-C4.2 — Canonical Media Truth / Record Place / Social Place (owner-directed · 2026-09-30)
+
+**Supersedes an unaccepted first UC-C4.2 attempt in full** (same day; discarded via `git
+stash` before this pass began, never committed). Its two defects: `recordPlace` was smuggled
+onto `Moment` via a structural-read/object-widening cast instead of being a real declared
+field, and only 7 of 10 "failing-first" tests actually failed pre-implementation. This pass
+corrects both — `Moment.recordPlace` is now a first-class typed field in `data.ts`, and all
+11 new checks were proven to fail, for the intended reason, before any implementation code
+was touched.
+
+Three truths now coexist without overwriting one another: **MEDIA ASSET METADATA** (a
+photo/video's own original, immutable EXIF-style data) ≠ **`Moment.recordPlace`** (SYSTEMBOOM's
+canonical Human Record place) ≠ **`Moment.place`** (the current Social-visible place). A
+metadata-derived place now defaults into BOTH `recordPlace` and `place` immediately — **this
+supersedes UC-C4.1's confirmation gate** (`placeConfirmed`, now removed entirely): the owner's
+new brief explicitly requires "if usable metadata-derived Place exists and the user does
+nothing, POST still works and that suggested Place is used" — no separate confirmation step.
+
+**Canonical schema** (`data.ts`, alongside `Moment`):
+```ts
+export type RecordPlaceSource = "metadata" | "user" | "ai" | "import";
+export interface RecordPlace {
+  value: string;
+  precision?: "venue" | "cityRegion" | "country" | "approximate"; // optional BY OWNER APPROVAL
+  source: RecordPlaceSource;
+}
+```
+`precision` is optional by explicit owner approval: a record place can be valid when
+SYSTEMBOOM knows a meaningful human-readable location but does not know — and must never
+fabricate — its exact precision tier. `composer/types.ts` imports and re-exports both types
+(no circular import: `data.ts` has no dependency back on the composer). `UDraft` gains
+`recordPlace?: RecordPlace` and `placeSource?: RecordPlaceSource`; `placeConfirmed` is deleted
+(dead once the confirmation gate it existed for is gone).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-30 | UC-C4.2 §2/§17 | `data.ts` | `recordPlace` needed to be a real, directly-typed `Moment` property — not a cast | `RecordPlaceSource`, `RecordPlace`, `Moment.recordPlace?: RecordPlace` added directly to the canonical type. `composer/types.ts`/`submit.ts` read and write it as an ordinary typed field — zero casts, zero structural-read tricks anywhere in the diff (confirmed: `git diff` contains exactly one `as {…}` in the whole pass, an unrelated `window` debug-global assertion, the same idiom `__SB_SOCIAL_STATE` already uses) | `social-composer.js` §15 checks 6, 7, 9; `tsc --noEmit` 0 errors |
+| 2026-09-30 | UC-C4.2 §4/§5/§9/§10/§11 | `composer/UniversalComposer.tsx` (`applyDetectedMetadata`) | Metadata place needed to default into BOTH fields immediately, conflict-aware, from EVERY attached asset — not just the first | Recomputes a `derivedPlace` from every currently-attached asset's own metadata each time media changes: one consistent value across all of them populates `place`+`placePrecision`+`recordPlace` (source `metadata`) immediately, no gate; a conflict among them leaves BOTH unfabricated (never first-, never last-write-wins); no metadata at all leaves both exactly as they were (the normal, unremarkable case). A `placeSource === "user"` value is never touched by this recomputation (user override precedence), whichever order metadata and the person's action happen in | `social-composer.js` §15 checks 1, 5, 8, 11 |
+| 2026-09-30 | UC-C4.2 §18 | `composer/UniversalComposer.tsx` (`useMetadata`) | With no confirmation gate, "Use" needed a new (simpler) meaning | Purely a review-banner dismissal now — it changes no state at all, since the value was already the default the instant the metadata was read | `social-composer.js` §13 (superseded assertion, see below), §15 check 1 |
+| 2026-09-30 | UC-C4.2 §7 | `composer/UniversalComposer.tsx` (`ignoreMetadata`, `MetaSnapshot`) | "Not this" needed to restore `recordPlace`/`placeSource` too | `MetaSnapshot` gains `prevRecordPlace`/`prevPlaceSource`, restored verbatim on reject, replacing the deleted `prevPlaceConfirmed` | `social-composer.js` §13 unaffected checks |
+| 2026-09-30 | UC-C4.2 §6/§7/§11 | `composer/UniversalComposer.tsx` (place text input, "Place found" Use, Recent/Suggested rows, the precision chip, `applySuggestion`) | Every place-setting interaction needed to record provenance | Typing/Recent/Suggested set `placeSource: "user"`; the metadata "Place found" offer sets `placeSource: "metadata"`; Smart Assist's place acceptance sets `placeSource: "ai"` (§12 — provenance consistency only, no new AI behavior); the precision chip updates only `recordPlace.precision` | `social-composer.js` §15 checks 2, 3, 8, 10 |
+| 2026-09-30 | UC-C4.2 §8 | `composer/UniversalComposer.tsx` ("No place" clear button) | Deliberately UNCHANGED — clearing the Social place must never destroy a valid `recordPlace` or its source; the current single control represents hiding Social disclosure, not an unambiguous record-level removal | The clear handler still sets only `place`/`placePrecision` to undefined (the deleted `placeConfirmed` reference removed); `recordPlace`/`placeSource` are simply not in that update, so they survive by construction — documented explicitly in code, not silently relied upon | `social-composer.js` §15 checks 4, 8 |
+| 2026-09-30 | UC-C4.2 §17 | `composer/submit.ts` (`buildSubmission`) | `recordPlace` needed to persist through the real typed `Moment`/`Partial<Moment>` positions — no signature change | `recordPlace: d.recordPlace` added as an ordinary field in both the "post" and "edit" object literals, exactly like every other field (now possible with no excess-property friction, because `Moment` declares it for real) | `social-composer.js` §15 checks 1–4, 6, 8–10 |
+| 2026-09-30 | UC-C4.2 §16 | `composer/types.ts` (`uDraftFromMoment`) | Legacy Moments must never be auto-migrated, but an in-session re-attach of media during an edit must not silently clobber an already-established legacy place either | `recordPlace: m.recordPlace` carried over exactly (absent on every legacy Moment); `placeSource: m.recordPlace?.source ?? (m.place ? "user" : undefined)` — a bare legacy `place` with no `recordPlace` at all is treated as already-established (i.e. protected from incidental new metadata in the same edit), never silently promoted into a fabricated `recordPlace` merely by opening the edit | `social-composer.js` §15 checks 9, 10 |
+| 2026-09-30 | UC-C4.2 §6/§14 (test seam) | `composer/UniversalComposer.tsx` (`window.__SB_ASSET_SNAPSHOT`) | Criterion 6 explicitly required a REAL deep-clone/deep-compare of `MediaAsset` objects, never UI banner text — and no existing debug global exposed them | One read-only debug function, in the same spirit as the already-accepted `__SB_SOCIAL_STATE`/`__SB_RING_DENSITY` globals: returns `JSON.parse(JSON.stringify(allAssets()))`. No schema or behavioural change; nothing in the implementation ever writes back to an asset | `social-composer.js` §15 check 6 (byte-for-byte `JSON.stringify` equality before/after a real submission) |
+
+**Owner-superseded assertions (recorded, never silent; each invariant restated):**
+
+- **`social-composer.js` §13** (two checks) — "…but the metadata-derived place stays private
+  to the record until deliberately confirmed — never auto-disclosed (UC-C4.1 §6/§8)" is
+  superseded: the metadata-derived place is now ALSO the Social default immediately (no
+  confirmation gate exists in this phase, per the owner's explicit UC-C4.2 §5 brief). The
+  companion "Use details is a deliberate confirmation" check is restated as "clicking 'Use'
+  dismisses the review banner only — the place was already travelling to the Social record
+  with or without it." The underlying invariant these two checks protect — a metadata-derived
+  value is always visibly distinguishable from one the person typed themselves, and "Not
+  this" cleanly reverts it — is unchanged and still asserted elsewhere in §13.
+
+**Files touched:** `data.ts`, `composer/types.ts`, `composer/UniversalComposer.tsx`,
+`composer/submit.ts`. Not touched: `recall.ts`, `domains.tsx`, Circle, `MediaAsset`'s own
+schema, `buildSubmission`'s public signature, any visible Composer UI (no new field, no new
+modal, no new gate).
+
+**Test accounting:** 127 untouched existing + 2 modified existing (§13, both listed above,
+recorded not silent) + 11 new UC-C4.2 checks = **140**, exact.
+
+**Verified on final source:** social-composer 140/140 (129 existing + 11 new UC-C4.2 −
+2 existing modified in place, per the accounting above). Pre-implementation proof: all 11 new
+checks failed for the intended reason (129 existing green, 11 new red — 140 total present);
+checks 5 and 6 in particular were written to depend on genuine runtime behaviour (the live
+draft's Place chip, and a real object-level deep-clone/compare) specifically so they could not
+trivially pass merely because the field didn't exist yet, per the owner's explicit critique of
+the first attempt. tsc 0 · eslint (`composer` + `data.ts`, the exact combined invocation) 0 ·
+`next build` passes. The wider 40+ suite fleet was intentionally not re-run — no shared
+primitive beyond the composer's own `UDraft` and `data.ts`'s additive `Moment.recordPlace`
+field was touched, and no failing test pointed elsewhere. Not committed, not pushed.
+
+# Phase UC-C4.3 — Runtime Metadata → Place Pipeline (investigation only · 2026-09-30)
+
+**STOPPED after Phase A by design — zero files changed.** The owner reported a confirmed
+real-world failure (a real iPhone photo's GPS never reaches the Place control). Investigation
+(zero edits, per the brief's own Phase A) proved this is not a "broken link" in an existing
+pipeline: **no code anywhere in this repository has ever read EXIF/GPS from an uploaded file.**
+`registerUploads` ([media-assets.ts](src/components/style-lab/social/composer/media-assets.ts))
+only ever read image/video dimensions; `takenAt`/`takenPlace` existed only as hand-authored
+literal strings on the mock `LIBRARY` fixture array
+([data.ts](src/components/style-lab/social/data.ts)) — confirmed by a prior, already-recorded
+audit (`suggest-record.ts`: *"audited: no vision/caption/EXIF pipeline exists here"*). A real
+reverse-geocoder does exist (`src/lib/earth/locate.ts`, Nominatim), but serves only the
+unrelated Earth/globe feature and was never reachable from the Composer. Per the brief's own
+explicit stop clause (*"If the required repair appears to need a broader subsystem, new
+service, new schema, or unrelated file set: STOP and report instead of expanding scope"*),
+building the real pipeline was reported as new scope rather than implemented unilaterally —
+this became the explicit brief for **Phase UC-C4.4** below. No test added, no rollback (nothing
+was implemented to roll back).
+
+# Phase UC-C4.4 — Ambient Media Intelligence Foundation (owner-directed · 2026-09-30)
+
+Builds the real capability UC-C4.3 found missing: a genuine EXIF/GPS extraction → reverse-
+geocode → `recordPlace`/Social-place pipeline for real uploaded photos, reusing UC-C4.2's
+existing conflict/priority logic verbatim rather than duplicating it.
+
+**Three truths, kept separate:** a `MediaAsset`'s own `sourceMetadata` (real, immutable
+evidence — EXIF GPS/capture time/device/orientation, never rewritten by anything the person
+does afterward) ≠ `Moment.recordPlace` (SYSTEMBOOM's canonical interpretation, from UC-C4.2,
+schema unchanged) ≠ `place` (the current Social-visible choice).
+
+**Dependency:** `exifr@7.1.3` (new production dependency) — pure JS, zero native deps,
+browser+Node compatible, actively maintained, purpose-built `{gps:true}` option returns
+ready-to-use decimal `latitude`/`longitude`. Verified against real generated EXIF fixtures
+before writing any implementation. Rejected: `exif-js` (unmaintained), a hand-rolled parser (no
+compelling reason). Limitation, stated honestly: video EXIF/GPS extraction is not attempted in
+this pass — `exifr` does not reliably read container-embedded GPS/time across video formats,
+and the existing video-metadata path (dimensions/duration via `HTMLVideoElement`) is untouched.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-09-30 | UC-C4.4 §2 | `data.ts` | Real, immutable per-asset metadata needed one coherent, JSON-safe shape — never scattered fields, never duplicating `w`/`h`/`duration` already tracked on the asset | New `SourceMetadata { schemaVersion: 1; normalized: { capturedAt?, gps?, device?, orientation?, mimeType?, fileSize? } }`; `LibraryPhoto.sourceMetadata?: SourceMetadata` (present only for a real upload whose EXIF was read; absent for every fixture/library asset) | `media-intelligence.js` §5 (real GPS present on the session asset) |
+| 2026-09-30 | UC-C4.4 §3/§4 (new file) | `composer/media-metadata.ts` | One focused extraction module, the ONLY place a file's own metadata is read | `extractSourceMetadata(file)` — `exifr.parse(file, {gps:true})`, never throws (a corrupted/absent EXIF section resolves to an empty `normalized`, never breaks attachment); `mimeType`/`fileSize` come straight from the `File` object, always present | `media-intelligence.js` §1, §6, §7, §12 |
+| 2026-09-30 | UC-C4.4 §6 (new file) | `composer/geocode-client.ts` | A small, Composer-owned reverse-geocode caller, deliberately independent of the Earth feature's own client-only geocoder (different cache/throttle tuned for map panning; the brief explicitly asks not to couple the Composer to Earth/globe UI code) | `reverseGeocode(lat, lon)` calls SYSTEMBOOM's own `/api/geocode` (never a public provider directly) with a 4s timeout; never throws — failure/timeout resolves to `undefined`, a normal outcome | `media-intelligence.js` §8 |
+| 2026-09-30 | UC-C4.4 §6 (new route) | `src/app/api/geocode/route.ts` | Privacy boundary: raw GPS must reach a public geocoder only server-side, carrying nothing but `lat`/`lon` — no image, filename, asset id, user id, caption, or account information | New minimal Next.js route; real path calls Nominatim server-side with a `User-Agent` and 5s timeout; `?mock=1` (test-only, see below) resolves a small explicit coordinate table instead — never a real network call in tests | `media-intelligence.js` §1, §8, §9, §10 |
+| 2026-09-30 | UC-C4.4 (test seam) | `composer/geocode-client.ts` | Deterministic tests must never depend on, or hit, a live external service | `?mockgeo=1` on the PAGE url (read directly via `window.location.search` inside this module only — never wired through `store.tsx`/`SocialPreview.tsx`, staying inside authorized files) makes the client append `&mock=1` to its own `/api/geocode` request | `media-intelligence.js` (all real-GPS checks) |
+| 2026-09-30 | UC-C4.4 §3 | `composer/media-assets.ts` (`registerUploads`) | A real photo's metadata must be read while the raw `File` is still in scope (the object URL discards it) and must reach the SAME `takenAt`/`takenPlace` fields the existing UC-C4.2 logic already reads — no new reading path needed | For a real image upload only (video is the documented limitation above): kicks off `extractSourceMetadata`, sets `asset.sourceMetadata` and (if found) `asset.takenAt`; if GPS was found, kicks off `reverseGeocode` and sets `asset.takenPlace` on success. New optional `onMetadataReady(id)` callback fires once time resolves and again if/when place resolves | `media-intelligence.js` §1–§3, §6, §7, §9, §10, §12, §14 |
+| 2026-09-30 | UC-C4.4 §9 | `composer/UniversalComposer.tsx` | Async extraction/geocoding resolve after the render that attached the file — the Composer needed a way to re-derive its draft once real data lands, reusing `applyDetectedMetadata` exactly as UC-C4.2 left it | New `dRef` (a ref always holding the latest draft) + `rederiveFromAsset(id)`, passed to `registerUploads` as `onMetadataReady`; re-runs the SAME `applyDetectedMetadata` against current state. Zero changes to that function's own conflict/priority/user-override logic — it already correctly handles real, asynchronously-populated `takenAt`/`takenPlace` exactly as it handled fixture data | `media-intelligence.js` §1–§3, §9, §10, §11 |
+| 2026-09-30 | UC-C4.4 | `package.json` | New production dependency | `exifr: ^7.1.3` added | `tsc`/`next build` |
+
+**Media metadata model.** `SourceMetadata.normalized` never claims a fact it didn't extract:
+GPS altitude is included only when EXIF supplied one; device/lens only when present; precision
+is never attached to a metadata-derived `recordPlace` (the geocoder here never claims a
+precision tier — omitted, never fabricated, exactly as §15 of the brief requires).
+
+**Immutability.** Nothing in this pass, or any prior one, ever writes to `assetById`/
+`allAssets()`/`LIBRARY`/a session asset's `sourceMetadata` after it is set once. Proven by a
+real deep-clone/compare (`media-intelligence.js` §5, reusing UC-C4.2's `__SB_ASSET_SNAPSHOT`
+debug global) across a full attach → user Place override → submit cycle.
+
+**Not built in this pass, honestly (documented, not hidden):** video capture-time/GPS
+extraction; timezone-offset capture (rare in EXIF, not attempted); precision-tier inference for
+a geocoded place; persisting `sourceMetadata` onto a POSTED Moment's own stored media items
+(it lives on the session `MediaAsset` only — the foundation is real and reusable, but wiring it
+onto `Moment.media` for future Circle/Life-map features is left as a documented seam, not
+built now, per §16's "do not build those features now"); a Place-picker map (none exists in
+the Composer to begin with — not built, not required to be).
+
+**Files touched:** `data.ts` (additive `SourceMetadata`/`sourceMetadata`), two new modules
+(`composer/media-metadata.ts`, `composer/geocode-client.ts`), one new route
+(`src/app/api/geocode/route.ts`), `composer/media-assets.ts`, `composer/UniversalComposer.tsx`,
+`package.json` (+`exifr`), `prototype-tests/media-intelligence.js` (new, separate suite — see
+below), `AGENTS.md`, `SOCIAL-COMPLETION-LOOP.md`. **Not touched:** `Moment.tsx`, `recall.ts`,
+`domains.tsx`, any Circle file, `store.tsx`, `SocialPreview.tsx`, `src/lib/earth/locate.ts`,
+`prototype-tests/social-composer.js` (its accepted 140 checks are untouched and unaffected —
+confirmed re-run, still exactly 140/140), `recordPlace`'s UC-C4.2 schema (unchanged).
+
+**Test accounting** (per the brief's own request for a SEPARATE bucket, not a forced combined
+total): **Composer suite total: 140/140, byte-identical to before this pass** (0 modified,
+0 added there — this pass's own tests live in a new, separate file so the delicate, already-
+exact 140 count carries zero regression risk). **New metadata suite
+(`prototype-tests/media-intelligence.js`): 14/14** — every scenario drives a REAL uploaded
+JPEG with genuinely embedded EXIF (generated via `piexifjs`, a test-only devDependency of
+`prototype-tests/package.json`, at the brief's own stated coordinates 27.658875/85.293442,
+verified to encode to the brief's own quoted DMS values exactly) through the real attach →
+extract → geocode(mocked) → draft path — never a fixture with `takenPlace` pre-filled.
+Pre-implementation, 6 of the 14 genuinely failed for the missing-capability reason; the other
+8 legitimately passed even before implementation, for two honest reasons, disclosed rather
+than hidden: some (user override, user-time-priority) test EXISTING protected behavior that
+isn't new capability and must continue holding; others (no-EXIF, geocode-failure-shaped,
+conflicting-GPS-shaped, corrupted-EXIF, no-raw-GPS) are inherently "absence" checks that are
+trivially true before ANY pipeline exists (nothing populates anything for any upload today) —
+the same category of honest disclosure recorded for UC-C4.2's checks 5/6/9.
+
+**Verified on final source:** social-composer 140/140 (untouched) · media-intelligence 14/14 ·
+tsc 0 · eslint (`composer` + `data.ts` + `app/api/geocode`) 0 · `next build` passes (the new
+`/api/geocode` route registers correctly). Not committed, not pushed.
