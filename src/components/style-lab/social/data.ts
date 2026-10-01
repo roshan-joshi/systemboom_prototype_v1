@@ -123,7 +123,14 @@ export interface KindFields {
   /** Meal: cost context — sensitive, never auto-published. */
   cost?: string;
   /** Meal Advanced: structured food/drink items (13_MEAL_FIELDS "do not flatten"). */
-  foodItems?: { name: string; quantity?: string }[];
+  foodItems?: { name: string; quantity?: string; source?: FoodSource; state?: FoodItemState }[];
+  /**
+   * UC-MEAL-AI — the AI's own reading of an attached Meal photo/video, persisted exactly as
+   * produced. RECORD-ONLY: never rendered by Moment.tsx or any Social projection. Immutable
+   * once written — a person's food correction changes `foodItems` above, never this. Absent
+   * on every fixture and on any Meal posted with AI off/unavailable/declined.
+   */
+  mealAIObservation?: MealAIObservation;
   /* Activity — adaptive per-subtype More-details fields (04_ACTIVITY_TYPES). */
   felt?: string;
   steps?: string;
@@ -200,6 +207,73 @@ export interface RecordPlace {
   value: string;
   precision?: "venue" | "cityRegion" | "country" | "approximate";
   source: RecordPlaceSource;
+}
+
+/**
+ * UC-MEAL-AI — where a food/nutrition value ultimately came from. "database" is RESERVED for
+ * a future nutrition-database integration; nothing in this phase produces it.
+ */
+export type FoodSource = "ai_visual_estimate" | "label_ocr" | "user" | "database";
+
+/** UC-MEAL-AI — a food item's lifecycle: an AI reading is a suggestion until the person acts. */
+export type FoodItemState = "suggested" | "confirmed" | "corrected" | "rejected";
+
+/** UC-MEAL-AI — how sure the model is. Never shown as a percentage; only as tentative language. */
+export type AIConfidence = "high" | "medium" | "low";
+
+/**
+ * UC-MEAL-AI — one nutrition figure with its own honesty attached: a range is preferred over
+ * a fabricated exact number, and provenance/confidence travel with the value, never separately.
+ */
+export interface NutritionValue {
+  value?: number;
+  range?: { min: number; max: number };
+  unit: string;
+  source: FoodSource;
+  confidence: AIConfidence;
+}
+
+export interface NutritionEstimate {
+  calories?: NutritionValue;
+  protein?: NutritionValue;
+  carbs?: NutritionValue;
+  fat?: NutritionValue;
+}
+
+/** UC-MEAL-AI — one food/drink the model believes it sees. Never a fact until confirmed. */
+export interface ObservedFood {
+  name: string;
+  confidence: AIConfidence;
+  /** "one plate", "two pieces" — never a fabricated gram weight. */
+  portion?: string;
+}
+
+/** UC-MEAL-AI — normalized text read from a menu/package/receipt in the SAME vision call. */
+export interface OcrObservation {
+  kind: "menu" | "package" | "receipt";
+  text: string;
+}
+
+/**
+ * UC-MEAL-AI — the AI's own reading of an attached Meal photo/video, normalized into
+ * SYSTEMBOOM's own shape (never a provider-specific structure). Written once, on POST, and
+ * never mutated afterward — a person's later correction changes the confirmed `FoodItem`
+ * list, not this record (see `KindFields.mealAIObservation`).
+ */
+export interface MealAIObservation {
+  schemaVersion: 1;
+  /** The provider model that produced this reading (e.g. "deepseek-flash") — provenance only,
+   *  never surfaced to the person as a badge/label. */
+  providerModel: string;
+  analyzedAt: string;
+  foods: ObservedFood[];
+  possibleMealType?: "breakfast" | "lunch" | "dinner" | "snack";
+  ingredients?: string[];
+  portionEstimates?: string[];
+  nutritionEstimate?: NutritionEstimate;
+  ocrObservations?: OcrObservation[];
+  /** Overall reading confidence — a LOW observation must never auto-confirm a food item. */
+  confidence: AIConfidence;
 }
 
 export interface Moment {

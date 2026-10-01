@@ -36,7 +36,8 @@ import { useT } from "@/lib/i18n/LocaleProvider";
 import { formatNumberLocale, sbDate } from "@/lib/i18n/format";
 import { allAssets, assetById, MEDIA_LIMIT, registerUploads } from "./media-assets";
 import { ASSIST_CAPABILITIES, extractAssist, setSmartAssist, smartAssistEnabled, type AssistSuggestion } from "./smart-assist";
-import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, ChipSelect, DomainMore, DomainQuick, FIELD, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, moreLabelKey, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
+import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, ChipSelect, DomainMore, DomainQuick, FIELD, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealSuggestion, moreLabelKey, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
+import { analyzeMealMedia } from "./meal-intelligence/analyzeMealMedia";
 import { commonActivityTypes, recentPeopleIds, recentPlaces } from "./recall";
 import { hasAnyMedia, resolveIntent, type HealthType, type RecordIntent, type UDraft } from "./types";
 import { buildSubmission, minimumProblem, successKey } from "./submit";
@@ -150,6 +151,15 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // §26 — the global switch, read at mount (the composer mounts closed during SSR).
   const [assistOn, setAssistOn] = useState(() => smartAssistEnabled());
   const [peopleQuery, setPeopleQuery] = useState("");
+  // UC-MEAL-AI — the Meal analysis lifecycle. `mealAnalysisKeyRef` is the exact attached-media
+  // set already kicked off for THIS composer session, so re-renders (typing, unrelated state
+  // changes) never re-fire the same analysis; `mealAnalysisGenRef` lets a superseded (late)
+  // response recognize itself and do nothing to the draft (§LATE RESULT PROTECTION) — the
+  // observation is still logged either way.
+  const [mealAnalyzing, setMealAnalyzing] = useState(false);
+  const mealAnalysisKeyRef = useRef<string | null>(null);
+  const mealAnalysisGenRef = useRef(0);
+  const mealAnalysisAbortRef = useRef<AbortController | null>(null);
   // §24 — one metadata review per detected asset; edit mode never re-asks (the truth is set).
   const [metaReview, setMetaReview] = useState<{ id: string; resolution: "used" | "ignored" } | null>(null);
   // UC-C4.1 — the EXACT state that existed immediately before a metadata autofill touched
@@ -405,6 +415,44 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     const timer = window.setTimeout(() => setSugg(extractAssist(d.text, anyMedia, me.id)), 900);
     return () => window.clearTimeout(timer);
   }, [d.text, anyMedia, d.intentSource, phase, editing, assistOn, me.id]);
+
+  /*
+   * UC-MEAL-AI — media attachment may start Meal analysis automatically, reusing the SAME
+   * Smart Assist ON/OFF switch as the one AI toggle in this composer (§AI ON/OFF PROTOTYPE
+   * STATE: "if one exists, reuse it"). `!assistOn` returns before `analyzeMealMedia` is ever
+   * referenced, so AI OFF means literally zero calls, zero `/api/analyze-meal` requests, zero
+   * DeepSeek calls — a first-class, fully-usable path.
+   */
+  useEffect(() => {
+    if (editing || resolved !== "meal" || !assistOn) return;
+    const photoAssets = draftMedia.filter((m) => !m.videoDuration);
+    const videoAsset = draftMedia.find((m) => m.videoDuration);
+    if (photoAssets.length === 0 && !videoAsset) return;
+    const key = draftMedia.map((m) => m.id).join(",");
+    if (mealAnalysisKeyRef.current === key) return; // already running/done this session for this exact set
+    mealAnalysisKeyRef.current = key;
+    mealAnalysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    mealAnalysisAbortRef.current = controller;
+    const gen = ++mealAnalysisGenRef.current;
+    const w = window as unknown as { __SB_MEAL_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }> };
+    const log = (entry: { key: string; status: string; observation: unknown }) => {
+      if (!w.__SB_MEAL_ANALYSIS_LOG) w.__SB_MEAL_ANALYSIS_LOG = [];
+      w.__SB_MEAL_ANALYSIS_LOG.push(entry);
+    };
+    log({ key, status: "start", observation: undefined });
+    setMealAnalyzing(true);
+    analyzeMealMedia({ photoUrls: photoAssets.map((p) => p.src), videoUrl: videoAsset?.src, signal: controller.signal }).then((observation) => {
+      log({ key, status: observation !== null ? "done" : "failed", observation });
+      if (mealAnalysisGenRef.current !== gen) return; // superseded by a newer analysis — do nothing
+      setMealAnalyzing(false);
+      if (observation === null) return; // safe failure — nothing to show, Save is unaffected
+      // §LATE RESULT PROTECTION — this only ever sets the AI's OWN reading; it never touches
+      // `foodItems`, so a person's manual entry (typed while this was in flight) is untouched.
+      setD((x) => (x.intent === "meal" ? { ...x, domains: { ...x.domains, meal: { ...x.domains.meal, aiObservation: observation } } } : x));
+    });
+  }, [editing, resolved, assistOn, draftMedia]);
+  useEffect(() => () => mealAnalysisAbortRef.current?.abort(), []);
 
   /* ---- intent selection (§7/§26 — switching never loses common or per-domain work) ---- */
   const chooseIntent = (k: RecordIntent) => {
@@ -744,6 +792,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               {resolved !== "social" && (
                 <div key={resolved} className="sb-reveal mt-3" data-sb-kind-fields={resolved}>
                   <DomainQuick draft={{ ...d, intent: resolved }} set={setD} min={me.birthDate} onOpenSheet={(s) => openSheet(s)} activityCommon={activityCommon} />
+                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} openMore={() => setMoreOpen(true)} />}
                   {hasMore(resolved) && (
                     <div className={resolved === "moment" ? "" : "mt-2"}>
                       <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} className="sb-press -ml-2 inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-more-toggle>

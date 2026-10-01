@@ -96,7 +96,13 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
   try {
     /* ================= §1 DEFAULT (§71) ================= */
     console.log("§1 default — compact, easier than ordinary social media");
-    await open(page);
+    // Phase C (2026-10-01): this section attaches real photos (§3) for Place/metadata
+    // behavior unrelated to Meal AI. `&mockai=nonfood` keeps the now-broadened "any photo"
+    // analysis trigger mock-safe here — no live DeepSeek call, no category side effect,
+    // regardless of which photo is attached — so this accepted suite stays free and
+    // deterministic. No assertion in this suite reads AI/category state, so behavior is
+    // otherwise unchanged.
+    await open(page, DESKTOP, "light", "en", "&mockai=nonfood");
     const entry = await page.evaluate(() => document.querySelector("[data-sb-open-composer]")?.textContent.trim());
     ok(entry === "What's happening?", `the entry bar asks the social question, never a Life age (“${entry}”)`);
     await openComposer(page);
@@ -615,7 +621,8 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
 
     /* ================= §13 ZERO-EFFORT CAPTURE ================= */
     console.log("§13 zero-effort capture — SYSTEMBOOM knows, so the person doesn't retype");
-    await open(page, DESKTOP, "light", "en", "&composer=1");
+    // Phase C (2026-10-01): mock-safe — see the §1 note above.
+    await open(page, DESKTOP, "light", "en", "&composer=1&mockai=nonfood");
     // EXIF prefill: attaching a dated photo applies its date/place immediately — no click
     // required, and POST is never gated on reviewing it (source #2: original media metadata).
     await pickMedia(page, ["Nyatapola temple, Bhaktapur"]);
@@ -818,7 +825,10 @@ const discard = async (page) => { await page.keyboard.press("Escape"); await sle
 
     /* ================= §15 UC-C4.2 — RECORD PLACE / SOCIAL PLACE / MEDIA TRUTH ================= */
     console.log("§15 UC-C4.2 — recordPlace: canonical, immediate-default, conflict-safe, immutable media");
-    await open(page, DESKTOP, "light", "en");
+    // Phase C (2026-10-01): mock-safe — see the §1 note above. This section's "Dal bhat
+    // tarkari" fixture is genuinely food; without this, a real DeepSeek call would very
+    // plausibly auto-select Meal mid-test, which this section does not expect.
+    await open(page, DESKTOP, "light", "en", "&mockai=nonfood");
     const editMoment = async (frag) => {
       await page.evaluate((f) => {
         const el = [...document.querySelectorAll("[data-sb-moment]")].find((x) => x.textContent.includes(f));

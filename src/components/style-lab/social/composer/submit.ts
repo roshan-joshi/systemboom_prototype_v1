@@ -58,8 +58,10 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("ingredients", m.ingredients);
       set("experience", m.experience);
       set("cost", m.cost);
-      set("foodItems", m.foodItems?.filter((it) => it.name.trim()).map((it) => ({ name: it.name.trim(), quantity: it.quantity?.trim() || undefined })));
+      set("foodItems", m.foodItems?.filter((it) => it.name.trim()).map((it) => ({ name: it.name.trim(), quantity: it.quantity?.trim() || undefined, source: it.source, state: it.state })));
       set("notes", m.notes);
+      // UC-MEAL-AI — the original AI reading, record-only, immutable once written.
+      set("mealAIObservation", m.aiObservation ?? undefined);
       break;
     }
     case "activity": {

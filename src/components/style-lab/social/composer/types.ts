@@ -8,7 +8,7 @@
  *
  * Nothing here is a Post or a Human Record: until POST everything is draft (§27).
  */
-import type { Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
+import type { FoodItemState, FoodSource, MealAIObservation, Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
 import { LIBRARY } from "../data";
 
 /** §6 — the eight resolutions of one composition. `social` = no Human Record at all. */
@@ -62,10 +62,21 @@ export interface MomentDomain {
   /** Life period in the person's own words (the chapter OBJECT model is a live seam). */
   chapter?: string;
 }
+/** UC-MEAL-AI — re-exported for the composer's own use (canonical shape lives in data.ts). */
+export type { FoodItemState };
+
 /** 13_MEAL_FIELDS Advanced — one structured food/drink item ("do not flatten"). */
 export interface FoodItem {
   name: string;
   quantity?: string;
+  /**
+   * UC-MEAL-AI — provenance + lifecycle. Both absent = a manually-typed item, byte-identical
+   * to every pre-existing FoodItem. This composer's own UI resolves a rejected AI suggestion
+   * by simply not adding it (matching the existing FoodItemsEditor's remove-item model) —
+   * `"rejected"` is declared for a future surface that keeps a visible rejected list.
+   */
+  source?: FoodSource;
+  state?: FoodItemState;
 }
 export interface MealDomain {
   occasion?: "breakfast" | "lunch" | "dinner" | "snack" | "drink" | "other";
@@ -80,6 +91,17 @@ export interface MealDomain {
   cost?: string;
   foodItems?: FoodItem[];
   notes?: string;
+  /**
+   * UC-MEAL-AI — this composition's own AI reading. NEVER cleared/mutated once set (§AI
+   * OBSERVATION IMMUTABILITY) — it is exactly what gets carried onto the record at submit
+   * (`KindFields.mealAIObservation`), independent of anything the person does with the
+   * suggested foods afterward. Whether the SUGGESTION CARD is still shown is tracked
+   * separately by `aiObservationDismissed` below — dismissal is a UI concern, never data loss.
+   */
+  aiObservation?: MealAIObservation | null;
+  /** UC-MEAL-AI — the person acted on (accepted/adjusted) the current `aiObservation`, so its
+   *  suggestion card stops showing. The observation itself is untouched. */
+  aiObservationDismissed?: boolean;
 }
 export type ActivityType =
   | "run" | "walk" | "cycling" | "gym" | "hiking" | "swimming"
@@ -317,6 +339,9 @@ export function uDraftFromMoment(m: Moment): UDraft {
         occasion: f.occasion as MealDomain["occasion"], occasionCustom: f.occasionCustom, items: f.items,
         context: f.context as MealDomain["context"], preparation: f.preparation, ingredients: f.ingredients,
         experience: f.experience, cost: f.cost, foodItems: f.foodItems, notes: f.notes,
+        // UC-MEAL-AI — the record's own original observation carries over on edit, unchanged;
+        // this edit's UI never regenerates or replaces it (immutability, §AI OBSERVATION).
+        aiObservation: f.mealAIObservation,
       },
       activity: {
         type: f.activityType as ActivityType, distance: f.distance, duration: f.duration, intensity: f.intensity,

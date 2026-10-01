@@ -621,7 +621,18 @@ export function moreLabelKey(intent: RecordIntent): string {
  */
 export function FoodItemsEditor({ items, onChange }: { items: FoodItem[]; onChange: (items: FoodItem[]) => void }) {
   const { t } = useT();
-  const patch = (i: number, p: Partial<FoodItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...p } : it)));
+  // UC-MEAL-AI — editing a suggested item's own name is the person's correction: its lifecycle
+  // moves "suggested" → "corrected" (§FOOD ITEM STATE). A manually-typed item (no `state` at
+  // all) is untouched by this — it was never a suggestion to correct.
+  const patch = (i: number, p: Partial<FoodItem>) =>
+    onChange(
+      items.map((it, j) => {
+        if (j !== i) return it;
+        const next = { ...it, ...p };
+        if ("name" in p && it.state === "suggested" && p.name !== it.name) next.state = "corrected";
+        return next;
+      }),
+    );
   return (
     <div className="grid gap-1.5" data-sb-fooditems>
       <span className={LABEL}>{t("ucomposer.foodItems")}</span>
@@ -639,6 +650,72 @@ export function FoodItemsEditor({ items, onChange }: { items: FoodItem[]; onChan
       <button type="button" onClick={() => onChange([...items, { name: "" }])} className={`${ADD_CHIP} w-fit`} data-sb-add-item>
         <span aria-hidden>+</span> {t("ucomposer.addItem")}
       </button>
+    </div>
+  );
+}
+
+/* --------------------------------------------- Meal AI suggestion (UC-MEAL-AI) */
+
+/**
+ * UC-MEAL-AI — a calm suggestion surface: "Looks like … / Estimated … / [Looks right] [Adjust]"
+ * — never a giant AI panel, never a badge, never a sparkle, never a technical confidence
+ * number (§NO AI BADGES, §CONFIDENCE SEMANTICS). Deliberately plain English, not yet routed
+ * through `useT`/the 8 catalogs: this phase's file-touch list scopes to Meal only, and every
+ * other string in this composer already goes through i18n — this is a documented, honest
+ * carryover for a future localization pass, the same pattern this codebase already uses for
+ * other deferred strings (e.g. the exact-age readout, S2/S3 carryovers).
+ */
+export function MealSuggestion({ draft, set, analyzing, openMore }: { draft: UDraft; set: SetDraft; analyzing: boolean; openMore: () => void }) {
+  const obs = draft.domains.meal.aiObservation;
+  if (analyzing && obs === undefined) {
+    return <p className="text-[12px] text-muted" data-sb-meal-analyzing>Looking at your photo…</p>;
+  }
+  // §AI OBSERVATION IMMUTABILITY — dismissing the CARD never touches `aiObservation` itself;
+  // it is what gets carried onto the record at submit, untouched by anything below.
+  if (!obs || draft.domains.meal.aiObservationDismissed) return null;
+  const useful = obs.foods.filter((f) => f.confidence !== "low");
+  const hintOnly = obs.foods.filter((f) => f.confidence === "low");
+  const dismiss = () => setDomain(set, "meal", { aiObservationDismissed: true });
+  if (useful.length === 0) {
+    // §CONFIDENCE SEMANTICS — low confidence is a hint only, never auto-confirmable: no accept
+    // control exists alongside it at all.
+    if (hintOnly.length === 0) return null;
+    return <p className="text-[12px] text-muted" data-sb-meal-hint>Could be {hintOnly[0].name.toLowerCase()}</p>;
+  }
+  const n = obs.nutritionEstimate;
+  const nutritionParts: string[] = [];
+  if (n?.calories?.range) nutritionParts.push(`~${n.calories.range.min}–${n.calories.range.max} ${n.calories.unit}`);
+  if (n?.protein?.range) nutritionParts.push(`~${n.protein.range.min}–${n.protein.range.max} ${n.protein.unit} protein`);
+  const accept = () => {
+    const confirmed: FoodItem[] = useful.map((f) => ({ name: f.name, quantity: f.portion, source: "ai_visual_estimate", state: "confirmed" }));
+    setDomain(set, "meal", { foodItems: [...(draft.domains.meal.foodItems ?? []), ...confirmed] });
+    dismiss();
+  };
+  const adjust = () => {
+    const suggested: FoodItem[] = useful.map((f) => ({ name: f.name, quantity: f.portion, source: "ai_visual_estimate", state: "suggested" }));
+    setDomain(set, "meal", { foodItems: [...(draft.domains.meal.foodItems ?? []), ...suggested] });
+    revealField(set, "meal", "foodItems");
+    // The Foods & drinks editor lives inside "More details" (§UC-C3 AddableFields) — Adjust
+    // must open that outer disclosure too, or the just-revealed field stays invisible.
+    openMore();
+    dismiss();
+  };
+  return (
+    <div className="grid gap-1.5 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-3" data-sb-meal-suggestion>
+      <p className="text-[13px] text-text">
+        <span className={LABEL}>Looks like </span>
+        {useful.map((f) => f.name).join(" · ")}
+      </p>
+      {nutritionParts.length > 0 && (
+        <p className="text-[12px] text-muted">
+          <span className={LABEL}>Estimated </span>
+          {nutritionParts.join(" · ")}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button type="button" onClick={accept} className={ADD_CHIP} data-sb-meal-accept>Looks right</button>
+        <button type="button" onClick={adjust} className={ADD_CHIP} data-sb-meal-adjust>Adjust</button>
+      </div>
     </div>
   );
 }
