@@ -215,6 +215,17 @@ export interface RecordPlace {
  */
 export type FoodSource = "ai_visual_estimate" | "label_ocr" | "user" | "database";
 
+/**
+ * PHASE B — NUTRITION provenance (distinct from the food-ITEM lifecycle's `FoodSource`
+ * above, which is unchanged): "AI recognizes. USDA supplies facts. AI estimates only as
+ * fallback." `usda` = a real USDA FoodData Central lookup; `openfoodfacts` is RESERVED for
+ * the next phase (never produced yet); `ai_estimate` = the model's own visual estimate
+ * (always a range, never fake precision — supersedes the earlier "ai_visual_estimate"
+ * value on NUTRITION values only, recorded in AGENTS.md); `user` = the person's own entry.
+ * Code determines this value — a provider response is NEVER trusted to name its own source.
+ */
+export type NutritionSource = "usda" | "openfoodfacts" | "ai_estimate" | "user";
+
 /** UC-MEAL-AI — a food item's lifecycle: an AI reading is a suggestion until the person acts. */
 export type FoodItemState = "suggested" | "confirmed" | "corrected" | "rejected";
 
@@ -229,7 +240,7 @@ export interface NutritionValue {
   value?: number;
   range?: { min: number; max: number };
   unit: string;
-  source: FoodSource;
+  source: NutritionSource;
   confidence: AIConfidence;
 }
 
@@ -243,9 +254,34 @@ export interface NutritionEstimate {
 /** UC-MEAL-AI — one food/drink the model believes it sees. Never a fact until confirmed. */
 export interface ObservedFood {
   name: string;
+  /** PHASE B — TWO-FIELD IDENTITY: the lookup-oriented, normalized food identity (e.g.
+   *  name "burger" → canonicalName "sloppy joe sandwich"). USDA lookup uses THIS; the UI
+   *  keeps showing the everyday `name`. Optional — a provider may not supply one, and the
+   *  lookup then falls back to `name`. */
+  canonicalName?: string;
   confidence: AIConfidence;
   /** "one plate", "two pieces" — never a fabricated gram weight. */
   portion?: string;
+}
+
+/**
+ * PHASE B — one structured nutrition FACT from a real lookup, normalized into SYSTEMBOOM's
+ * own shape (never a provider-specific structure). Facts live in the Composer's suggestion
+ * state beside — never inside — the immutable `MealAIObservation`. A fact is displayed
+ * factually ("354 kcal · 20 g protein"); an AI estimate stays visibly approximate; the two
+ * are never merged into one ambiguous value.
+ */
+export interface FoodFacts {
+  source: "usda";
+  /** USDA FoodData Central id of the matched food — provenance, preserved end-to-end. */
+  fdcId: number;
+  /** The name USDA matched (may differ from the everyday/canonical name asked for). */
+  matchedName: string;
+  nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number };
+  units: { calories: string; protein: string; carbs: string; fat: string };
+  /** What the numbers are per — USDA search nutrients are reported per 100 g. */
+  basis: string;
+  retrievedAt: string;
 }
 
 /** UC-MEAL-AI — normalized text read from a menu/package/receipt in the SAME vision call. */
@@ -266,6 +302,11 @@ export interface MealAIObservation {
    *  never surfaced to the person as a badge/label. */
   providerModel: string;
   analyzedAt: string;
+  /** PHASE C — does the image meaningfully depict food, drink, or a meal context? A REAL
+   *  validated boolean: never inferred from `foods.length`, never coerced from a truthy
+   *  string; a missing or malformed provider value degrades to false, never to true.
+   *  Category auto-selection reads THIS together with `confidence` — never the foods list. */
+  isFood: boolean;
   foods: ObservedFood[];
   possibleMealType?: "breakfast" | "lunch" | "dinner" | "snack";
   ingredients?: string[];

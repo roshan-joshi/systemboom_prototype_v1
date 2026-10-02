@@ -1804,3 +1804,114 @@ the same category of honest disclosure recorded for UC-C4.2's checks 5/6/9.
 **Verified on final source:** social-composer 140/140 (untouched) · media-intelligence 14/14 ·
 tsc 0 · eslint (`composer` + `data.ts` + `app/api/geocode`) 0 · `next build` passes (the new
 `/api/geocode` route registers correctly). Not committed, not pushed.
+
+# Phase UC-MEAL-AI — Meal Vision Intelligence, Phases 0–A + C (owner-directed · 2026-10-01)
+
+Real food-recognition for the Meal record: DeepSeek `deepseek-flash` (Phase 0: verified
+vision-capable against the official DeepSeek docs; legacy vision model ids are retired),
+OpenAI-compatible SDK, baseURL `https://api.deepseek.com`, key server-only in `.env.local`
+(`DEEPSEEK_API_KEY`, never `NEXT_PUBLIC_`, never in a "use client" file). The ONE server
+boundary is `src/app/api/analyze-meal/route.ts`; the client boundary is
+`composer/meal-intelligence/` (`analyzeMealMedia.ts`, `keyframes.ts` — video never uploads a
+file, ≤5 client keyframes at ≤1024px). Four truths stay separate: MEDIA TRUTH
+(`sourceMetadata`, immutable) ≠ AI OBSERVATION (`MealAIObservation`, written once, never
+mutated by corrections) ≠ CONFIRMED MEAL RECORD (`foodItems` with source/state lifecycle)
+≠ SOCIAL DISCLOSURE. Nutrition is ranges + confidence + provenance (`ai_visual_estimate`);
+`?mockai=<scenario>[:<delayMs>]` is the deterministic test seam (route `?mock=`; `echo`
+returns the exact provider payload for the privacy test); Smart Assist is the ONE AI ON/OFF
+switch; AI OFF/FAIL are first-class (zero requests / silent null — Save never waits on AI).
+Reliability (Phase A, OPTION A): `max_tokens: 4000` + `extra_body:{thinking:{type:"disabled"}}`
+— the thinking model's reasoning burn is absorbed, proven by 3/3 consecutive clean live runs;
+numeric provider confidences normalize to the enum (`toConfidence`). Owner browser exit tests
+for Phase A remain PENDING OWNER.
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-10-01 | C (isFood) | `data.ts`, `api/analyze-meal/route.ts`, `prototype-tests/_verify-deepseek-live.js` | Auto-categorization needs a dedicated food/not-food signal — never inferred from `foods.length` (a menu photo lists foods without BEING food) | `MealAIObservation.isFood: boolean`, REQUIRED and strictly validated (`o.isFood === true` — a truthy string, number or missing field degrades to false, never true); prompt schema extended in the same single call (no second request); every mock scenario carries it (`nonfood`/`ocr-*`: false) + NEW `mediumfood` scenario (isFood true, confidence medium, "Khana set") for the medium path; the manual live-verify script requests and validates it as a real boolean | `meal-intelligence.js` C1, C8, C9 |
+| 2026-10-01 | C (trigger) | `composer/UniversalComposer.tsx` | AI ON analyzed only after Meal was already selected — the person had to pre-categorize before the AI could help | PHOTOS analyze on attach regardless of category (video keyframes keep the Meal-selected gate); the observation is STORED whatever the category (the old `x.intent === "meal"` store-gate removed); same key/generation dedup — ONE request per unchanged photo lifecycle across attach → auto-select → render → undo → manual re-select | C1, C4, C6, C11, C13 (request counters all exactly 1) |
+| 2026-10-01 | C (auto-select) | `composer/UniversalComposer.tsx` | HIGH-confidence food should not ask the person to state the obvious | `isFood === true && confidence === "high"` → Meal auto-selects at RESPONSE-APPLICATION time (never request time): skipped if `intentSource` is already `user`/`ai` (double-guarded via `dRef` + inside the `setD` updater) or the analyzed media set changed; shown through the EXISTING record-pill styling, no modal; provenance is a NEW composer-local `mealAutoSelected` state — deliberately NOT `intentSource` (owner-directed: Smart Assist's accepted text suggestions also set `intentSource:"ai"` and must never acquire the undo) | C2, C3, C10, C14, C15 |
+| 2026-10-01 | C (medium ask) | `composer/domains.tsx` (`MealCategorySuggestion`), `composer/UniversalComposer.tsx` | MEDIUM food is a question, not a decision | One quiet line "Looks like a Meal — use it?" + Yes/No (`data-sb-meal-category-suggestion`/`-cat-yes`/`-cat-no`), rendered precisely while Meal is NOT selected; Yes routes through `chooseIntent("meal")` (an explicit selection); No dismisses for the composition (reset only by a NEW media set); never over a deliberate choice, never for LOW/non-food | C5, C6, C7, C8, C9 |
+| 2026-10-01 | C (undo) | `composer/UniversalComposer.tsx` (record pill onClick) | An automatic default must be one tap to reject | ONE tap on an AI-AUTO-selected Meal pill reverts to the normal media default (photo kept, observation kept, no chooser opened, no re-analysis, no re-selection); an EXPLICITLY chosen Meal never takes this branch — `mealAutoSelected` dies in `chooseIntent`/`applySuggestion`, so its pill opens the chooser exactly as before | C13, C14 |
+| 2026-10-01 | C (mock-safety — audit finding, files beyond the phase's explicit list, recorded not silent) | `prototype-tests/media-intelligence.js`, `social-4-4a-truth.js`, `social-composer-canonical.js`, `social-final.js` (one `goto` line each) | The broadened photo trigger means EVERY suite that attaches composer photos against a dev server holding the real key would fire real, billed, NONDETERMINISTIC DeepSeek calls — and a real HIGH reading of the meal-photo fixtures would auto-select Meal mid-flow and break accepted assertions. Step 1 (owner-approved Option A) had covered `social-composer.js` only; the Prompt-1 audit found these four with the same exposure | `&mockai=nonfood` appended to each suite's ONE central page-URL builder — deterministic, free, zero category side effects by construction; no assertion changed in any of the four. The exposure set was verified complete by two independent greps (media hooks + Media action) | all four re-run green post-implementation: 14 · 125 · 62 · 194 |
+| 2026-10-01 | C (new-test bug, recorded) | `prototype-tests/meal-intelligence.js` (C11) | The first C11 draft copied accepted test 13's raw assist-menu click sequence, but kept the composer open between OFF and ON — its second menu-button click CLOSED the still-open menu, AI stayed OFF in localStorage, and C12–C15 cascaded into five misleading failures | `assistSet(page, on)` — state-checked, menu-safe toggling that always leaves the menu closed; implementation untouched by the fix | meal-intelligence 33/33 on the rerun |
+
+Owner-superseded assertions for this pass: **none.** No accepted check was weakened, changed
+or removed; the four patched suites differ only in their page URL's mock signal. One
+regression-guard adaptation inside the NEW suite itself: `meal-intelligence.js`'s `kind()`
+helper now returns early when Meal is already auto-selected (tapping that pill is the undo
+gesture, not "open the chooser") — every accepted scenario (lowconf/nonfood/ocr/fail/off and
+the delayed `meal:2500`) times the poll out and takes the unchanged explicit path.
+
+Documented carryovers (NOT changed): MealSuggestion/MealCategorySuggestion strings are plain
+English (the recorded S2/S3-style localization carryover); mixed photo+video sets analyze
+photos-only until Meal is selected and the key dedup then holds (no video re-analysis for the
+same set); the fabricated "USDA FoodData Central" source wording remains DEFERRED to Phase B
+(owner-directed — do not fix in C); Phase A and Phase C owner BROWSER tests remain PENDING
+OWNER and are never simulated.
+
+**Verified on final source (2026-10-01):** meal-intelligence **33/33** (18 accepted + 15 new
+C-checks; all 15 proven failing-first for missing-implementation reasons — raw logs
+`/tmp/phaseC-failing-first-meal.log`, `/tmp/phaseC-postimpl-meal.log`) · social-composer
+**140/140** · social-4-4a-truth **125/125** · social-composer-canonical **62/62** ·
+social-final **194/194** · media-intelligence **14/14** · tsc 0 · eslint (4 changed product
+files) 0 · `next build` passes · controlled-marker leak test
+(`DEEPSEEK_API_KEY=TEST_LEAK_MARKER_xyz123 npx next build` + `grep -R -n .next/static`):
+**NOT FOUND, grep exit 1** (`/tmp/phaseC-marker-build.log`, `/tmp/phaseC-marker-grep.log`).
+Not committed, not pushed.
+
+## UC-MEAL-AI Phase B — Real USDA Nutrition (owner-directed · 2026-10-02)
+
+"AI recognizes. USDA supplies facts. AI estimates only as fallback." The fabricated-authority
+surface is removed: the provider is never asked for, and never trusted to name, a nutrition
+source — CODE owns provenance. Open Food Facts and caching are NOT built (reserved for their
+own phases).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-10-02 | B (identity + provenance) | `data.ts` | Nutrition needed its own provenance vocabulary and foods a lookup identity | `NutritionSource = "usda" \| "openfoodfacts" (reserved) \| "ai_estimate" \| "user"`; `NutritionValue.source: NutritionSource`; `ObservedFood.canonicalName?` (everyday `name` stays what the UI shows); new `FoodFacts` (source "usda", fdcId, matchedName, calories/protein/carbs/fat, units, basis "per 100 g", retrievedAt). Food-ITEM provenance (`FoodSource`, "ai_visual_estimate") unchanged | `meal-intelligence.js` B2, B3, B4 |
+| 2026-10-02 | B (provider contract) | `api/analyze-meal/route.ts`, `prototype-tests/_verify-deepseek-live.js` | Live runs proved the model fabricates "USDA FoodData Central" when offered a source slot | Prompt asks for `canonicalName` and explicitly forbids claiming any nutrition source/database; normalization never reads a provider "source" and stamps `ai_estimate`; the verify script's requested shape drops the per-nutrient `source` field and flags any unprompted USDA claim. New mock scenario `fabricate-usda` routes a RAW fabricating payload through the REAL `normalizeProviderOutput`; meal-mock foods carry canonicalName | B5 (normalized to ai_estimate, no "USDA FoodData Central" anywhere) |
+| 2026-10-02 | B (USDA boundary) | `src/app/api/food-facts/route.ts` (NEW) | Facts need one server boundary, like analyze-meal | POST {canonicalName} → {facts: FoodFacts\|null}; server-only `USDA_FDC_API_KEY` (never NEXT_PUBLIC_); FDC `/v1/foods/search` (Foundation/SR Legacy/FNDDS, pageSize 5); energy matched 208/957/958 strictly in KCAL (kJ-only rows skipped, never unit-converted); best-of-page pick (calories weigh most, ties keep USDA relevance order); 5 s timeout; miss/failure → null + server log only; mocks `found\|miss\|fail\|echo` (echo = outgoing request with api_key REDACTED — the privacy proof) | B1/B3/B4 (found), B6 (miss), B12 (fail), B11 + the dual-marker build |
+| 2026-10-02 | B (composer lookups) | `composer/UniversalComposer.tsx` | Facts must follow recognition without touching the observation | After an `isFood` observation lands: one lookup per useful (non-low) food, max 5, key `canonicalName ?? name`, abortable, generation-guarded, merged into component state `mealFacts` — NEVER into `aiObservation`; `?mockfacts=` page seam forwards as `?mock=`; `window.__SB_MEAL_FACTS_LOG` RESET at every analysis start (one analysis, one log; superseded generations never write) | B6/B8/B10/B12/B13/B14 |
+| 2026-10-02 | B (fact vs estimate) | `composer/domains.tsx` (MealSuggestion) | Never one ambiguous value | Per-food fact lines `[data-sb-food-fact]` ("Dal bhat: 354 kcal · 20 g protein · 35 g carbs · 14 g fat · per 100 g" — no tilde, never "Estimated"); the AI line keeps its visibly-approximate form, hooked `[data-sb-meal-estimate]`; own-property fact reads only (a food named "constructor" finds nothing) | B8, B9, B10 |
+| 2026-10-02 | B (adversarial review, 11 confirmed findings fixed) | `composer/UniversalComposer.tsx`, `api/food-facts/route.ts`, `composer/domains.tsx`, `prototype-tests/meal-intelligence.js` | A 17-agent four-lens review (pipeline/regression/privacy/tests), each finding skeptic-verified, confirmed 6 implementation + 5 test-strength defects | Implementation: facts launch now gated at RESPONSE-APPLICATION time on `mediaUnchanged` + `smartAssistEnabled()` (auto-select too); removing ALL media or turning Smart Assist OFF mid-flight retires the in-flight analysis (abort + generation retire + key clear); facts log reset + gen-guarded entries; Atwater-energy matching + best-of-page pick; prototype-pollution-safe render read. Tests: B10 rebuilt non-tautological (record purity under FOUND facts); B6/B8/B12 count-exact (4 lookups, per-food anchored, carbs/fat/basis); B13/B14 network-level zero-request proofs across the whole flow | full suite re-run green after the fixes |
+| 2026-10-02 | B | `.env.example` | New secret placeholder | `USDA_FDC_API_KEY=` (empty, with the server-only note) | — |
+
+**Owner-superseded assertions (recorded, never silent):** `meal-intelligence.js` test 5 —
+NUTRITION values' source "ai_visual_estimate" → **"ai_estimate"** (Phase B brief B6; the
+invariant — every nutrition value carries provenance + confidence — unchanged; test 1's
+food-ITEM "ai_visual_estimate" untouched). Suite guards (recorded): `open()` now pins
+`&mockfacts=miss` unless a test passes its own (a configured real USDA key must never turn
+accepted flows into live nondeterministic lookups); B11's first draft grepped the bare
+substring "NEXT_PUBLIC" and tripped on the route's own documentation comment — it now asserts
+the real invariant (`process.env.USDA_FDC_API_KEY` read; no `process.env.NEXT_PUBLIC` read).
+
+**Documented carryovers (NOT changed):** facts live in Composer suggestion state and the card
+only — persisting them onto the posted Moment is a documented seam, not built (no schema
+invented beyond the brief); kJ-only energy rows are skipped, never converted; "openfoodfacts"
+is a reserved enum value with zero implementation (next phase); the estimate line keeps its
+accepted "Estimated ~…" form as the visible-approximation marker; Phase B owner BROWSER tests
+B1–B4 remain PENDING OWNER.
+
+**Verified green on final source (2026-10-02):** meal-intelligence **47/47** (18 + 15 Phase C
++ 14 Phase B; all 14 proven failing-first — `/tmp/phaseB-failing-first-meal.log`,
+`/tmp/phaseB-final-meal.log`) · social-composer **140/140** · social-4-4a-truth **125/125** ·
+social-composer-canonical **62/62** · social-final **194/194** (two prior attempts crashed
+MECHANICALLY around the midnight boundary — detached-frame / protocol-timeout in the
+wall-clock-sensitive §3 ticking checks, 0 assertion failures in either; the suite had also
+passed twice the same day) · media-intelligence **14/14** · tsc 0 · eslint 0 · `next build`
+exit 0 · dual controlled-marker leak test (`DEEPSEEK_API_KEY=TEST_LEAK_MARKER_xyz123
+USDA_FDC_API_KEY=TEST_LEAK_MARKER_usda789 npx next build` + grep each in `.next/static`):
+**both NOT FOUND, grep exit 1 each** (`/tmp/phaseB-marker-*.log`). Not committed, not pushed.
+
+**Phase B addendum — real-path transport fix (2026-10-02, owner server restart surfaced it).**
+With a real `USDA_FDC_API_KEY` configured for the first time, every live lookup timed out at
+the route's 5 s limit while `curl` to the same URL answered in <2 s. Diagnosed with raw
+probes (preserved in the session transcript): USDA publishes AAAA records that silently
+blackhole from this network; Node's hostname-based connection logic then never completes a
+handshake against `api.nal.usda.gov` (deterministic across retries, TLS-config-independent),
+while every IPv4-pinned connect succeeded in <1 s. Since `fetch` exposes no socket options,
+`food-facts/route.ts`'s real call now uses `node:https` with `family: 4` — same 5 s timeout,
+same payload, same quiet null-on-failure, mocks/echo/privacy untouched. Verified live: three
+real lookups return genuine FDC facts (e.g. fdcId 2706884 "Sloppy joe sandwich, on wheat
+bun", 180 kcal · 11.85 g protein per 100 g) in <1 s each; meal-intelligence re-run green;
+tsc 0 · eslint 0.

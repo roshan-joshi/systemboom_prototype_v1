@@ -134,10 +134,20 @@ function normalizeConfidences(parsed) {
   console.log("data URL header (first 30 chars):", dataUrl.slice(0, 30));
 
   // Fix 3 — text FIRST, image SECOND in the user message's content array.
+  // PHASE C — `isFood` added to the requested shape (a REAL JSON boolean, true only when the
+  // image meaningfully depicts food/drink/a meal context), mirroring route.ts's own schema, so
+  // manual real-provider verification exercises the exact field auto-selection depends on.
+  // PHASE B — TWO-FIELD IDENTITY (`canonicalName` beside the everyday `name`) added, and the
+  // per-nutrient `source` field REMOVED from the requested shape: live runs proved the model
+  // fabricates "USDA FoodData Central" when offered a source slot. The provider must never be
+  // asked to (or trusted to) name a nutrition authority — CODE determines provenance.
   const USER_TEXT =
-    "Analyze this meal photo. Respond ONLY with valid JSON: { foods: [{ name, confidence }], " +
-    "nutritionEstimate: { calories, protein, carbs, fat each as { range: { min, max }, source, " +
-    "confidence } }, confidence }. No prose. No markdown. No explanation.";
+    "Analyze this meal photo. Respond ONLY with valid JSON: { isFood: boolean (true only if " +
+    "the image meaningfully depicts food, drink, or a meal), foods: [{ name (everyday human " +
+    "name), canonicalName (a normalized lookup-friendly identity, e.g. 'sloppy joe sandwich'), " +
+    "confidence }], nutritionEstimate: { calories, protein, carbs, fat each as { range: " +
+    "{ min, max }, confidence } }, confidence }. Never claim a nutrition data source or " +
+    "database of any kind. No prose. No markdown. No explanation.";
   const requestBody = {
     model: "deepseek-flash",
     messages: [
@@ -232,7 +242,20 @@ function normalizeConfidences(parsed) {
     process.exit(1);
   }
 
+  // PHASE C — isFood must be a REAL JSON boolean (a truthy string like "true" is a validation
+  // failure, exactly as route.ts's normalization treats it: never trusted, never coerced true).
+  console.log("\nisFood (raw, as DeepSeek returned it):", JSON.stringify(parsed.isFood), "— typeof:", typeof parsed.isFood);
+  if (typeof parsed.isFood !== "boolean") {
+    console.error("\n✗ FAILED — isFood is missing or not a real boolean. route.ts would degrade this to false (never true), so auto-selection could not fire from this response.");
+    process.exit(1);
+  }
+
   console.log("\nfoods (raw, as DeepSeek returned it):", JSON.stringify(parsed.foods, null, 2));
+  // PHASE B — two-field identity check: canonicalName should ride beside each everyday name.
+  console.log("canonicalName per food:", JSON.stringify(parsed.foods.map((f) => ({ name: f.name, canonicalName: f.canonicalName ?? "(absent)" }))));
+  // PHASE B — the provider must not claim a nutrition authority even unprompted; say so loudly.
+  const fabricated = JSON.stringify(parsed.nutritionEstimate ?? null).includes("USDA");
+  console.log("provider claimed a USDA source anyway:", fabricated ? "YES — route.ts normalization would discard it (provenance is code-owned)" : "no");
   console.log("nutritionEstimate (raw, as DeepSeek returned it):", JSON.stringify(parsed.nutritionEstimate, null, 2));
 
   const normalized = normalizeConfidences(parsed);
@@ -240,6 +263,6 @@ function normalizeConfidences(parsed) {
   console.log("nutritionEstimate (normalized):", JSON.stringify(normalized.nutritionEstimate, null, 2));
   console.log("confidence (top-level, normalized):", normalized.confidence);
 
-  console.log(`\n✓ ${parsed.foods.length} food(s) identified — the real DeepSeek API answered with a well-formed JSON object.`);
+  console.log(`\n✓ ${parsed.foods.length} food(s) identified (isFood: ${parsed.isFood}) — the real DeepSeek API answered with a well-formed JSON object.`);
   process.exit(0);
 })();

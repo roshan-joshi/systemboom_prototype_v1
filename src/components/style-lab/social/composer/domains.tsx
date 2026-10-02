@@ -16,7 +16,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { FEELINGS } from "../data";
+import { FEELINGS, type FoodFacts, type ObservedFood } from "../data";
 import { DateField } from "../DateField";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { sbDate, sbDateCoarse } from "@/lib/i18n/format";
@@ -665,7 +665,7 @@ export function FoodItemsEditor({ items, onChange }: { items: FoodItem[]; onChan
  * carryover for a future localization pass, the same pattern this codebase already uses for
  * other deferred strings (e.g. the exact-age readout, S2/S3 carryovers).
  */
-export function MealSuggestion({ draft, set, analyzing, openMore }: { draft: UDraft; set: SetDraft; analyzing: boolean; openMore: () => void }) {
+export function MealSuggestion({ draft, set, analyzing, openMore, facts }: { draft: UDraft; set: SetDraft; analyzing: boolean; openMore: () => void; facts?: Record<string, FoodFacts | null> }) {
   const obs = draft.domains.meal.aiObservation;
   if (analyzing && obs === undefined) {
     return <p className="text-[12px] text-muted" data-sb-meal-analyzing>Looking at your photo…</p>;
@@ -686,6 +686,24 @@ export function MealSuggestion({ draft, set, analyzing, openMore }: { draft: UDr
   const nutritionParts: string[] = [];
   if (n?.calories?.range) nutritionParts.push(`~${n.calories.range.min}–${n.calories.range.max} ${n.calories.unit}`);
   if (n?.protein?.range) nutritionParts.push(`~${n.protein.range.min}–${n.protein.range.max} ${n.protein.unit} protein`);
+  // PHASE B — FACT vs ESTIMATE, never one ambiguous value: a real USDA fact renders factually
+  // per food ("354 kcal · 20 g protein", no tilde, never the word "Estimated"); the AI's own
+  // whole-plate estimate keeps its separate, visibly-approximate line below. The everyday
+  // `name` leads — lookup terminology (canonicalName/matchedName) stays data, not UI.
+  // Own-property read only (adversarial finding #5): the key is provider-supplied text — a
+  // food named "constructor"/"toString" must find nothing, never an inherited Object member.
+  const factFor = (k: string): FoodFacts | undefined => (facts && Object.prototype.hasOwnProperty.call(facts, k) ? (facts[k] ?? undefined) : undefined);
+  const factLines = useful
+    .map((f) => ({ f, ff: factFor(f.canonicalName ?? f.name) }))
+    .filter((x): x is { f: ObservedFood; ff: FoodFacts } => !!x.ff);
+  const factText = (ff: FoodFacts) => {
+    const parts: string[] = [];
+    if (typeof ff.nutrition.calories === "number") parts.push(`${Math.round(ff.nutrition.calories)} ${ff.units.calories}`);
+    if (typeof ff.nutrition.protein === "number") parts.push(`${Math.round(ff.nutrition.protein)} ${ff.units.protein} protein`);
+    if (typeof ff.nutrition.carbs === "number") parts.push(`${Math.round(ff.nutrition.carbs)} ${ff.units.carbs} carbs`);
+    if (typeof ff.nutrition.fat === "number") parts.push(`${Math.round(ff.nutrition.fat)} ${ff.units.fat} fat`);
+    return `${parts.join(" · ")} · ${ff.basis}`;
+  };
   const accept = () => {
     const confirmed: FoodItem[] = useful.map((f) => ({ name: f.name, quantity: f.portion, source: "ai_visual_estimate", state: "confirmed" }));
     setDomain(set, "meal", { foodItems: [...(draft.domains.meal.foodItems ?? []), ...confirmed] });
@@ -706,8 +724,13 @@ export function MealSuggestion({ draft, set, analyzing, openMore }: { draft: UDr
         <span className={LABEL}>Looks like </span>
         {useful.map((f) => f.name).join(" · ")}
       </p>
+      {factLines.map(({ f, ff }) => (
+        <p key={`${ff.fdcId}-${f.name}`} className="text-[12px] text-text" data-sb-food-fact={ff.fdcId}>
+          {f.name}: {factText(ff)}
+        </p>
+      ))}
       {nutritionParts.length > 0 && (
-        <p className="text-[12px] text-muted">
+        <p className="text-[12px] text-muted" data-sb-meal-estimate>
           <span className={LABEL}>Estimated </span>
           {nutritionParts.join(" · ")}
         </p>
@@ -716,6 +739,24 @@ export function MealSuggestion({ draft, set, analyzing, openMore }: { draft: UDr
         <button type="button" onClick={accept} className={ADD_CHIP} data-sb-meal-accept>Looks right</button>
         <button type="button" onClick={adjust} className={ADD_CHIP} data-sb-meal-adjust>Adjust</button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * PHASE C — the MEDIUM-confidence category ask: the AI believes this photo is food, but not
+ * strongly enough to decide FOR the person. One quiet line + Yes/No — never a modal, never a
+ * wizard, never a badge (§NO AI BADGES). It renders precisely while Meal is NOT selected;
+ * "Yes" routes through the SAME explicit-selection path as the chooser (`onYes` is
+ * `chooseIntent("meal")` in the composer), and "No" dismisses it for this composition.
+ * Plain English — the same documented localization carryover as MealSuggestion above.
+ */
+export function MealCategorySuggestion({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] px-3 py-2 text-[13px] text-text" data-sb-meal-category-suggestion>
+      <span>Looks like a Meal — use it?</span>
+      <button type="button" onClick={onYes} className={ADD_CHIP} data-sb-meal-cat-yes>Yes</button>
+      <button type="button" onClick={onNo} className={ADD_CHIP} data-sb-meal-cat-no>No</button>
     </div>
   );
 }

@@ -59,14 +59,20 @@ function buildProviderPayload(images: ImageInput[]) {
     "weight), and any visible text on a menu, package label, or receipt. Respond with ONLY a " +
     "JSON object, no prose, matching exactly:\n" +
     "{\n" +
-    '  "foods": [{"name": string, "confidence": "high"|"medium"|"low", "portion"?: string}],\n' +
+    '  "isFood": boolean,\n' +
+    '  "foods": [{"name": string, "canonicalName": string, "confidence": "high"|"medium"|"low", "portion"?: string}],\n' +
     '  "possibleMealType"?: "breakfast"|"lunch"|"dinner"|"snack",\n' +
     '  "ingredients"?: string[],\n' +
     '  "nutrition"?: {"calories"?: {"min": number, "max": number}, "protein"?: {"min": number, "max": number}, "carbs"?: {"min": number, "max": number}, "fat"?: {"min": number, "max": number}},\n' +
     '  "ocr"?: [{"kind": "menu"|"package"|"receipt", "text": string}],\n' +
     '  "confidence": "high"|"medium"|"low"\n' +
     "}\n" +
-    'If the image is not meaningfully food-related, return {"foods": [], "confidence": "high"} ' +
+    '"isFood" is true ONLY if the image meaningfully depicts food, drink, or a meal context. ' +
+    '"name" is the everyday human name (e.g. "burger"); "canonicalName" is a normalized, ' +
+    'lookup-oriented identity for the same food (e.g. "sloppy joe sandwich") — never a brand ' +
+    "guess. Never claim a nutrition data source, database, or authority of any kind: any " +
+    "nutrition you provide is always your own visual estimate and nothing else. " +
+    'If the image is not meaningfully food-related, return {"isFood": false, "foods": [], "confidence": "high"} ' +
     "and omit every other key. Never invent a fact you cannot actually see. Prefer a min/max " +
     "range over a single exact number for nutrition — you cannot know exact recipe, hidden " +
     "oil, or exact weight from a photograph. Never make an allergen safety claim beyond a " +
@@ -126,7 +132,10 @@ function normalizeNutritionValue(v: unknown, unit: string): NutritionValue | und
   const min = typeof o.min === "number" && Number.isFinite(o.min) ? o.min : undefined;
   const max = typeof o.max === "number" && Number.isFinite(o.max) ? o.max : undefined;
   if (min === undefined || max === undefined || min < 0 || max < min) return undefined;
-  return { range: { min, max }, unit, source: "ai_visual_estimate", confidence: toConfidence(o.confidence) ?? "medium" };
+  // PHASE B — CODE determines provenance, never the provider: whatever "source" string the
+  // model may fabricate (live runs really did return "USDA FoodData Central") is deliberately
+  // never read. AI-estimated nutrition is always `ai_estimate` — a range, never fake precision.
+  return { range: { min, max }, unit, source: "ai_estimate", confidence: toConfidence(o.confidence) ?? "medium" };
 }
 
 /**
@@ -157,6 +166,8 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
     .slice(0, 20) // a practical maximum item count — never an unbounded list
     .map((f) => ({
       name: String(f.name).trim().slice(0, 80),
+      // PHASE B — the lookup-oriented identity, kept beside (never replacing) the everyday name.
+      canonicalName: typeof f.canonicalName === "string" && f.canonicalName.trim() ? f.canonicalName.trim().slice(0, 80) : undefined,
       confidence: toConfidence(f.confidence) ?? "low",
       portion: typeof f.portion === "string" && f.portion.trim() ? f.portion.trim().slice(0, 40) : undefined,
     }));
@@ -187,10 +198,17 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
 
   const confidence: AIConfidence = toConfidence(o.confidence) ?? (foods.length ? "low" : "high");
 
+  // PHASE C — a REAL validated boolean: only the JSON literal `true` passes. A truthy string
+  // ("true", "yes"), a number, or a missing field all degrade to false — category
+  // auto-selection must never fire from a malformed response, and `isFood` is deliberately
+  // NOT derived from `foods.length` (a menu/receipt photo can list foods without BEING food).
+  const isFood = o.isFood === true;
+
   return {
     schemaVersion: 1,
     providerModel: MODEL,
     analyzedAt: new Date().toISOString(),
+    isFood,
     foods,
     possibleMealType,
     ingredients,
@@ -207,29 +225,52 @@ function buildMockObservation(scenario: string): MealAIObservation | null {
     case "fail":
       return null;
     case "nonfood":
-      return { ...base, foods: [], confidence: "high" };
+      return { ...base, isFood: false, foods: [], confidence: "high" };
     case "lowconf":
-      return { ...base, foods: [{ name: "a dish", confidence: "low" }], confidence: "low" };
+      return { ...base, isFood: true, foods: [{ name: "a dish", confidence: "low" }], confidence: "low" };
+    // PHASE C — the medium path's deterministic fixture: genuinely food, but not confidently
+    // enough to decide FOR the person. Drives the "Looks like a Meal — use it?" ask.
+    case "mediumfood":
+      return { ...base, isFood: true, foods: [{ name: "Khana set", canonicalName: "khana set", confidence: "medium", portion: "one plate" }], possibleMealType: "lunch", confidence: "medium" };
+    // PHASE B — a RAW provider payload that fabricates an external nutrition authority,
+    // deliberately routed through the REAL normalizeProviderOutput (not a canned object), so
+    // the test proves the actual normalization layer strips fabricated attribution (B5).
+    case "fabricate-usda":
+      return normalizeProviderOutput(
+        JSON.stringify({
+          isFood: true,
+          foods: [{ name: "burger", canonicalName: "sloppy joe sandwich", confidence: "high" }],
+          nutrition: {
+            calories: { min: 450, max: 750, source: "USDA FoodData Central", confidence: "high" },
+            protein: { min: 22, max: 38, source: "USDA FoodData Central", confidence: "medium" },
+          },
+          confidence: "high",
+        }),
+      );
+    // The three OCR fixtures deliberately carry isFood: false — a menu, a package label and a
+    // receipt DEPICT food-related text without being a meal, and the accepted OCR flows must
+    // keep zero category side effects by construction.
     case "ocr-menu":
-      return { ...base, foods: [], ocrObservations: [{ kind: "menu", text: "Dal Bhat Set — NPR 450" }], confidence: "medium" };
+      return { ...base, isFood: false, foods: [], ocrObservations: [{ kind: "menu", text: "Dal Bhat Set — NPR 450" }], confidence: "medium" };
     case "ocr-label":
-      return { ...base, foods: [], ocrObservations: [{ kind: "package", text: "Serving size 1 cup — 250 kcal" }], confidence: "medium" };
+      return { ...base, isFood: false, foods: [], ocrObservations: [{ kind: "package", text: "Serving size 1 cup — 250 kcal" }], confidence: "medium" };
     case "ocr-receipt":
-      return { ...base, foods: [], ocrObservations: [{ kind: "receipt", text: "1x Momo, 1x Coke — Thamel Restaurant" }], confidence: "medium" };
+      return { ...base, isFood: false, foods: [], ocrObservations: [{ kind: "receipt", text: "1x Momo, 1x Coke — Thamel Restaurant" }], confidence: "medium" };
     case "meal":
     default:
       return {
         ...base,
+        isFood: true,
         foods: [
-          { name: "Dal bhat", confidence: "high", portion: "one plate" },
-          { name: "Rice", confidence: "high", portion: "one plate" },
-          { name: "Chicken curry", confidence: "medium", portion: "one bowl" },
-          { name: "Vegetables", confidence: "medium" },
+          { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high", portion: "one plate" },
+          { name: "Rice", canonicalName: "steamed rice", confidence: "high", portion: "one plate" },
+          { name: "Chicken curry", canonicalName: "chicken curry", confidence: "medium", portion: "one bowl" },
+          { name: "Vegetables", canonicalName: "mixed vegetable tarkari", confidence: "medium" },
         ],
         possibleMealType: "dinner",
         nutritionEstimate: {
-          calories: { range: { min: 700, max: 900 }, unit: "kcal", source: "ai_visual_estimate", confidence: "medium" },
-          protein: { range: { min: 25, max: 35 }, unit: "g", source: "ai_visual_estimate", confidence: "medium" },
+          calories: { range: { min: 700, max: 900 }, unit: "kcal", source: "ai_estimate", confidence: "medium" },
+          protein: { range: { min: 25, max: 35 }, unit: "g", source: "ai_estimate", confidence: "medium" },
         },
         confidence: "high",
       };

@@ -46,7 +46,11 @@ const DESKTOP = { width: 1440, height: 1000, deviceScaleFactor: 1 };
 async function open(page, extra = "") {
   await page.setCookie({ name: "sb-locale", value: "en", url: HOST });
   await page.setViewport(DESKTOP);
-  await page.goto(`${B}&theme=light&mockgeo=1${extra}`, { waitUntil: "networkidle2" });
+  // PHASE C mock-safety (same owner-approved Option A as social-composer.js): this suite
+  // attaches REAL photos; without a mockai signal the broadened photo trigger would fire
+  // real, billed, nondeterministic DeepSeek calls mid-suite. `nonfood` guarantees zero
+  // category side effects for every attach. No assertion below reads anything AI-related.
+  await page.goto(`${B}&theme=light&mockgeo=1&mockai=nonfood${extra}`, { waitUntil: "networkidle2" });
   await sleep(900);
 }
 const state = (page) => page.evaluate(() => window.__SB_SOCIAL_STATE);

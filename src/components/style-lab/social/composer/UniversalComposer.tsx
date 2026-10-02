@@ -30,13 +30,13 @@ import { now } from "@/lib/clock";
 import { easeOut } from "@/lib/motion";
 import { validateBirthDate } from "@/lib/identity/birth";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
-import { matchPeople, PEOPLE, PLACES, type MediaAsset, type Privacy } from "../data";
+import { matchPeople, PEOPLE, PLACES, type FoodFacts, type MediaAsset, type Privacy } from "../data";
 import { localISO, useSocial } from "../store";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { formatNumberLocale, sbDate } from "@/lib/i18n/format";
 import { allAssets, assetById, MEDIA_LIMIT, registerUploads } from "./media-assets";
 import { ASSIST_CAPABILITIES, extractAssist, setSmartAssist, smartAssistEnabled, type AssistSuggestion } from "./smart-assist";
-import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, ChipSelect, DomainMore, DomainQuick, FIELD, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealSuggestion, moreLabelKey, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
+import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, ChipSelect, DomainMore, DomainQuick, FIELD, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, MealSuggestion, moreLabelKey, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
 import { analyzeMealMedia } from "./meal-intelligence/analyzeMealMedia";
 import { commonActivityTypes, recentPeopleIds, recentPlaces } from "./recall";
 import { hasAnyMedia, resolveIntent, type HealthType, type RecordIntent, type UDraft } from "./types";
@@ -160,6 +160,20 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const mealAnalysisKeyRef = useRef<string | null>(null);
   const mealAnalysisGenRef = useRef(0);
   const mealAnalysisAbortRef = useRef<AbortController | null>(null);
+  // PHASE C — selection provenance for the ONE-TAP UNDO gesture. Deliberately its own
+  // transient, composer-local state and NOT a reading of `intentSource` (owner-directed): the
+  // general Smart Assist's accepted text suggestions also set intentSource "ai" and must never
+  // acquire the undo gesture. Component-local on purpose — the composer remounts per open, so
+  // this never outlives the composition it describes, and no persisted schema changes.
+  const [mealAutoSelected, setMealAutoSelected] = useState(false);
+  // PHASE C — the medium-confidence "Looks like a Meal — use it?" ask was declined for this
+  // composition. Reset when a NEW media set starts a new analysis (a new photo is a new question).
+  const [mealCatDismissed, setMealCatDismissed] = useState(false);
+  // PHASE B — structured nutrition FACTS per looked-up food (keyed by the lookup name:
+  // canonicalName, falling back to the everyday name). SUGGESTION STATE, deliberately kept
+  // beside — never inside — the immutable `aiObservation`; cleared when a new media set
+  // starts a new analysis. "AI recognizes. USDA supplies facts. AI estimates only as fallback."
+  const [mealFacts, setMealFacts] = useState<Record<string, FoodFacts | null>>({});
   // §24 — one metadata review per detected asset; edit mode never re-asks (the truth is set).
   const [metaReview, setMetaReview] = useState<{ id: string; resolution: "used" | "ignored" } | null>(null);
   // UC-C4.1 — the EXACT state that existed immediately before a metadata autofill touched
@@ -406,6 +420,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const minKey = minimumProblem(d);
   const canPost = !over && !minKey && !beforeBirth && evProblem !== "future" && phase !== "posting";
 
+  /* ---- PHASE C — the MEDIUM-confidence category ask (never a modal, never while Meal is
+   * already selected, never over a deliberate choice, gone for good once declined) ---- */
+  const mealObs = d.domains.meal.aiObservation;
+  const mealCatAsk =
+    assistOn && !editing && phase === "idle" && anyMedia && resolved !== "meal" && !mealCatDismissed &&
+    d.intentSource !== "user" && d.intentSource !== "ai" &&
+    mealObs?.isFood === true && mealObs.confidence === "medium";
+
   /* ---- SMART ASSIST (§25–§38): one quiet suggestion, only while enabled ---- */
   useEffect(() => {
     if (!assistOn || editing || suggDismissed.current || d.intentSource === "user" || d.intentSource === "ai" || phase !== "idle") {
@@ -424,10 +446,36 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
    * DeepSeek calls — a first-class, fully-usable path.
    */
   useEffect(() => {
-    if (editing || resolved !== "meal" || !assistOn) return;
+    // PHASE B review fix (adversarial finding #2): turning Smart Assist OFF mid-flight must
+    // honor "AI OFF means literally zero calls" — the in-flight analysis is aborted, its
+    // generation retired (so a late resolution can neither store, auto-select, nor launch
+    // facts lookups), and the key cleared so an explicit re-enable may genuinely re-ask.
+    const retireInFlight = () => {
+      if (!mealAnalysisAbortRef.current) return;
+      mealAnalysisAbortRef.current.abort();
+      mealAnalysisAbortRef.current = null;
+      mealAnalysisGenRef.current++;
+      mealAnalysisKeyRef.current = null;
+      setMealAnalyzing(false);
+    };
+    if (editing || !assistOn) {
+      if (!assistOn) retireInFlight();
+      return;
+    }
     const photoAssets = draftMedia.filter((m) => !m.videoDuration);
     const videoAsset = draftMedia.find((m) => m.videoDuration);
-    if (photoAssets.length === 0 && !videoAsset) return;
+    // PHASE C — PHOTOS analyze on attach regardless of the current category (the observation
+    // decides what happens next); VIDEO keyframe extraction keeps its original Meal-selected
+    // gate (heavier work, and the Phase C brief scopes the broadened trigger to photos).
+    const videoEligible = resolved === "meal" && !!videoAsset;
+    if (photoAssets.length === 0 && !videoEligible) {
+      // PHASE B review fix (adversarial finding #1): if EVERY attached medium is gone, the
+      // analyzed set no longer exists — stop the orphaned analysis instead of letting it
+      // resolve into (and launch lookups for) a draft the person already emptied. A video
+      // that is merely not Meal-selected is NOT "gone", so that case is left untouched.
+      if (draftMedia.length === 0) retireInFlight();
+      return;
+    }
     const key = draftMedia.map((m) => m.id).join(",");
     if (mealAnalysisKeyRef.current === key) return; // already running/done this session for this exact set
     mealAnalysisKeyRef.current = key;
@@ -435,21 +483,103 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     const controller = new AbortController();
     mealAnalysisAbortRef.current = controller;
     const gen = ++mealAnalysisGenRef.current;
-    const w = window as unknown as { __SB_MEAL_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }> };
+    setMealCatDismissed(false); // PHASE C — a new media set is a new question
+    setMealFacts({}); // PHASE B — a new media set means a fresh facts board
+    const w = window as unknown as {
+      __SB_MEAL_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }>;
+      __SB_MEAL_FACTS_LOG?: Array<{ canonicalName: string; status: string; facts: unknown }>;
+    };
     const log = (entry: { key: string; status: string; observation: unknown }) => {
       if (!w.__SB_MEAL_ANALYSIS_LOG) w.__SB_MEAL_ANALYSIS_LOG = [];
       w.__SB_MEAL_ANALYSIS_LOG.push(entry);
     };
+    // PHASE B — the facts log is RESET to empty the moment an analysis starts (the
+    // argument-less call below, per the contract and adversarial findings #4/#6): one
+    // analysis, one log — entries never accumulate across analyses, so a test can both
+    // distinguish "zero lookups were attempted" from "the capability does not exist" AND
+    // trust that every entry belongs to the CURRENT analysis (late entries from a
+    // superseded generation are dropped at the logging site, below).
+    // Entries: start → found | miss | failed.
+    const logFacts = (entry?: { canonicalName: string; status: string; facts: unknown }) => {
+      if (!entry) {
+        w.__SB_MEAL_FACTS_LOG = [];
+        return;
+      }
+      if (!w.__SB_MEAL_FACTS_LOG) w.__SB_MEAL_FACTS_LOG = [];
+      w.__SB_MEAL_FACTS_LOG.push(entry);
+    };
+    logFacts();
     log({ key, status: "start", observation: undefined });
     setMealAnalyzing(true);
-    analyzeMealMedia({ photoUrls: photoAssets.map((p) => p.src), videoUrl: videoAsset?.src, signal: controller.signal }).then((observation) => {
+    analyzeMealMedia({ photoUrls: photoAssets.map((p) => p.src), videoUrl: videoEligible ? videoAsset?.src : undefined, signal: controller.signal }).then((observation) => {
       log({ key, status: observation !== null ? "done" : "failed", observation });
       if (mealAnalysisGenRef.current !== gen) return; // superseded by a newer analysis — do nothing
       setMealAnalyzing(false);
       if (observation === null) return; // safe failure — nothing to show, Save is unaffected
-      // §LATE RESULT PROTECTION — this only ever sets the AI's OWN reading; it never touches
-      // `foodItems`, so a person's manual entry (typed while this was in flight) is untouched.
-      setD((x) => (x.intent === "meal" ? { ...x, domains: { ...x.domains, meal: { ...x.domains.meal, aiObservation: observation } } } : x));
+      // PHASE C §auto-selection — decided at RESPONSE-APPLICATION time, never request time:
+      // the person may have chosen a category while this was in flight, and an explicit choice
+      // ("user", or an accepted suggestion's "ai") is never overridden. `mediaUnchanged` also
+      // covers "the analyzed photo was removed before the result landed" — no auto-selection
+      // for media that is no longer the draft's. `isFood === true` is already a strictly
+      // validated boolean (route-side); a HIGH non-food or MEDIUM/LOW food never selects here.
+      const cur = dRef.current;
+      const deliberate = cur.intentSource === "user" || cur.intentSource === "ai";
+      const mediaUnchanged = cur.mediaIds.join(",") === key;
+      const auto = !deliberate && mediaUnchanged && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high";
+      // §LATE RESULT PROTECTION — this only ever sets the AI's OWN reading (and, when `auto`,
+      // the category); it never touches `foodItems`, so a person's manual entry (typed while
+      // this was in flight) is untouched. The observation is STORED regardless of the current
+      // category — it is Meal-domain data either way, and the medium ask reads it from here.
+      setD((x) => {
+        const stillFree = x.intentSource !== "user" && x.intentSource !== "ai"; // re-guarded at application
+        return {
+          ...x,
+          ...(auto && stillFree ? { intent: "meal" as const, intentSource: "ai" as const } : null),
+          domains: { ...x.domains, meal: { ...x.domains.meal, aiObservation: observation } },
+        };
+      });
+      if (auto) setMealAutoSelected(true);
+      // PHASE B — after recognition, look up REAL nutrition facts per recognized food through
+      // the one server boundary (`/api/food-facts`). Lookup key: canonicalName (fallback: the
+      // everyday name); low-confidence foods are never looked up (they are hints, not
+      // identities). Results merge into SUGGESTION STATE only — the aiObservation is never
+      // touched. A miss or failure is quiet: the AI estimate remains the visible fallback.
+      // The page-level `?mockfacts=` seam forwards as `?mock=` (same convention as `mockai`).
+      // Adversarial findings #1/#2 — the launch is gated at RESPONSE-APPLICATION time, like
+      // auto-selection above: never for a media set the person already changed/withdrew
+      // (`mediaUnchanged`), and never after the person turned Smart Assist off mid-flight
+      // (`smartAssistEnabled()` reads the switch's current stored state, not a stale closure).
+      if (observation.isFood === true && mediaUnchanged && smartAssistEnabled()) {
+        const mockFacts = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mockfacts") : null;
+        const lookups = observation.foods.filter((f) => f.confidence !== "low").slice(0, 5);
+        for (const food of lookups) {
+          const lookupName = food.canonicalName ?? food.name;
+          logFacts({ canonicalName: lookupName, status: "start", facts: undefined });
+          fetch(`/api/food-facts${mockFacts ? `?mock=${encodeURIComponent(mockFacts)}` : ""}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ canonicalName: lookupName }),
+            signal: controller.signal,
+          })
+            .then((r) => {
+              if (!r.ok) throw new Error(`food-facts ${r.status}`);
+              return r.json();
+            })
+            .then((j: { facts?: FoodFacts | null }) => {
+              if (mealAnalysisGenRef.current !== gen) return; // superseded — neither state nor log (finding #6)
+              const facts = j?.facts ?? null;
+              logFacts({ canonicalName: lookupName, status: facts ? "found" : "miss", facts });
+              if (facts) setMealFacts((prev) => ({ ...prev, [lookupName]: facts }));
+            })
+            .catch(() => {
+              // Quiet by design — a facts failure must never break the Meal (B12). A lookup
+              // aborted because its analysis was superseded belongs to the OLD log, not the
+              // new one — the generation guard keeps the current analysis's record clean.
+              if (mealAnalysisGenRef.current !== gen) return;
+              logFacts({ canonicalName: lookupName, status: "failed", facts: null });
+            });
+        }
+      }
     });
   }, [editing, resolved, assistOn, draftMedia]);
   useEffect(() => () => mealAnalysisAbortRef.current?.abort(), []);
@@ -457,10 +587,12 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   /* ---- intent selection (§7/§26 — switching never loses common or per-domain work) ---- */
   const chooseIntent = (k: RecordIntent) => {
     setD((x) => ({ ...x, intent: k, intentSource: "user" }));
+    setMealAutoSelected(false); // PHASE C — an explicit choice is never "auto-selected"; the undo gesture dies here
     setMoreOpen(false);
     setSugg(null);
   };
   const applySuggestion = (s: AssistSuggestion) => {
+    setMealAutoSelected(false); // PHASE C — accepting a text suggestion is a deliberate act, never the auto-selection's undo target
     setD((x) => {
       let next: UDraft = { ...x, intent: s.kind ?? x.intent, intentSource: "ai" };
       if (s.kind === "activity") next = { ...next, domains: { ...next.domains, activity: { ...next.domains.activity, type: s.activityType ?? next.domains.activity.type, distance: s.distance ?? next.domains.activity.distance, duration: s.duration ?? next.domains.activity.duration } } };
@@ -740,7 +872,29 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                     <span aria-hidden className={CHIP_WORD}>{t("ucomposer.addDetails")}</span>
                   </button>
                 ) : (
-                  <button type="button" aria-expanded={sheet === "record"} aria-haspopup="dialog" onClick={(e) => openSheet("record", e.currentTarget)} className={`${CHIP} bg-[var(--boom-soft)] text-text`} data-sb-record-details data-sb-record-pill={resolved} data-sb-intent-indicator={resolved}>
+                  <button
+                    type="button"
+                    aria-expanded={sheet === "record"}
+                    aria-haspopup="dialog"
+                    onClick={(e) => {
+                      // PHASE C §one-tap undo — ONE tap on an AI-AUTO-selected Meal reverts it
+                      // to the normal media-default category: photo kept, observation kept, no
+                      // chooser opened, no new analysis (the key dedup already saw this set),
+                      // and no re-selection (application happens once per analysis result).
+                      // An EXPLICITLY chosen Meal never takes this branch — its pill opens the
+                      // chooser exactly as before (`mealAutoSelected` dies in chooseIntent).
+                      if (resolved === "meal" && mealAutoSelected) {
+                        setMealAutoSelected(false);
+                        setD((x) => ({ ...x, intent: "social", intentSource: "default" }));
+                        return;
+                      }
+                      openSheet("record", e.currentTarget);
+                    }}
+                    className={`${CHIP} bg-[var(--boom-soft)] text-text`}
+                    data-sb-record-details
+                    data-sb-record-pill={resolved}
+                    data-sb-intent-indicator={resolved}
+                  >
                     <span aria-hidden className="inline-flex">{KIND_GLYPH[resolved]}</span>
                     <span className={CHIP_WORD}>
                       {kindName(resolved)}
@@ -788,11 +942,15 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                 </div>
               )}
 
+              {/* PHASE C — the medium-confidence ask lives OUTSIDE the Meal-only domain block:
+                  it exists precisely while Meal is NOT selected. Yes IS an explicit selection. */}
+              {mealCatAsk && <MealCategorySuggestion onYes={() => chooseIntent("meal")} onNo={() => setMealCatDismissed(true)} />}
+
               {/* DOMAIN QUICK — the same composer, adapted in place */}
               {resolved !== "social" && (
                 <div key={resolved} className="sb-reveal mt-3" data-sb-kind-fields={resolved}>
                   <DomainQuick draft={{ ...d, intent: resolved }} set={setD} min={me.birthDate} onOpenSheet={(s) => openSheet(s)} activityCommon={activityCommon} />
-                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} openMore={() => setMoreOpen(true)} />}
+                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} openMore={() => setMoreOpen(true)} facts={mealFacts} />}
                   {hasMore(resolved) && (
                     <div className={resolved === "moment" ? "" : "mt-2"}>
                       <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} className="sb-press -ml-2 inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-more-toggle>
