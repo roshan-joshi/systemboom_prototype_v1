@@ -20,12 +20,16 @@
  * loaded with `?mockai=`.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import OpenAI from "openai";
-import type { AIConfidence, MealAIObservation, NutritionEstimate, NutritionValue, ObservedFood, OcrObservation } from "@/components/style-lab/social/data";
+import type { AIConfidence, MealAIObservation, MealIdentity, NutritionEstimate, NutritionValue, ObservedFood, OcrObservation } from "@/components/style-lab/social/data";
 
 const MODEL = "deepseek-flash";
-const SINGLE_IMAGE_TIMEOUT_MS = 10_000;
-const MULTI_IMAGE_TIMEOUT_MS = 20_000;
+// 2026-10-05: raised 10s → 30s (multi 20s → 40s). A busy plate (many distinct items) makes the thinking-capable
+// model reason for 10–18s even with thinking disabled; at 10s the route aborted and silently answered "nothing
+// detected" for perfectly ordinary breakfast photos. The client ceilings in analyzeMealMedia.ts stay ABOVE these.
+const SINGLE_IMAGE_TIMEOUT_MS = 30_000;
+const MULTI_IMAGE_TIMEOUT_MS = 40_000;
 
 interface ImageInput {
   dataUrl: string;
@@ -54,26 +58,46 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function buildProviderPayload(images: ImageInput[]) {
   const SYSTEM_PROMPT =
     "You are a food-recognition assistant analyzing photo(s) for a personal food journal. " +
-    "Identify visible foods/drinks, a likely meal type if the image makes it evident, " +
-    "approximate portion cues (e.g. \"one plate\", \"two pieces\" — never a fabricated exact " +
-    "weight), and any visible text on a menu, package label, or receipt. Respond with ONLY a " +
-    "JSON object, no prose, matching exactly:\n" +
+    "Identify the ONE meal, dish or drink the way an ordinary person would name it, a likely meal " +
+    "type if the image makes it evident, and any visible text on a menu, package label, or " +
+    "receipt. Respond with ONLY a JSON object, no prose, matching exactly:\n" +
     "{\n" +
     '  "isFood": boolean,\n' +
-    '  "foods": [{"name": string, "canonicalName": string, "confidence": "high"|"medium"|"low", "portion"?: string}],\n' +
+    '  "meal": {"name": string|null, "canonicalName": string|null, "brand"?: string, "confidence": "high"|"medium"|"low"},\n' +
+    '  "visibleComponents"?: [{"name": string, "confidence": "high"|"medium"|"low"}],\n' +
+    '  "preparation"?: {"value": "raw"|"grilled"|"fried"|"baked"|"boiled"|"roasted"|"steamed"|"cooked", "confidence": "high"|"medium"|"low"},\n' +
+    '  "portion"?: {"value": string, "confidence": "high"|"medium"|"low"},\n' +
     '  "possibleMealType"?: "breakfast"|"lunch"|"dinner"|"snack",\n' +
-    '  "ingredients"?: string[],\n' +
+    '  "setting"?: {"value": "home"|"restaurant"|"takeaway"|"packaged"|"work"|"event"|"travel", "confidence": "high"|"medium"|"low"},\n' +
     '  "nutrition"?: {"calories"?: {"min": number, "max": number}, "protein"?: {"min": number, "max": number}, "carbs"?: {"min": number, "max": number}, "fat"?: {"min": number, "max": number}},\n' +
     '  "ocr"?: [{"kind": "menu"|"package"|"receipt", "text": string}],\n' +
     '  "confidence": "high"|"medium"|"low"\n' +
     "}\n" +
     '"isFood" is true ONLY if the image meaningfully depicts food, drink, or a meal context. ' +
-    '"name" is the everyday human name (e.g. "burger"); "canonicalName" is a normalized, ' +
-    'lookup-oriented identity for the same food (e.g. "sloppy joe sandwich") — never a brand ' +
-    "guess. Never claim a nutrition data source, database, or authority of any kind: any " +
+    '"meal.name" is the meal as a person would say it — "Burger", "Pizza", "Dal bhat", "Biryani", ' +
+    '"Caesar salad" — NEVER a list of ingredients or components ("bun, patty, lettuce" or ' +
+    '"rice, dal, curry" is wrong). Use a specific name only when the image visually supports it; if ' +
+    'the dish cannot be responsibly identified, set "name" and "canonicalName" to null and ' +
+    '"confidence" to "low" — never invent a specific dish. "canonicalName" is a normalized, ' +
+    'lookup-oriented identity for the same meal (e.g. "cheeseburger") — never a brand guess. ' +
+    'The top-level "confidence" is how sure you are that the image shows food or a meal; how sure ' +
+    'you are of the dish NAME is "meal.confidence" — so a clearly food photo whose exact dish name is ' +
+    'uncertain still has top-level "confidence" "high" (and a lower "meal.confidence"). ' +
+    '"visibleComponents" lists at most 6 of the most prominent items, only what is clearly VISIBLE on the plate or in the glass ' +
+    '("rice", "lentils", "pickle") — never recipe ingredients, never hidden seasoning, oil, salt ' +
+    'or ghee; omit anything you are unsure of. "preparation" only when it is visually obvious, ' +
+    '"setting" only when evident (e.g. a restaurant table, an aeroplane or train tray = "travel", a sealed package = "packaged"), ' +
+    '"portion" only as a human-scale amount such as "1 bowl" or "2 slices" — NEVER grams, ' +
+    'millilitres or ounces — and "possibleMealType" only when the image makes it evident; omit each ' +
+    'when unsure. "brand" is included ONLY when a brand or product name is clearly legible on a visible ' +
+    "package or label — it is text you read, never a guess; omit it otherwise, and it is never a " +
+    "nutrition source. Never claim a nutrition data source, database, or authority of any kind: any " +
     "nutrition you provide is always your own visual estimate and nothing else. " +
-    'If the image is not meaningfully food-related, return {"isFood": false, "foods": [], "confidence": "high"} ' +
-    "and omit every other key. Never invent a fact you cannot actually see. Prefer a min/max " +
+    'If the image is not meaningfully food-related, return {"isFood": false, "confidence": "high"} ' +
+    "and omit every other key. When the image IS food, always include your whole-meal " +
+    "\"nutrition\" estimate (calories, protein, carbs and fat, each as a min/max range for the amount " +
+    "visible) — it is your own visual estimate, so keep the ranges honest and wide enough. Never " +
+    "invent a fact you cannot actually see. Prefer a min/max " +
     "range over a single exact number for nutrition — you cannot know exact recipe, hidden " +
     "oil, or exact weight from a photograph. Never make an allergen safety claim beyond a " +
     'tentative "may contain" when genuinely evidenced. Never provide medical advice or a ' +
@@ -168,6 +192,8 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
       name: String(f.name).trim().slice(0, 80),
       // PHASE B — the lookup-oriented identity, kept beside (never replacing) the everyday name.
       canonicalName: typeof f.canonicalName === "string" && f.canonicalName.trim() ? f.canonicalName.trim().slice(0, 80) : undefined,
+      // PHASE B2 — printed brand text the model read (recognition only; it only picks which factual source is asked first).
+      brand: typeof f.brand === "string" && f.brand.trim() ? f.brand.trim().slice(0, 60) : undefined,
       confidence: toConfidence(f.confidence) ?? "low",
       portion: typeof f.portion === "string" && f.portion.trim() ? f.portion.trim().slice(0, 40) : undefined,
     }));
@@ -196,7 +222,65 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
     .slice(0, 10)
     .map((r) => ({ kind: r.kind as OcrObservation["kind"], text: String(r.text).trim().slice(0, 500) }));
 
-  const confidence: AIConfidence = toConfidence(o.confidence) ?? (foods.length ? "low" : "high");
+  // MEAL CAPTURE EXTENSION — secondary observations, each kept ONLY when it is defensible:
+  //  - visibleComponents: usable (non-low) named items, deduped, bounded; the provider's confidence
+  //    decides, never a guess of ours.
+  //  - preparation: a fixed small vocabulary AND high confidence; anything else is dropped (never
+  //    derived from the meal name).
+  //  - portion: high confidence AND human-scale — any measured amount (g/kg/ml/l/oz/lb…) is rejected
+  //    outright, because a photograph cannot justify it.
+  const PREPARATIONS = new Set(["raw", "grilled", "fried", "baked", "boiled", "roasted", "steamed", "cooked"]);
+  const MEASURED = /\d\s*(?:g|gm|gms|gram|grams|kg|mg|ml|millilit\w*|l|litre|litres|liter|liters|oz|ounce|ounces|lb|lbs|pound|pounds|cc|kcal)\b/i;
+  let visibleComponents: { name: string; confidence: AIConfidence }[] | undefined;
+  if (o.isFood === true && Array.isArray(o.visibleComponents)) {
+    const seen = new Set<string>();
+    const list: { name: string; confidence: AIConfidence }[] = [];
+    for (const c of o.visibleComponents) {
+      if (!c || typeof c !== "object") continue;
+      const r = c as Record<string, unknown>;
+      const name = typeof r.name === "string" ? r.name.trim().slice(0, 40) : "";
+      const conf = toConfidence(r.confidence) ?? "low";
+      if (!name || conf === "low" || seen.has(name.toLowerCase())) continue;
+      seen.add(name.toLowerCase());
+      list.push({ name, confidence: conf });
+      if (list.length >= 12) break;
+    }
+    if (list.length) visibleComponents = list;
+  }
+  const detail = (v: unknown): { value: string; confidence: AIConfidence } | null => {
+    if (!v || typeof v !== "object") return null;
+    const r = v as Record<string, unknown>;
+    const value = typeof r.value === "string" ? r.value.trim() : "";
+    return value ? { value, confidence: toConfidence(r.confidence) ?? "low" } : null;
+  };
+  const prepRaw = o.isFood === true ? detail(o.preparation) : null;
+  // MEAL V1 — HIGH and MEDIUM both fill (the person sees one clean value); LOW is dropped. The confidence is kept beside it.
+  const preparation = prepRaw && prepRaw.confidence !== "low" && PREPARATIONS.has(prepRaw.value.toLowerCase()) ? prepRaw.value.toLowerCase() : undefined;
+  const portionRaw = o.isFood === true ? detail(o.portion) : null;
+  const portion = portionRaw && portionRaw.confidence !== "low" && portionRaw.value.length <= 40 && !MEASURED.test(portionRaw.value) ? portionRaw.value : undefined;
+
+  // MEAL AUTOFILL — the eating setting: fixed vocabulary AND high confidence, else absent.
+  const SETTINGS = new Set(["home", "restaurant", "takeaway", "packaged", "work", "event", "travel"]);
+  const settingRaw = o.isFood === true ? detail(o.setting) : null;
+  const setting = settingRaw && settingRaw.confidence !== "low" && SETTINGS.has(settingRaw.value.toLowerCase()) ? (settingRaw.value.toLowerCase() as NonNullable<MealAIObservation["setting"]>) : undefined;
+
+  // MEAL CAPTURE UX — the specific Meal identity. Read ONLY name / canonicalName / brand /
+  // confidence (never any provider "source"); bounded; a missing name forces LOW confidence so an
+  // unnamed meal can never read as a confident one. Only a food image carries an identity.
+  let meal: MealIdentity | undefined;
+  if (o.isFood === true && o.meal && typeof o.meal === "object") {
+    const m = o.meal as Record<string, unknown>;
+    const clean = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+    const name = clean(m.name, 80);
+    meal = {
+      name,
+      canonicalName: clean(m.canonicalName, 80),
+      brand: clean(m.brand, 60),
+      confidence: name ? (toConfidence(m.confidence) ?? "low") : "low",
+    };
+  }
+
+  const confidence: AIConfidence = toConfidence(o.confidence) ?? (meal ? meal.confidence : foods.length ? "low" : "high");
 
   // PHASE C — a REAL validated boolean: only the JSON literal `true` passes. A truthy string
   // ("true", "yes"), a number, or a missing field all degrade to false — category
@@ -209,6 +293,11 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
     providerModel: MODEL,
     analyzedAt: new Date().toISOString(),
     isFood,
+    ...(meal ? { meal } : null),
+    ...(visibleComponents ? { visibleComponents } : null),
+    ...(preparation ? { preparation, preparationConfidence: prepRaw!.confidence } : null),
+    ...(portion ? { portion, portionConfidence: portionRaw!.confidence } : null),
+    ...(setting ? { setting, settingConfidence: settingRaw!.confidence } : null),
     foods,
     possibleMealType,
     ingredients,
@@ -216,6 +305,38 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
     ocrObservations: ocrObservations.length ? ocrObservations : undefined,
     confidence,
   };
+}
+
+/** MEAL CAPTURE EXTENSION — the three mock-library photographs the per-asset fixtures key on
+ *  (first 12 hex of the SHA-1 of the image's base64): the dal bhat thali (A), the Nyatapola temple
+ *  photo (B) and the Phewa dusk photo (C) — three deliberately different "observations". */
+const PERASSET_IMAGES: Record<string, "A" | "B" | "C"> = { "54cd531da511": "A", "931b66477ec9": "B", "22a4118cf19d": "C" };
+function buildPerAssetObservation(id: "A" | "B" | "C"): MealAIObservation {
+  const base = { schemaVersion: 1 as const, providerModel: MODEL, analyzedAt: new Date().toISOString(), isFood: true, foods: [], confidence: "high" as const };
+  const comps = (names: string[]) => names.map((name) => ({ name, confidence: "high" as const }));
+  if (id === "A") return { ...base, meal: { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high" }, visibleComponents: comps(["rice", "lentils", "pickle"]), preparation: "cooked", portion: "1 plate", possibleMealType: "lunch" };
+  if (id === "B") return { ...base, meal: { name: "Mango lassi", canonicalName: "mango lassi", confidence: "high" }, visibleComponents: comps(["yogurt", "mango"]), portion: "1 glass" };
+  return { ...base, meal: { name: "Gulab jamun", canonicalName: "gulab jamun", confidence: "high" }, visibleComponents: comps(["milk solids", "syrup"]), portion: "2 pieces" };
+}
+
+/**
+ * MEAL V1 — three photographs with deliberately DIFFERENT, COMPLETE observations (every field), so a form
+ * that swaps only some fields shows its bug: A a grilled main plate (everything high), B a drink (no
+ * preparation, no setting), C a dessert (medium preparation + setting). Keyed by the image's own bytes
+ * like the per-asset fixtures above. `?mock=v1assets[:slowa|slowb|slowc]`.
+ */
+function buildV1Observation(id: "A" | "B" | "C"): MealAIObservation {
+  const base = { schemaVersion: 1 as const, providerModel: MODEL, analyzedAt: new Date().toISOString(), isFood: true, foods: [], confidence: "high" as const };
+  const comps = (names: string[]) => names.map((name) => ({ name, confidence: "high" as const }));
+  const est = (cal: [number, number], pro: [number, number], carb: [number, number], fat: [number, number]) => {
+    const v = (r: [number, number], unit: string) => ({ range: { min: r[0], max: r[1] }, unit, source: "ai_estimate" as const, confidence: "medium" as const });
+    return { calories: v(cal, "kcal"), protein: v(pro, "g"), carbs: v(carb, "g"), fat: v(fat, "g") };
+  };
+  if (id === "A")
+    return { ...base, meal: { name: "Grilled chicken with vegetables", canonicalName: "grilled chicken", confidence: "high" }, visibleComponents: comps(["grilled chicken", "cheese", "egg", "tomatoes"]), preparation: "grilled", preparationConfidence: "high", portion: "1 plate", portionConfidence: "high", possibleMealType: "lunch", setting: "restaurant", settingConfidence: "high", nutritionEstimate: est([650, 1050], [45, 85], [15, 40], [35, 75]) };
+  if (id === "B")
+    return { ...base, meal: { name: "Mango lassi", canonicalName: "mango lassi", confidence: "high" }, visibleComponents: comps(["yogurt", "mango"]), portion: "1 glass", portionConfidence: "high", possibleMealType: "snack", nutritionEstimate: est([180, 250], [4, 8], [30, 45], [4, 9]) };
+  return { ...base, meal: { name: "Gulab jamun", canonicalName: "gulab jamun", confidence: "medium" }, visibleComponents: comps(["milk solids", "syrup"]), preparation: "fried", preparationConfidence: "medium", portion: "2 pieces", portionConfidence: "medium", possibleMealType: "dinner", setting: "event", settingConfidence: "medium", nutritionEstimate: est([300, 450], [5, 9], [45, 70], [12, 22]) };
 }
 
 /** Deterministic canned responses for the test suite — never a real provider call. */
@@ -243,6 +364,183 @@ function buildMockObservation(scenario: string): MealAIObservation | null {
           nutrition: {
             calories: { min: 450, max: 750, source: "USDA FoodData Central", confidence: "high" },
             protein: { min: 22, max: 38, source: "USDA FoodData Central", confidence: "medium" },
+          },
+          confidence: "high",
+        }),
+      );
+    // MEAL CAPTURE UX — specific Meal identity fixtures (deterministic, mock seam only).
+    // `burger` / `dalbhat` / `pizza`: a HIGH-confidence identity + the AI's whole-meal estimate range.
+    // `likelymeal`: a MEDIUM identity ("Looks like: Dal bhat"). `ambiguous`: genuinely food, no
+    // defensible dish name (HIGH food confidence so Meal selects; the identity itself is LOW and
+    // unnamed). `burger-components`: an identity PLUS legacy component foods — the card must still
+    // lead with the identity. `nutella-meal`: a packaged identity with a brand (Phase B2 route).
+    case "burger":
+    case "dalbhat":
+    case "pizza":
+    case "likelymeal":
+    case "burger-components": {
+      const ident: Record<string, MealIdentity> = {
+        burger: { name: "Burger", canonicalName: "cheeseburger", confidence: "high" },
+        "burger-components": { name: "Burger", canonicalName: "cheeseburger", confidence: "high" },
+        dalbhat: { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high" },
+        pizza: { name: "Pizza", canonicalName: "pizza", confidence: "high" },
+        likelymeal: { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "medium" },
+      };
+      return {
+        ...base,
+        isFood: true,
+        meal: ident[scenario],
+        foods:
+          scenario === "burger-components"
+            ? [
+                { name: "Bun", canonicalName: "bread roll", confidence: "high" },
+                { name: "Beef patty", canonicalName: "beef patty", confidence: "high" },
+                { name: "Lettuce", canonicalName: "lettuce", confidence: "medium" },
+                { name: "Tomato", canonicalName: "tomato", confidence: "medium" },
+              ]
+            : [],
+        possibleMealType: "lunch",
+        nutritionEstimate: {
+          calories: { range: { min: 700, max: 900 }, unit: "kcal", source: "ai_estimate", confidence: "medium" },
+          protein: { range: { min: 25, max: 35 }, unit: "g", source: "ai_estimate", confidence: "medium" },
+        },
+        confidence: scenario === "likelymeal" ? "medium" : "high",
+      };
+    }
+    case "ambiguous":
+      return { ...base, isFood: true, meal: { confidence: "low" }, foods: [], confidence: "high" };
+    case "nutella-meal":
+      return {
+        ...base,
+        isFood: true,
+        meal: { name: "Nutella", canonicalName: "hazelnut spread", brand: "Nutella", confidence: "high" },
+        foods: [],
+        nutritionEstimate: {
+          calories: { range: { min: 100, max: 220 }, unit: "kcal", source: "ai_estimate", confidence: "medium" },
+        },
+        confidence: "high",
+      };
+    // A RAW provider payload routed through the REAL normalizer (M1): a meal identity with an
+    // over-long name, an unrecognised confidence word, a fabricated source claim, and legacy components.
+    case "raw-meal":
+      return normalizeProviderOutput(
+        JSON.stringify({
+          isFood: true,
+          meal: { name: "Burger", canonicalName: "cheeseburger", confidence: "high", source: "USDA FoodData Central" },
+          foods: [
+            { name: "Bun", canonicalName: "bread roll", confidence: "high" },
+            { name: "Beef patty", canonicalName: "beef patty", confidence: "high" },
+            { name: "Lettuce", canonicalName: "lettuce", confidence: "medium" },
+            { name: "Tomato", canonicalName: "tomato", confidence: "medium" },
+          ],
+          confidence: "high",
+        }),
+      );
+    // MEAL CAPTURE EXTENSION — secondary-detail fixtures (mock seam only).
+    // `details`: Dal bhat with four visible components, preparation, portion and an occasion hint.
+    // `components7`: the same with seven components (the "+3 more" case).
+    // `raw-details` / `raw-low` / `raw-grams` / `raw-none`: RAW provider payloads through the REAL
+    // normalizer — defensible detail kept; low-confidence, measured-amount, out-of-vocabulary and
+    // missing detail dropped.
+    case "details":
+    case "components7": {
+      const names = scenario === "details" ? ["rice", "lentils", "vegetables", "pickle"] : ["rice", "lentils", "vegetables", "pickle", "papad", "yogurt", "salad"];
+      return {
+        ...base,
+        isFood: true,
+        meal: { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high" },
+        foods: [],
+        visibleComponents: names.map((name) => ({ name, confidence: "high" as const })),
+        preparation: "cooked",
+        portion: "1 plate",
+        possibleMealType: "lunch",
+        setting: "home",
+        nutritionEstimate: {
+          calories: { range: { min: 700, max: 900 }, unit: "kcal", source: "ai_estimate", confidence: "medium" },
+          protein: { range: { min: 25, max: 35 }, unit: "g", source: "ai_estimate", confidence: "medium" },
+        },
+        confidence: "high",
+      };
+    }
+    // MEAL V1 — single-photo confidence scenarios, RAW payloads through the real normalizer:
+    // `v1-medium`: a MEDIUM identity with MEDIUM preparation / portion / setting (all must fill);
+    // `v1-low`: a confident name but LOW everything else (preparation/portion/setting/components and a
+    // LOW calories estimate) — the form must keep those blank.
+    case "v1-medium":
+    case "v1-low": {
+      const medium = scenario === "v1-medium";
+      const rng = (a: number, b: number, c: string) => ({ min: a, max: b, confidence: c });
+      return normalizeProviderOutput(
+        JSON.stringify({
+          isFood: true,
+          meal: { name: medium ? "Chicken curry" : "Vegetable soup", canonicalName: medium ? "chicken curry" : "vegetable soup", confidence: medium ? "medium" : "high" },
+          visibleComponents: medium ? [{ name: "chicken", confidence: "high" }, { name: "rice", confidence: "medium" }, { name: "garnish", confidence: "low" }] : [{ name: "salt", confidence: "low" }],
+          preparation: { value: medium ? "boiled" : "grilled", confidence: medium ? "medium" : "low" },
+          portion: { value: medium ? "1 bowl" : "2 bowls", confidence: medium ? "medium" : "low" },
+          setting: { value: medium ? "home" : "travel", confidence: medium ? "medium" : "low" },
+          possibleMealType: medium ? "dinner" : undefined,
+          nutrition: { calories: rng(300, 500, medium ? "medium" : "low"), protein: rng(10, 25, medium ? "medium" : "low"), carbs: rng(20, 40, medium ? "medium" : "low"), fat: rng(8, 20, medium ? "medium" : "low") },
+          confidence: "high",
+        }),
+      );
+    }
+    case "raw-details":
+    case "raw-low":
+    case "raw-grams":
+    case "raw-none": {
+      // `raw-none` is deliberately named "Grilled chicken" with NO provider preparation: nothing may be derived from the name.
+      const payload: Record<string, unknown> = { isFood: true, meal: scenario === "raw-none" ? { name: "Grilled chicken", canonicalName: "grilled chicken", confidence: "high" } : { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high" }, confidence: "high" };
+      if (scenario === "raw-details") {
+        payload.visibleComponents = [
+          { name: "rice", confidence: "high" },
+          { name: "lentils", confidence: "medium" },
+          { name: "secret ghee", confidence: "low" },
+          { name: "Rice", confidence: "high" },
+        ];
+        payload.preparation = { value: "Steamed", confidence: "high" };
+        payload.portion = { value: "1 bowl", confidence: "high" };
+      } else if (scenario === "raw-low") {
+        payload.visibleComponents = [{ name: "salt", confidence: "low" }, { name: "turmeric", confidence: "low" }];
+        payload.preparation = { value: "grilled", confidence: "low" };
+        payload.portion = { value: "1 bowl", confidence: "low" };
+      } else if (scenario === "raw-grams") {
+        payload.preparation = { value: "sous-vide", confidence: "high" };
+        payload.portion = { value: "237 g", confidence: "high" };
+      }
+      return normalizeProviderOutput(JSON.stringify(payload));
+    }
+    // PHASE B2 — packaged-food recognition fixtures. `packaged`: one HIGH-confidence BRANDED food
+    // (a jar whose label reads "Nutella") beside one generic food, with an AI whole-plate estimate.
+    // `packaged-medium`: the same brand read at only MEDIUM confidence (never routed to OFF-first).
+    case "packaged":
+    case "packaged-medium":
+      return {
+        ...base,
+        isFood: true,
+        foods: [
+          { name: "Nutella jar", canonicalName: "hazelnut spread", brand: "Nutella", confidence: scenario === "packaged" ? "high" : "medium" },
+          { name: "Toast", canonicalName: "toast", confidence: "high" },
+        ],
+        nutritionEstimate: {
+          calories: { range: { min: 700, max: 900 }, unit: "kcal", source: "ai_estimate", confidence: "medium" },
+          protein: { range: { min: 25, max: 35 }, unit: "g", source: "ai_estimate", confidence: "medium" },
+        },
+        confidence: "high",
+      };
+    // PHASE B2 — a RAW provider payload that CLAIMS Open Food Facts as its nutrition source (at the
+    // nutrition and the food level), routed through the REAL normalizeProviderOutput so the test
+    // proves the normalization layer — not the fixture — removes the fabricated attribution.
+    case "fabricate-off":
+      return normalizeProviderOutput(
+        JSON.stringify({
+          isFood: true,
+          foods: [
+            { name: "Nutella jar", canonicalName: "hazelnut spread", brand: "Nutella", confidence: "high", source: "openfoodfacts" },
+            { name: "Toast", canonicalName: "toast", confidence: "high" },
+          ],
+          nutrition: {
+            calories: { min: 450, max: 750, source: "Open Food Facts", confidence: "high" },
+            protein: { min: 22, max: 38, source: "openfoodfacts", confidence: "medium" },
           },
           confidence: "high",
         }),
@@ -299,6 +597,22 @@ export async function POST(req: NextRequest) {
     if (scenario === "echo") {
       return NextResponse.json({ observation: null, _debugProviderPayload: buildProviderPayload(images) });
     }
+    // MEAL CAPTURE EXTENSION — `perasset[:slowa|slowb|slowc]`: each ATTACHED IMAGE answers with its
+    // own deterministic observation, chosen by the image's own bytes (so the same photo always
+    // yields the same reading, whichever composition or order it is attached in). The optional tag
+    // delays one asset's answer (late-result tests). Mock seam only — never a real provider path.
+    if (scenario === "v1assets") {
+      const b64 = images[0].dataUrl.slice(images[0].dataUrl.indexOf(",") + 1);
+      const id = PERASSET_IMAGES[createHash("sha1").update(b64).digest("hex").slice(0, 12)];
+      if (id && delayStr === `slow${id.toLowerCase()}`) await sleep(2500);
+      return NextResponse.json({ observation: id ? buildV1Observation(id) : buildMockObservation("nonfood") });
+    }
+    if (scenario === "perasset") {
+      const b64 = images[0].dataUrl.slice(images[0].dataUrl.indexOf(",") + 1);
+      const id = PERASSET_IMAGES[createHash("sha1").update(b64).digest("hex").slice(0, 12)];
+      if (id && delayStr === `slow${id.toLowerCase()}`) await sleep(2500);
+      return NextResponse.json({ observation: id ? buildPerAssetObservation(id) : buildMockObservation("nonfood") });
+    }
     return NextResponse.json({ observation: buildMockObservation(scenario) });
   }
 
@@ -315,7 +629,10 @@ export async function POST(req: NextRequest) {
   try {
     const client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" });
     const payload = buildProviderPayload(images);
+    const startedAt = Date.now();
     const completion = await client.chat.completions.create(payload, { signal: controller.signal });
+    // server-side diagnostics only (never sent to the client): how long the provider took and what it spent
+    console.log("[analyze-meal] provider answered in", Math.round((Date.now() - startedAt) / 100) / 10, "s; usage:", JSON.stringify(completion.usage));
     const raw = completion.choices[0]?.message?.content;
     if (!raw) {
       // Fix 4 — an empty/missing content field is otherwise silent; log enough to diagnose it

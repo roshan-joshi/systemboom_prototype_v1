@@ -131,6 +131,14 @@ export interface KindFields {
    * on every fixture and on any Meal posted with AI off/unavailable/declined.
    */
   mealAIObservation?: MealAIObservation;
+  /** MEAL AUTOFILL — the nutrition the Meal was recorded with: a structured fact (USDA / Open Food
+   *  Facts, per 100 g) when one was found, else the clearly-labelled AI estimate. Every value carries
+   *  its own source + confidence; the AI observation above is untouched either way. */
+  mealNutrition?: MealNutritionRecord;
+  /** MEAL V1 — the ONE Meal's per-photo state: for every attached photo (by its stable asset id) its own
+   *  original AI observation and its own effective field values with their interaction state. The Meal is
+   *  still ONE record; these are how it remembers what each photo said and what the person did with it. */
+  mealAssets?: MealAssetState[];
   /* Activity — adaptive per-subtype More-details fields (04_ACTIVITY_TYPES). */
   felt?: string;
   steps?: string;
@@ -218,8 +226,8 @@ export type FoodSource = "ai_visual_estimate" | "label_ocr" | "user" | "database
 /**
  * PHASE B — NUTRITION provenance (distinct from the food-ITEM lifecycle's `FoodSource`
  * above, which is unchanged): "AI recognizes. USDA supplies facts. AI estimates only as
- * fallback." `usda` = a real USDA FoodData Central lookup; `openfoodfacts` is RESERVED for
- * the next phase (never produced yet); `ai_estimate` = the model's own visual estimate
+ * fallback." `usda` = a real USDA FoodData Central lookup; `openfoodfacts` = a real Open Food
+ * Facts lookup (packaged/branded food, Phase B2); `ai_estimate` = the model's own visual estimate
  * (always a range, never fake precision — supersedes the earlier "ai_visual_estimate"
  * value on NUTRITION values only, recorded in AGENTS.md); `user` = the person's own entry.
  * Code determines this value — a provider response is NEVER trusted to name its own source.
@@ -244,6 +252,64 @@ export interface NutritionValue {
   confidence: AIConfidence;
 }
 
+/** MEAL AUTOFILL — one recorded nutrition reading with its basis ("per 100 g" for a structured fact,
+ *  "whole meal · visual estimate" for the AI's range). Provenance lives on each value. */
+export interface MealNutritionRecord {
+  basis: string;
+  /** the product/food the structured source matched, when it was a fact */
+  name?: string;
+  calories?: NutritionValue;
+  protein?: NutritionValue;
+  carbs?: NutritionValue;
+  fat?: NutritionValue;
+}
+
+/** MEAL V1 — how the person has related to one displayed field value (reuses the existing
+ *  suggested / confirmed / corrected / rejected vocabulary: "default" = suggested default,
+ *  "corrected" = the person's own value, "cleared" = the person emptied it on purpose). */
+export type MealFieldState = "default" | "confirmed" | "corrected" | "cleared";
+
+/** MEAL V1 — one nutrient's effective reading: a single value or an honest range, never both. */
+export interface MealNutrientValue {
+  value?: number;
+  range?: { min: number; max: number };
+  unit: string;
+}
+
+/**
+ * MEAL V1 — one effective field of one photo. `value` is what is shown and saved (blank = undefined);
+ * `original` is what the AI / structured source first said (never rewritten, so a correction or a clear
+ * can always be traced back to it); `source`/`ref` keep the original provenance (a USDA entry's fdcId,
+ * an Open Food Facts product code, the basis it was reported on) whatever the person does afterwards.
+ */
+export interface MealFieldCell<V> {
+  value?: V;
+  state: MealFieldState;
+  original?: V;
+  confidence?: AIConfidence;
+  source?: "usda" | "openfoodfacts" | "ai_estimate" | "ai_visual_estimate" | "metadata" | "user";
+  ref?: { fdcId?: number; productId?: string; basis?: string; matchedName?: string };
+  /** when the person last changed/cleared/confirmed this field (ISO) */
+  at?: string;
+}
+
+/** MEAL V1 — the whole Meal form for ONE attached photo. */
+export interface MealAssetState {
+  assetId: string;
+  /** the photo's own original AI observation — immutable, referenced here so one record keeps all of them */
+  observation?: MealAIObservation | null;
+  name: MealFieldCell<string>;
+  components: MealFieldCell<string[]>;
+  preparation: MealFieldCell<string>;
+  portion: MealFieldCell<string>;
+  occasion: MealFieldCell<string>;
+  setting: MealFieldCell<string>;
+  calories: MealFieldCell<MealNutrientValue>;
+  protein: MealFieldCell<MealNutrientValue>;
+  carbs: MealFieldCell<MealNutrientValue>;
+  fat: MealFieldCell<MealNutrientValue>;
+}
+
 export interface NutritionEstimate {
   calories?: NutritionValue;
   protein?: NutritionValue;
@@ -259,6 +325,10 @@ export interface ObservedFood {
    *  keeps showing the everyday `name`. Optional — a provider may not supply one, and the
    *  lookup then falls back to `name`. */
   canonicalName?: string;
+  /** PHASE B2 — a brand/product name the model READ on a visible package or label (recognition
+   *  of printed text, never a guess and never a nutrition source). Its only effect: a HIGH-
+   *  confidence food that carries one is routed to the packaged-food source first. */
+  brand?: string;
   confidence: AIConfidence;
   /** "one plate", "two pieces" — never a fabricated gram weight. */
   portion?: string;
@@ -272,22 +342,48 @@ export interface ObservedFood {
  * are never merged into one ambiguous value.
  */
 export interface FoodFacts {
-  source: "usda";
-  /** USDA FoodData Central id of the matched food — provenance, preserved end-to-end. */
-  fdcId: number;
-  /** The name USDA matched (may differ from the everyday/canonical name asked for). */
+  /** Which structured source answered — set by CODE from the route that responded, never read
+   *  from a provider. PHASE B2: `openfoodfacts` is now produced (packaged/branded food). */
+  source: Extract<NutritionSource, "usda" | "openfoodfacts">;
+  /** USDA FoodData Central id of the matched food — provenance, preserved end-to-end (usda only). */
+  fdcId?: number;
+  /** PHASE B2 — the Open Food Facts product code (barcode) of the matched product (openfoodfacts only). */
+  productId?: string;
+  /** The name the source matched (may differ from the everyday/canonical name asked for). */
   matchedName: string;
   nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number };
   units: { calories: string; protein: string; carbs: string; fat: string };
-  /** What the numbers are per — USDA search nutrients are reported per 100 g. */
+  /** What the numbers are per — USDA search nutrients and Open Food Facts `_100g` values are per 100 g. */
   basis: string;
   retrievedAt: string;
+  /** How far the chosen USDA entry can be trusted to BE the recognized food. "confident" = it is
+   *  that food (exact or common-name match, no preparation difference); "likely" = it is that
+   *  food prepared slightly differently, and `basedOn` says how. There is deliberately no
+   *  "uncertain" here: an uncertain match publishes NO facts at all. Never rendered as a score. */
+  match: "confident" | "likely";
+  /** For "likely" only: a short human phrase ("baked banana") shown as "based on …" — never the
+   *  full USDA description. */
+  basedOn?: string;
 }
 
 /** UC-MEAL-AI — normalized text read from a menu/package/receipt in the SAME vision call. */
 export interface OcrObservation {
   kind: "menu" | "package" | "receipt";
   text: string;
+}
+
+/**
+ * MEAL CAPTURE UX — the recognition's PRIMARY result: the ONE meal as an ordinary person would
+ * name it ("Burger", "Dal bhat", "Pizza"), never a list of components. `name` is absent when the
+ * dish cannot be responsibly identified (confidence is then "low") — a specific name is never
+ * invented. `canonicalName` is the lookup identity for the structured sources (e.g. "cheeseburger");
+ * `brand` is printed text read from a visible package (Phase B2's packaged-food signal).
+ */
+export interface MealIdentity {
+  name?: string;
+  canonicalName?: string;
+  brand?: string;
+  confidence: AIConfidence;
 }
 
 /**
@@ -307,8 +403,29 @@ export interface MealAIObservation {
    *  string; a missing or malformed provider value degrades to false, never to true.
    *  Category auto-selection reads THIS together with `confidence` — never the foods list. */
   isFood: boolean;
+  /** MEAL CAPTURE UX — the specific Meal identity (see `MealIdentity`). Present on observations
+   *  from the current recognition contract; older/legacy observations carry only `foods`. */
+  meal?: MealIdentity;
   foods: ObservedFood[];
+  /** MEAL CAPTURE EXTENSION — what is clearly VISIBLE on the plate ("rice", "lentils"), usable
+   *  items only (low-confidence guesses are dropped). A SECONDARY observation shown as
+   *  "Made of: …"; it is NOT a recipe-ingredient claim (hidden oil/salt/ghee never appear here)
+   *  and never replaces the primary Meal identity. */
+  visibleComponents?: { name: string; confidence: AIConfidence }[];
+  /** MEAL CAPTURE EXTENSION — how it was prepared, ONLY when visually obvious (a fixed small
+   *  vocabulary: raw/grilled/fried/baked/boiled/roasted/steamed/cooked); absent otherwise. */
+  preparation?: string;
+  /** MEAL V1 — how sure the model was of `preparation` / `portion` / `setting` (medium fills too; low is dropped). */
+  preparationConfidence?: AIConfidence;
+  portionConfidence?: AIConfidence;
+  settingConfidence?: AIConfidence;
+  /** MEAL CAPTURE EXTENSION — an approximate HUMAN-SCALE portion ("1 bowl", "2 slices"); never
+   *  a measured amount (grams/ml/oz are rejected at normalization); absent when unsure. */
+  portion?: string;
+  /** The model's occasion SUGGESTION (never auto-confirmed — the person's own occasion wins). */
   possibleMealType?: "breakfast" | "lunch" | "dinner" | "snack";
+  /** MEAL AUTOFILL — where it appears to be eaten, only when evident (high confidence, fixed vocabulary). */
+  setting?: "home" | "restaurant" | "takeaway" | "packaged" | "work" | "event" | "travel";
   ingredients?: string[];
   portionEstimates?: string[];
   nutritionEstimate?: NutritionEstimate;

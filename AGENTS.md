@@ -1915,3 +1915,223 @@ same payload, same quiet null-on-failure, mocks/echo/privacy untouched. Verified
 real lookups return genuine FDC facts (e.g. fdcId 2706884 "Sloppy joe sandwich, on wheat
 bun", 180 kcal · 11.85 g protein per 100 g) in <1 s each; meal-intelligence re-run green;
 tsc 0 · eslint 0.
+
+## UC-MEAL-AI Phase B correction — USDA match selection + confidence gating (owner-directed · 2026-10-02)
+
+The accepted Phase B selection scored USDA candidates by nutrition COMPLETENESS and broke ties by USDA's own order,
+so live USDA published "Bananas, dehydrated, or banana powder" (346 kcal) for "banana" and "Spinach, creamed" (90) for
+"spinach" as plain fact (the evidence addendum's item 2 exposed it). This correction replaces the rule with a
+SEMANTIC ranking, adds a CONFIDENCE GATE, and makes the presentation conditionally transparent. Open Food Facts and
+caching are NOT built.
+
+**Ranking (`api/food-facts/route.ts`).** rank 1 exact (the candidate's primary name equals the query's food words, with
+exactly the preparation asked for) · 2 common name, no preparation · 3 common name, matching preparation · 4 common name,
+DIFFERING preparation · 5 no common-name match; then token overlap (Jaccard) → nutrition completeness → USDA order.
+raw/fresh/plain are neutral (never a qualifier); the owner's other qualifiers are folded into families so "steamed rice"
+meets USDA's "cooked" and "banana powder" meets "dehydrated" (`powder` is a recorded alias of `powdered`). USDA writes the
+food FIRST, so a candidate whose PRIMARY name carries extra food words ("Banana chips", "Cuban sandwich", "Crackers,
+sandwich") is a different food, never a common-name match. "cooked" beside a named method ("Egg, whole, cooked, fried") is
+implied, not a second preparation.
+
+**Confidence gate.** CONFIDENT (ranks 1–3) → published clean · LIKELY (rank 4 with a SAFE preparation difference) → published
+with "based on <short>" · UNCERTAIN → NO number at all (`{facts: null, uncertain: true}`; the card says "No reliable nutrition
+match yet"; the AI's own "Estimated ~…" line stays). MATERIAL preparations (never published as the queried food):
+dried, concentrate, juice, creamed, fried, sweetened, canned, strained. Three conservative gates were ADDED beyond the
+brief after a live 56-food basket showed the specified rules still leaked wrong numbers — each can only WITHHOLD:
+**H1** same-rank candidates whose calories disagree by more than 25% AND 25 kcal (`AGREEMENT_RATIO` 1.25,
+`AGREEMENT_FLOOR_KCAL` 25) → uncertain ("egg" over white 55 / whole 148 / yolk 334 / Benedict 288 kcal; "bread" over
+fruit/naan/zucchini/puri/pumpkin); **H2** identity-negating descriptors the query did not ask for (meatless, imitation,
+substitute, vegetarian, vegan, analog) disqualify a candidate ("Bacon, meatless", "Chicken, meatless, breaded, fried");
+**H3** a LIKELY winner must be the queried food prepared differently and nothing more ("Rice, white, cooked, glutinous",
+"Chicken, fried, with potatoes, vegetable, frozen meal" are withheld).
+
+| Date | Phase | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|---|
+| 2026-10-02 | B-correction A+D | `api/food-facts/route.ts` | Completeness-first selection published the wrong USDA variant as fact | `rankCandidates` / `judge` / `selectionBody` as above, one path for the real call AND every fixture; `FoodFactsBase` (entry before the verdict); `fold()` makes singular/plural meet at one stem (peach/peaches, radish/radishes, cookie/cookies); diacritics folded (jalapeño); qualifier + family tables are `Map`s (a food word "constructor" can never read an inherited member) | `meal-intelligence.js` T1–T8, G1–G6, Q1–Q4 |
+| 2026-10-02 | B-correction (test seam) | `api/food-facts/route.ts` | Ranking tests must run candidate pages through the REAL selection, not canned answers | `?mock=fixture-<name>` feeds a USDA-shaped candidate page through `selectionBody` for the body's query (own-property fixture lookup); real FDC ids/values where observed live, synthetic ids 9,000,000+ otherwise; `?mock=<scenario>:<delayMs>` (capped at 10 s — the seam is reachable without auth, so it must not be a hold-open primitive) | T/G/Q/R blocks |
+| 2026-10-02 | B-correction | `social/data.ts` | The gate's verdict must travel with the facts | `FoodFacts.match: "confident" \| "likely"` and `basedOn?` (a short human phrase, never the full USDA description). No "uncertain" value: an uncertain verdict publishes no facts at all | B8, T7, T8 |
+| 2026-10-02 | B-correction B | `composer/domains.tsx` | Conditional transparency, never a score | CONFIDENT: `Dal bhat: 354 kcal · 20 g protein · 35 g carbs · 14 g fat · per 100 g`; LIKELY: the same + ` · based on baked banana`; UNCERTAIN: `Dal bhat: No reliable nutrition match yet` (muted, `data-sb-food-fact-uncertain`); the estimate line keeps its own visibly-approximate form. Keys are unique per line (index + lookup name) — two foods both named "Curry" no longer collide | T6–T8, G7 |
+| 2026-10-02 | B-correction | `composer/UniversalComposer.tsx` | An uncertain verdict must reach the card | The lookup response `{facts, uncertain}` → state `FoodFacts \| "uncertain"`; facts-log statuses `start → found \| uncertain \| miss \| failed`; every earlier generation/AI-off/media-gone guard unchanged | T6, R1–R6 |
+| 2026-10-02 | B-correction (adversarial review) | route, domains, `meal-intelligence.js` | A 21-agent, four-lens, skeptic-verified review confirmed 8 findings | FIXED: singular/plural fold mismatch (it even let "Peach, frozen" beat "Peaches, yellow, raw" as likely), "cooked" beside a method ("fried chicken" was mislabelled "based on cooked chicken"), duplicate React keys, uncapped mock delay; strengthened T6's vacuous no-usda clause; added tests for the surviving-mutant gaps (G4–G7, Q1–Q4). **Finding #1 (group-first names such as "Fish, salmon, …" are withheld) is an ACCEPTED recall limitation, not fixed**: the fix I tried (treating Fish/Nuts/Seeds/Beverages/… as a label) made `tofu` match the dish "Fish, tofu, and vegetables, tempura" as CONFIDENT — a wrong number worse than the withheld ones — and recovered almost nothing on live data, so it was REVERTED and G4 now pins the safe behaviour | before/after harness; G4; live basket |
+
+**Tests.** `meal-intelligence.js` 47 → **72**. T1–T8 (the owner's capability tests) were written first and run against the
+OLD selection behind the same seam — all eight failed for the right reasons (it picked the 346 kcal powder, the creamed
+spinach, and the raw variants for "banana powder" / "creamed spinach"); R1–R6 (the owner's regression guards for the six
+earlier implementation fixes) passed immediately by design — and were then MUTATION-PROVEN: each of R1–R6 FAILS when the
+code it guards is broken (R1 needs both of its two independent defences removed), with every mutated file restored
+byte-identical. G1–G3 pin the three added gates (each with a positive control), G4 pins the tofu safety property, G5 the
+fold, G6 the cooked-beside-method rule, G7 the unique keys, Q1–Q4 the missing-preparation gate, stop/neutral query words, the
+tie-break order and the agreement boundaries. B1 and B8 were strengthened in place (selected fdcId + description over five
+real competing candidates; the rendered line's match identity); T6's no-usda clause no longer passes when no record posts.
+
+**Owner-superseded assertions: none.** `ui-likely` uses a "frozen" candidate (a ", baked" candidate for the query "steamed rice"
+is — correctly — a different preparation, not a minor one).
+
+**Documented residual risks (NOT changed — owner decisions):**
+- **Variety-specific entries are published as CONFIDENT** (the owner's rule 2: common name, no preparation) when the plain food
+  is not among USDA's five candidates: in the final 62-food live basket 9 of the 32 published numbers are of this kind —
+  noodles→"Noodles, chow mein" 521 kcal, cereal→"Cereal, crunch" 398, almonds→"Almonds, flavored" 599, pasta→"Pasta, gluten
+  free" 179, yogurt→"Yogurt, liquid" 74, oatmeal→"Oatmeal, multigrain" 56, ice cream→"…chocolate", chocolate cake→"…flourless",
+  chicken breast→"…rotisserie, skin eaten". Option: classify a rank-2 winner that carries its OWN descriptors as LIKELY
+  ("based on chow mein noodles"); it would also relabel the sloppy-joe-style cases, so it is left to the owner.
+- Group-first names ("Fish, salmon, …", "Nuts, almonds", "Beverages, coffee") are withheld — no wrong number, lost recall.
+- pageSize stays 5 (the outgoing USDA request is byte-identical to HEAD). A scratch experiment over 25 candidates did NOT
+  help: it surfaced more variety entries ("Pizza, no cheese", "Spaghetti, spinach, dry", "Cookies, fortune") and new
+  confident-but-wrong results, so a larger page is not recommended without the variety rule above.
+- USDA's current "Banana, raw" Survey entry is 97 kcal (SR Legacy's "Bananas, raw", 89, is not in the top five).
+- `/api/analyze-meal`'s `?mock=<scenario>:<delayMs>` is still uncapped (pre-existing; the DeepSeek route is out of scope here).
+- A silent query that is really a COOKED grain/pasta could in principle meet a raw entry (raw is the neutral state, per the
+  owner's rule); not observed in the 62-food basket ("rice", "brown rice", "spaghetti" were withheld, "cooked/steamed rice"
+  correct) — the durable fix is the AI contract (canonicalName states cooked/raw when visible), which is the DeepSeek route.
+- Phase B correction owner BROWSER tests B1–B4 remain PENDING OWNER.
+
+**Verified green on final source (2026-10-02):** meal-intelligence **72/72** (the as-specified implementation was 61/61 first;
+the review-driven additions took it to 72; raw logs `/tmp/phaseBfix-*`) · social-composer **140/140** (byte-identical to the
+pre-change baseline) · social-4-4a-truth **125/125** · social-composer-canonical **62/62** · social-final **194/194** (its
+first run died on a 30 s navigation timeout with zero checks run, under a machine load average of ~31; the clean re-run passed)
+· media-intelligence **14/14** · tsc 0 · eslint 0 (4 changed product files) · `next build` exit 0 · dual controlled-marker leak
+test (`DEEPSEEK_API_KEY=TEST_LEAK_MARKER_xyz123 USDA_FDC_API_KEY=TEST_LEAK_MARKER_usda789 npx next build`, cold): build exit 0,
+**both markers NOT FOUND in `.next/static` (grep exit 1 each)** with a positive control proving the grep method · the outgoing
+USDA request (`buildSearchRequest`) is byte-for-byte unchanged vs HEAD · `analyze-meal`, the metadata/place code, Circle and
+Celestial are untouched · the five owner live queries and a 62-food basket were run against real USDA. Not committed, not pushed.
+
+## UC-MEAL-AI Phase B — accepted position (owner decisions · 2026-10-02)
+
+1. The extra safety gates H1 (same-rank calorie disagreement), H2 (identity-negating descriptors) and H3 (LIKELY winner must be the queried food prepared differently only) are KEPT: withholding a number beats publishing a wrong one; the recall loss is accepted.
+2. The variety-specific labeling issue (a variety entry such as "Noodles, chow mein" published as CONFIDENT for "noodles") is LEFT as-is; scope is not expanded. A later phase may address it (candidate: show a rank-2 winner that carries its own descriptors as LIKELY, "based on …").
+3. The full fact line `354 kcal · 20 g protein · 35 g carbs · 14 g fat · per 100 g` is KEPT unshortened.
+
+Accepted limitations: tofu withheld; group-first USDA names withheld; `pageSize` 5; `/api/analyze-meal` uncapped mock delay out of scope. Evidence: `docs/handover/uc-meal-ai-phase-b-evidence-addendum.md`. Phase B closes after owner + ChatGPT re-review; B2 (Open Food Facts) and D (cache) not started.
+
+# Phase UC-MEAL-AI B2 — Open Food Facts, packaged/branded food (owner-directed · 2026-10-02)
+
+"AI recognizes. USDA supplies generic facts. Open Food Facts supplies PACKAGED facts. AI estimates only as the final fallback." Phase C (auto-category), A (closure), B (USDA) and the Phase D cache are untouched; no cache, no new dependency, no secret (OFF's public search needs no key).
+
+Chain, decided per food and never fanned out: a food the model READ a brand on (`ObservedFood.brand`) at HIGH confidence asks `/api/food-facts-packaged` first; an OFF miss/failure continues to `/api/food-facts` (USDA); every other food goes to USDA only (OFF is never queried for generic food); both miss → no fact, the AI estimate stays. `FoodFacts` is now `source: "usda" | "openfoodfacts"` with `fdcId?` / `productId?` (the OFF product code) — one normalized shape, one rendering; `NutritionSource` gained no value (`openfoodfacts` was already reserved). Provenance is stamped by code from the responding route; the provider is never read for it (`fabricate-off` mock proves the claim is stripped).
+
+| Date | File | Reason | Behavioural effect | Test |
+|---|---|---|---|---|
+| 2026-10-02 | `api/food-facts-packaged/route.ts` (new) | Packaged-food facts boundary | POST `{canonicalName, brand?}` → `{facts: FoodFacts\|null}`; OFF `cgi/search.pl` over `node:https` family 4, 5 s timeout, static non-personal User-Agent; conservative selection (brand must match; plain product beats a variant; kcal-only energy; calories-agreement gate; no-brand ⇒ plain name only; brand-only product name ⇒ LIKELY "based on …"); every failure ⇒ null + server log only; `?mock=found\|miss\|fail\|echo\|fixture-*` | `meal-intelligence.js` B2-1…B2-13 |
+| 2026-10-02 | `UniversalComposer.tsx` | Fallback chain | per-food chain above; facts-log entries gain `via` (e.g. `["openfoodfacts:miss","usda:found"]`) only for packaged foods; `?mockpackaged=` seam | B2-4…B2-7, B2-10 |
+| 2026-10-02 | `domains.tsx` | Source display | fact line keyed by `fdcId ?? productId`, `data-sb-fact-source`; text format unchanged (no source name shown) | B2-2, B2-3, B2-8 |
+| 2026-10-02 | `data.ts` | Types | `ObservedFood.brand?`; `FoodFacts` source union + `productId?` | tsc |
+| 2026-10-02 | `api/analyze-meal/route.ts` (minimal; owner-allowed) | Packaged recognition signal | prompt asks for a legible printed `brand` (never a guess, never a nutrition source); normalization keeps it; mocks `packaged`, `packaged-medium`, `fabricate-off` | B2-6, B2-9 |
+
+Documented limits (not changed): OFF throttles anonymous traffic — live lookups intermittently return HTTP 503 / time out and degrade silently to USDA → estimate; facts stay in Composer suggestion state (not persisted onto the posted Moment, as in Phase B); locale/country handling is NOT APPLICABLE (single global database, no locale parameter); variety labelling for USDA remains deferred as recorded under Phase B. Owner browser tests B2-1…B2-4 are PENDING OWNER.
+
+# Meal Capture UX — specific Meal identity + actionable suggestion (owner-directed · 2026-10-03)
+
+Fixes the suggestion surface so recognition produces a useful Meal record, not an AI-looking card. Phase D (cache), Phase B/B2/C/A behaviour, USDA/OFF routes and matching, the DeepSeek provider/model/`max_tokens`, privacy, `sourceMetadata` and every other record world are untouched. No second AI call anywhere.
+
+- **Recognition contract** (`api/analyze-meal/route.ts`): the ONE existing call now asks for the meal as a person names it — `meal: {name|null, canonicalName|null, brand?, confidence}` — never an ingredient list; an unidentifiable dish is `name: null`, confidence `low` (never invented). Normalized into `MealAIObservation.meal` (new `MealIdentity` type in `data.ts`; name/canonicalName/brand/confidence only — a provider "source" is never read; a missing name forces LOW). `foods` is no longer requested (kept only if a provider sends it).
+- **Card** (`domains.tsx` `MealIdentityCard`, used when `obs.meal` exists; observations without `meal` keep the legacy component card, so every accepted B/B2/C assertion is unchanged): HIGH → `Burger`; MEDIUM → `Looks like: Dal bhat`; low/unnamed → `Looks like a meal — can you name it?` (no actions, nothing invented); then the structured fact line (USDA/OFF, unchanged format) or `No reliable nutrition match yet`, then the AI estimate as `Estimated ~…`; `Looks right` / `Adjust` only while the Meal field is empty. No badge/sparkle/model name/score.
+- **The Meal name field is the existing "What did you have?" input (`items`); the structured lifecycle lives in `foodItems`.** Looks right → `items` = the name + identity item `confirmed`. Adjust → focuses the same field pre-filled (item still `suggested`; no modal, no second editor; nutrition and portion have no editors in the current Meal surface, so none is invented). A changed name at POST → identity item `{source:"user", state:"corrected"}`. The observation is never mutated.
+- **Zero-effort save** (`finalizeMealIdentity`, applied in the Composer's submit): a HIGH identity with nothing typed and no items becomes the Meal value as a `suggested` item — never `confirmed`. MEDIUM is never defaulted. A name the person typed first always wins (late AI never writes the field).
+- **Lookups**: with an identity, ONE lookup for that meal (canonicalName + any printed brand → Phase B2 chain unchanged); a settled miss/failure is now remembered as a quiet verdict (`null`) so the card can say "No reliable nutrition match yet".
+- Files (owner list): `api/analyze-meal/route.ts`, `data.ts`, `UniversalComposer.tsx`, `domains.tsx`, `meal-intelligence.js`, `_verify-deepseek-live.js` (mirrors the contract), `AGENTS.md`. `types.ts`/`submit.ts` were NOT needed.
+- Tests: `meal-intelligence.js` 86 → 108 (M1–M21 + an M19b sub-check: a medium identity is not defaulted). 16 failed first, 5 were pre-existing capabilities (M8 one-call, M16 non-food, M17 AI fail, M18 AI off, M20 typed-name-first). Six mutations (zero-effort removed / correction dropped / confirmed→suggested / typed name overwritten / medium defaulted / Adjust not pre-filled) are each caught.
+- Documented: real DeepSeek returned MEDIUM identities for the two food fixtures ("Rice with green vegetable curry", "Sloppy joe"), so under the accepted Phase C rule Meal is offered, not auto-selected, for those; the owner browser tests with clear burger/pizza/dal-bhat photos remain PENDING OWNER.
+
+# Meal Capture UX Extension — detail layer + per-asset details + four fields (owner-directed · 2026-10-04)
+
+Extends the accepted Meal Capture UX (specific Meal identity, Looks right, Adjust, zero-effort save) without rewriting it. Phase D (cache), USDA/OFF routes and matching, Phase C category rules, the DeepSeek provider/model/`max_tokens`, privacy, `sourceMetadata`, `recordPlace` and every other record world are untouched.
+
+- **Hierarchy:** PRIMARY = the Meal identity; SECONDARY = visible components + a compact `Grilled · 1 bowl · Lunch` line; FACT LAYER = USDA/OFF/estimate; USER always wins.
+- **Contract** (`api/analyze-meal/route.ts`, same single call): optional `visibleComponents [{name,confidence}]`, `preparation {value,confidence}`, `portion {value,confidence}` (plus the existing `possibleMealType`). Normalization keeps ONLY the defensible: components non-low, deduped, ≤12; preparation high-confidence AND in a fixed vocabulary (raw/grilled/fried/baked/boiled/roasted/steamed/cooked), never derived from the meal name; portion high-confidence AND human-scale — any measured amount (g/kg/ml/l/oz/lb…) is rejected. `data.ts`: `MealAIObservation.visibleComponents / preparation / portion`. The legacy `foods` list is separate and untouched; visible components are NOT recipe ingredients (`ingredients` stays a user-only record field).
+- **Card** (`domains.tsx`): `Made of: rice · lentils · vegetables · pickle` (first four, then `· +N more` expanding inline, one-way; no modal, no request), then the compact attribute line. Observation-only: no editing control exists for components and none was invented.
+- **Looks right** additionally fills ONLY fields the person has not set (occasion chip, preparation, the identity item's portion); zero-effort save leaves all of them as suggestions inside the observation; occasion is never auto-confirmed and never inferred from the clock. The AI observation is never mutated.
+- **PER-ASSET ANALYSIS (owner-approved):** each attached asset is analyzed once, on its own, and keeps its own observation (`assetObs`, keyed by asset id); adding a photo no longer cancels/re-analyzes the others; removing one retires only its own run (a late answer for a removed asset never applies); selecting a photo owns the panel (`Photo X of Y` / `This photo`), arrival order never does. The Meal stays ONE record; the record carries the PRIMARY (first food) asset's observation as `mealAIObservation` — persisting every asset's observation on the record is a documented seam (it needs `types.ts`/`submit.ts`, outside this phase's file list).
+- **Owner-superseded assertions (recorded, invariants restated):** `meal-intelligence.js` **R4** ("a second photo supersedes the analysis; the facts log resets to 8") → one log per composition, one analysis per photo (8 entries, then 16 = 8 + the second photo's own 8; exactly 2 analysis starts for 2 assets). **R6** ("a superseded generation's late lookups never write") → the retirement trigger is now REMOVAL of the photo (12 entries: 4 starts for each photo, only the remaining photo's 4 found, no strays). No other accepted check changed.
+- **Mock seams:** scenarios `details`, `components7`, `raw-details|low|grams|none`, and `perasset[:slowa|slowb|slowc]` (each image answers by its own bytes: A thali "Dal bhat", B Nyatapola "Mango lassi", C Phewa "Gulab jamun"); test hook `window.__SB_MEAL_ASSET_OBS`.
+- **Tests:** `meal-intelligence.js` 108 → 155 (E1–E43 + E44a/E44b call accounting, E45 sourceMetadata immutability, E46 AI OFF with several photos). Failing-first: 118 passed / 33 failed before implementation (10 extension checks already held or were vacuously true: E16, E17, E24, E26, E30, E31, E36, E40, E41, E42).
+- **Not changed / documented:** `_verify-deepseek-live.js` (the live verifier still mirrors the core contract only); no gallery redesign — the existing collage thumbnails became selectable only while Meal is selected with more than one photo; expansion has no re-collapse (spec-allowed); real DeepSeek behaviour for the new optional fields is unmeasured (owner browser tests EXT-1…EXT-12 are PENDING OWNER).
+
+# Meal Autofill + demo-readiness (owner-directed · 2026-10-05)
+
+Owner directive: the Meal record fills itself from what the AI detects and from the photo's metadata, so the person records less; their own input always wins. **This supersedes two earlier cautious rules (recorded, not silent):** detected components are now allowed to fill the user-facing Ingredients field, and the occasion is now filled automatically (it used to wait for Looks right). Every other safeguard stands: only EMPTY fields are filled; a field is filled ONCE (a field the person clears is never refilled by a later analysis); everything filled is visible (card + field) and undoable (edit or clear); the AI observation is never written to; AI OFF / AI FAIL / low confidence fill nothing.
+
+- **What fills, on arrival of the primary photo's recognition** (`domains.tsx` `applyMealPrefill`, wired in `UniversalComposer.tsx`): Meal name (+ a SUGGESTED identity item carrying the portion; HIGH and MEDIUM identities), Ingredients ← visible components, Preparation, Occasion ← the model's hint, else the time the PHOTO was taken (file metadata only; never the posting clock), Setting ← the model's `setting` or "packaged" when a brand is printed. Place/time from EXIF were already autofilled (UC-C4).
+- **Nutrition is now recorded** (`KindFields.mealNutrition`, `MealDomain.nutrition`; `submit.ts` carries it): the structured fact (USDA / Open Food Facts, per 100 g) when found, else the labelled AI estimate, each value with its own source + confidence.
+- **Looks right** = confirms the filled identity (suggested → confirmed); **Adjust** = cursor into the filled name field; clearing the name records the AI's item as `rejected` (a decision, never silently undone); a changed name is `corrected`. When the primary photo is removed, only what it filled and the person did not touch is taken back and refilled from the next photo.
+- **Contract additions** (`api/analyze-meal/route.ts`, same single call): `setting` (fixed vocabulary, high confidence only); prompt clarifies top-level `confidence` = "is this food" vs `meal.confidence` = "how sure of the dish name"; ≤6 visible components; always include the whole-meal estimate (calories/protein/carbs/fat) for food.
+- **Demo fixes found with the owner's real breakfast photo:** the server provider timeout was 10 s and a busy plate takes 10–18 s, so it silently returned "nothing detected" — raised to 30 s (40 s multi), client ceilings above (33 s / 43 s). A quiet "Looking at your photo…" line shows while a photo is being read; the estimate line shows all four nutrients; server logs provider latency/usage.
+- **Owner-superseded assertions in `meal-intelligence.js`** (invariants restated in the rewritten checks): M6, M10, M19b, E10, E24, E35, E43 (they encoded "nothing fills without a tap"). New: A1–A12.
+- **Tests:** `meal-intelligence.js` 155 → **167** (+A1–A12); social-composer 140, truth 125, canonical 62, social-final 194, media-intelligence 14 — all green; `tsc` and ESLint clean on every changed product file (the test file keeps only the 3 pre-existing `require()` errors); `next build` clean; DeepSeek/USDA/OFF markers NOT FOUND in `.next/static`.
+- **Documented limits:** real DeepSeek returns component names that can be wrong (e.g. "papaya" on a watermelon/dragon-fruit plate) — Adjust/field edit corrects them; mixed plates get the labelled estimate only (USDA has no single trustworthy entry); provider latency varies 3–18 s; OFF throttles anonymous traffic.
+
+# Universal Composer Intelligence — Phase V1: Meal field editability + aggressive defaults + per-photo form (owner-directed · 2026-10-06)
+
+Meal only. No V2 shared field contract, no cache, no other category. Provider/model/base URL/privacy, USDA/OFF routes and matching, `sourceMetadata`, `recordPlace` and Phase C are untouched.
+
+- **The Meal form belongs to the SELECTED photo.** Every attached photo owns a complete effective form (`MealAssetState`, keyed by its stable asset id — never by array position): name, made of, preparation, portion, occasion, setting, calories, protein, carbs, fat. The editors read/write the selected photo through an overlay of the draft (`overlayMealDraft` + a diffing `viewSet` in `UniversalComposer.tsx`), so selecting a photo swaps the ENTIRE form in one render. Root cause of the earlier bug: only the card read the selected photo's observation; every input below it read the single Meal-level fields, filled from the primary photo only.
+- **One Meal record, many observations.** At POST the primary photo's effective values become the record's own Meal fields, and `KindFields.mealAssets` (data.ts, additive) carries every photo's complete state with its own original AI observation. Composer-only persistence (owner-approved): `types.ts`/`submit.ts` were NOT touched; `mealAssets` is attached to the built action inside the composer.
+- **Aggressive fill, per photo:** HIGH and MEDIUM confidence fill automatically; LOW or unknown stays blank (the recognition route now keeps MEDIUM preparation/portion/setting, with each field's confidence stored; low is still dropped). Nutrients fill from the structured fact (USDA/OFF) when it arrives, else the labelled AI estimate (low estimates stay blank).
+- **Cell states** (reusing the existing vocabulary): `default` (suggested default) · `confirmed` · `corrected` · `cleared`; each cell keeps its original reading, confidence, source and reference (USDA fdcId / Open Food Facts product code / basis) and a timestamp. A correction, a clear or a confirmation never changes the original, the source or the observation; a cleared field is never restored by a late analysis, a re-render or switching photos.
+- **Looks right** confirms everything shown and populated on the SELECTED photo only (default → confirmed; blank fields are not confirmed; provenance preserved — an accepted AI estimate stays `ai_estimate`, an accepted USDA value stays `usda` with its fdcId). **Adjust** opens every editor (More details) holding the selected photo's values. Save without either keeps defaults as suggested defaults — never falsely confirmed.
+- **New editors** (`MealField` in domains.tsx): Made of, Portion, Calories/Protein/Carbs/Fat — each with an explicit × clear; nutrients are independent (no recalculation; a range like "650–1050" or a single value). Preparation is now always a visible editor while a Meal has photos.
+- **Cost / Notes cleanup:** the Meal's "Cost" now reads **"What did this meal cost?"** (`ucomposer.cost`, Meal-only) and the Meal's notes **"Anything to remember?"** via a new Meal-specific key `ucomposer.mealNotes` (the shared `ucomposer.notes` of other categories is untouched). **Unexpected files (recorded, required by this cleanup):** the 8 locale catalogs; non-English values are drafts pending native review. Both fields stay optional, human-authored, and are never AI-filled.
+- **Owner-superseded assertions (invariants restated):** `meal-intelligence.js` **E32** (the portion override is now made in the per-photo Portion editor, not in the Foods & drinks list — the identity item is built at save), **A11** (a blank Preparation is now a visible empty editor rather than an absent field), **E46** (a Meal name typed with several photos belongs to the SELECTED photo; the record's name is the primary photo's — the test now selects photo 1 first).
+- **Tests:** `meal-intelligence.js` 167 → **301** (V1-1…V1-118 derived from the owner's requirement summary, V1-119…V1-128 exactly as specified, plus V1-X1…X6: Looks right on one photo only, per-photo clearing, a photo with no reading stays editable, sourceMetadata immutability across the whole flow, USDA and Open Food Facts override proofs). Failing-first against the exact pre-V1 UI + the three-photo fixtures: 189 passed / 106 failed, with the bug reproduced (V1-119: card says "Mango lassi" while the form still shows photo 1's name, preparation "grilled", occasion "Lunch", setting "Restaurant · Café" and has no components/portion/nutrition editors). Composer 140, truth 125, canonical 62, social-final 194, media-intelligence 14, i18n 45 all green; `tsc` clean; ESLint clean on every changed product file (the test file keeps only its 3 pre-existing `require()` errors); `next build` clean; DeepSeek/USDA/OFF markers NOT FOUND in `.next/static`; provider payload keys unchanged and free of identity/filename/GPS/caption/sourceMetadata/mealAssets.
+- **Documented limits:** a kept draft remembers only the draft, not per-photo edits (observations were never kept either); the Ingredients field stays Meal-level (filled once from the first photo's components) while "Made of" is per photo; the provider returns no alternative candidates, so none are stored (nothing fabricated); a Smart Assist text suggestion for occasion is not routed to the selected photo when photos are attached; owner browser tests V1-1…V1-15 are PENDING OWNER.
+
+**Phase V1 — owner decisions (2026-10-06):** (1) The 8 locale catalog files stay. The new/changed Meal labels in the 7 non-English catalogs (`ucomposer.cost` → "What did this meal cost?" and the new `ucomposer.mealNotes` → "Anything to remember?") are **DRAFT TRANSLATIONS PENDING NATIVE REVIEW**; English is the reviewed source. (2) The record's headline Meal name stays the **first photo's** name; a person who wants a different primary edits the headline directly. Implementation unchanged.
+
+**Phase V1 — Ingredients semantics correction (owner-directed small fix · 2026-10-06).** Audit: the Meal "Ingredients" field (`MealDomain.ingredients`, `KindFields.ingredients`, `ucomposer.ingredients`, Meal-level, record-depth) is a genuine RECIPE-ingredients field, not a legacy label for visible components. The Meal Autofill rule (2026-10-05) that filled it from the photo's visible components conflated "what a photo shows" with "what the dish is made of" — **superseded**. Visible components live only in the per-photo "Made of" (`MealAIObservation.visibleComponents` / the per-photo cell), unchanged. Ingredients now stays empty unless the person (or a trusted label/recipe source) supplies it. Files: `UniversalComposer.tsx` (the primary-photo effect now only selects the record's `aiObservation`; the prefill/revert wiring and its imports removed), `domains.tsx` (the dead `applyMealPrefill`/`revertMealPrefill`/`PrefillRecord`/`EMPTY_PREFILL` removed), `meal-intelligence.js`. No catalog, `types.ts`, `submit.ts` or `data.ts` change; nothing else in V1 changed.
+- **Owner-superseded assertions in `meal-intelligence.js`** (invariants restated; each now asserts Ingredients stays empty/typed-only while "Made of" is unchanged): A1, A7 (the clear is now made after typing a value), A9, E10, E24 (the Ingredients editor is revealed via its add-field chip before typing), E43. New: **V1-129 "VISIBLE COMPONENTS DO NOT POPULATE RECIPE INGREDIENTS"**.
+- **Verified:** meal-intelligence **302/302** · social-composer 140 · social-4-4a-truth 125 · social-composer-canonical 62 · social-final 194 · media-intelligence 14 · `tsc` 0 · ESLint 0 on changed files · `next build` 0 · DeepSeek/USDA markers NOT FOUND in `.next/static` (positive control present). Provider payload and `sourceMetadata` code untouched. Owner browser tests remain PENDING OWNER. Not committed, not pushed.
+
+# Universal Composer Intelligence — Phase V1.1: Intelligence Waiting Experience (owner-directed · 2026-10-06)
+
+Meal only, UX only. Recognition architecture, DeepSeek provider/model/base URL, USDA/OFF routes and matching, cache, provenance, `sourceMetadata`, privacy boundary, per-photo state architecture, V1 editability, Looks right / Adjust / zero-effort Save, Ingredients semantics and every other category are untouched. No route changed; no new network call, dependency, canvas or JS animation loop.
+
+- **Derived, not stored.** Each photo's waiting phase is computed from the request state the Composer already holds: analysis in flight (`assetObs` unset / pending) → nutrition lookups in flight (`mealLookupKeys(obs)` not yet in `mealFacts`) → ready; failed / AI OFF / ineligible = manual. The only added state is `assetSince` (when each photo's analysis started — display only, for the longer-wait copy).
+- **UI** (`domains.tsx`, `UniversalComposer.tsx`, `globals.css`): `IntelWaiting` card with the exact copy "Understanding this meal…" / "Reading the photo and preparing the details." and skeletons matching the resolved card; recognition resolves as one group, then "Checking nutrition…" only where the structured fact is pending (the already-rendered card is the same node); after a longer-than-usual wait (12 s, display timeout only — no retry, no request) "Still working on the details…" / "You can keep editing or save without waiting."; failure/AI OFF are quiet (no technical text, no false activity). Per-photo thumbnails carry `data-sb-asset-state` and a quiet CSS orbit (thin ring, three slow points, breathing halo) while analyzing or resolving; reduced motion = static halo + no skeleton breathing, text unchanged; dark and light have their own treatment. A non-Meal category chosen by the person keeps the old plain "Looking at your photo…" line. Tokens/keyframes `sb-skel`, `sb-intel-*` live beside `sb-reveal` in `globals.css`.
+- **Test seams:** `?mockwait=<ms>` overrides the longer-wait threshold; the suite holds the real `/api/analyze-meal` and `/api/food-facts` requests with Puppeteer interception (mapping each held request to its photo by image size) — no route change, no fake timing.
+- **Tests:** `meal-intelligence.js` 302 → **347** (W1–W40, W6b, WM360/375/390/430). Failing-first: 25 passed (pre-existing capabilities: W5–W8, W10–W14, W16, W17, W19, W24–W26, W28–W30, W34, W36–W40) / 16 failed for the missing waiting UI. The suite's `W_ONLY=1` mode runs just this block.
+- **Verified:** meal 347 · composer 140 · truth 125 · canonical 62 · social-final 194 · media 14 · tsc 0 · ESLint 0 on changed product files (the test file keeps only its 3 pre-existing `require()` errors) · `next build` 0 · DeepSeek/USDA markers NOT FOUND in `.next/static` (positive control present) · analyze body keys still only `images`, facts only `canonicalName`/`brand` · asset snapshot byte-identical across the whole lifecycle. Owner browser tests W1–W16 PENDING OWNER. Not committed, not pushed.
+
+**Phase V1.1 — lint evidence closure (2026-10-07).** `npx eslint prototype-tests/meal-intelligence.js` reports exactly 3 errors, all `@typescript-eslint/no-require-imports` at lines 59:27, 60:12 and 61:14 (the file's top `require()` imports). The pre-V1.1 file was reconstructed by removing only the V1.1 additions (the `runW` function, its call and the `W_ONLY` short-circuit; 3082 → 2726 lines) and linted: the same 3 diagnostics, same rule, same line:column (all above the V1.1 insertion, so no line shift). The diagnostic lists are identical (`diff` empty) — V1.1 introduced ZERO new lint diagnostics (the earlier 3 unused-variable warnings from the new block were removed). The 3 pre-existing errors were not fixed or hidden; no product code or lint config changed; the temporary reconstruction was deleted. Re-verified: meal-intelligence 347/347, social-composer 140/140, `tsc` 0.
+
+# SYSTEMBOOM — UNIVERSAL COMPOSER FIELD CONTRACT (Phase V2 · owner-directed · 2026-10-08)
+
+Architecture/behaviour contract only. NO visible change, no new category intelligence, no cache, no dispatcher. Meal (V1/V1.1) is the reference implementation; its behaviour is unchanged — the proof is the 347 accepted Meal tests plus V2-21…V2-26 (below). The contract is `src/components/style-lab/social/composer/field-contract.ts` (pure TypeScript: no imports, no I/O, no AI, no React) and is tested independently in `prototype-tests/field-contract.js` (plain Node).
+
+**1. PURPOSE.** The contract standardizes how an intelligent Composer field BEHAVES — not what any domain's fields MEAN. The contract gives behaviour; the domain defines meaning.
+
+**2. REQUIRED FIELD SEMANTICS** (one `FieldCell<V, S, R>`): `value` (the effective value shown and saved; blank = `undefined`) · `source` (domain-owned vocabulary `S`) · `confidence` (high/medium/low where it applies) · `state` · user ownership (derived: `state !== "default"`) · `ref` (reference to the immutable evidence, domain-owned `R`) · scope (one field SET per scope — e.g. one per attached photo; the functions act on one set). `original` keeps what the automation first said.
+
+**3. FIELD STATES.** Stored values `"default"` (= **suggested_default**, deliberately not renamed — saved Meal records already persist it) · `"confirmed"` · `"corrected"` · `"cleared"`. UNTOUCHED EMPTY (`default` + no value) is distinct from USER CLEARED (`cleared`).
+
+**4. TRANSITION RULES.** `suggest` (automated fill: only while never filled, never over a user-owned cell, the reading is still remembered as evidence) · `supersede` (a stronger structured source replaces an untouched value, by a caller-supplied priority policy; never a user-owned value) · `edit` (blank → cleared; equal to the original → confirmed; else corrected; evidence never rewritten) · `confirm` / `confirmFields` (only shown, populated, still-suggested fields of ONE set; state changes, source does not) · late result (any automation after a user edit/clear/confirm cannot change the effective value) · save (`toRecord`: an untouched default saves as a suggested default — never confirmed).
+
+**5. CONFIDENCE RULE.** High → fill. Medium → fill. Low → blank (the observation stays evidence elsewhere). Missing/unknown → blank. A domain may be STRICTER only with owner approval.
+
+**6. SOURCE / PROVENANCE RULE.** Acceptance never rewrites source (AI estimate accepted stays AI estimate; USDA stays USDA). A correction makes the effective value the person's while the original value, source, reference and confidence stay. Source priority is a function the DOMAIN supplies (`outranks(incoming, current)`); the contract hard-codes no provider (Meal's own table lives in `domains.tsx`: `MEAL_SOURCE_RANK`).
+
+**7. CLEAR RULE.** A user-cleared field stays blank across late results, stronger sources, re-render and switching scope; only an explicit human action restores it. Evidence stays.
+
+**8. SAVE RULE.** Suggested defaults may save without explicit confirmation and are not recorded as confirmed. No optional intelligent field blocks Save.
+
+**9. SCOPE RULE.** Active-scope actions never mutate a sibling scope (`inScope` returns every other scope as the same object).
+
+**10. ORIGINAL EVIDENCE RULE.** Observations and structured facts stay distinct from the effective record value (`original`, `ref`, the immutable observation).
+
+**11. PRECISION RULE.** Never fabricate precision: a visual portion is not grams, an estimate does not become a fact on confirmation, units/basis stay honest, acceptance never upgrades measurement quality. (Domain-owned.)
+
+**12. UI RULE.** No state/provenance metadata in ordinary user UI (no badges, no source ids).
+
+## How to add a new category (V3–V8 adoption guide — NOT implemented now)
+1. **AUDIT** the category: inventory its real Composer fields; classify auto-fillable · structured-source fact · manual-only · sensitive · confusing · specialist-only.
+2. **DEFINE the domain observation** — only what that category can responsibly observe; never reuse Meal's observation schema.
+3. **MAP observation → effective field** using `suggest` (one `FieldCell` per field, one field set per scope).
+4. **DEFINE source priorities** (if any) as a domain `outranks` function for `supersede`.
+5. **DEFINE confidence rules** — use high/medium fill, low blank unless safety requires something stricter AND the owner approves it.
+6. **DEFINE manual-only fields** (e.g. feelings, diagnosis, commitments): never filled merely because the contract exists.
+7. **ADD failing-first tests** (domain observation → effective field flows; contract invariants).
+8. **IMPLEMENT the category adapter** in its own module; do NOT modify Meal and do NOT add a central `switch(category)` dispatcher or `analyzeMedia({world})` yet (later, owner-approved phases).
+9. **VERIFY the invariants:** user wins · clear persists · provenance preserved · zero-effort Save · no cross-scope bleed.
+10. **RUN the full regressions** (every accepted suite, tsc, ESLint, build, markers).
+Domain-owned (never in the contract): whether a portion is valid, whether a measurement is clinically meaningful, whether a meeting item is a decision, whether progress can be inferred, whether a feeling may ever be AI-generated.
+
+**What changed in V2:** new `composer/field-contract.ts`; `domains.tsx` Meal engine (`fillCell`, `applyAssetFacts`, `editAssetField`, `confirmAssetMeal`, `assetHasUnconfirmed`, `emptyCell`, `isBlankValue`) now delegates its universal transitions to the contract — Meal keeps what is Meal's (observation interpretation, Made of / Ingredients, portion, nutrition source logic and ranking, per-photo composition, UI, waiting UX). `UniversalComposer.tsx`, `data.ts`, `globals.css`, the catalogs, every route and every other category are untouched. New tests: `prototype-tests/field-contract.js` (24 = V2-1…V2-20, V2-27…V2-30, pure Node) and `meal-intelligence.js` V2-21…V2-26 (+24b, 25b) through the real composer. Mutation proof that Meal consumes the contract: with `confirmFields` neutralized, V2-24 fails (restored byte-identical).
+**V2 verified (2026-10-08):** field-contract 24/24 (pure Node) · meal-intelligence 347 → **355** (+V2-21…V2-26, 24b, 25b; failing-first: all pre-existing capability, then proven consumed by mutation) · composer 140 · truth 125 · canonical 62 · social-final 194 · media 14 · i18n 45 · tsc 0 · ESLint 0 on all changed product files; `meal-intelligence.js` keeps only its 3 pre-existing `require()` errors (lines 59–61, unchanged), and the new `field-contract.js` carries a file-level `eslint-disable no-require-imports` (CommonJS script, repo pattern) so it adds zero diagnostics · `next build` 0 · DeepSeek/USDA markers NOT FOUND (positive control present) · no visible change, no route/CSS/catalog/UniversalComposer change in V2. V1 and V1.1 owner browser tests remain PENDING OWNER. Not committed, not pushed.

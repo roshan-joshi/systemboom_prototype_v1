@@ -32,8 +32,8 @@ function mockParam(): string | null {
 // Client-side ceilings, deliberately ABOVE the server's own 10s/20s provider timeout
 // (§SERVER ROUTE) so the server's own timeout fires first and returns its safe `null` rather
 // than the two racing.
-const SINGLE_IMAGE_CLIENT_TIMEOUT_MS = 13_000;
-const MULTI_IMAGE_CLIENT_TIMEOUT_MS = 23_000;
+const SINGLE_IMAGE_CLIENT_TIMEOUT_MS = 33_000;
+const MULTI_IMAGE_CLIENT_TIMEOUT_MS = 43_000;
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -143,11 +143,12 @@ function normalizeConfidences(parsed) {
   // asked to (or trusted to) name a nutrition authority — CODE determines provenance.
   const USER_TEXT =
     "Analyze this meal photo. Respond ONLY with valid JSON: { isFood: boolean (true only if " +
-    "the image meaningfully depicts food, drink, or a meal), foods: [{ name (everyday human " +
-    "name), canonicalName (a normalized lookup-friendly identity, e.g. 'sloppy joe sandwich'), " +
-    "confidence }], nutritionEstimate: { calories, protein, carbs, fat each as { range: " +
-    "{ min, max }, confidence } }, confidence }. Never claim a nutrition data source or " +
-    "database of any kind. No prose. No markdown. No explanation.";
+    "the image meaningfully depicts food, drink, or a meal), meal: { name (the ONE meal as a " +
+    "person would name it, e.g. 'Burger' or 'Dal bhat' — never a list of ingredients; null when " +
+    "it cannot be responsibly identified), canonicalName (a normalized lookup-friendly identity, " +
+    "e.g. 'cheeseburger'; null when name is null), confidence }, nutritionEstimate: { calories, " +
+    "protein, carbs, fat each as { range: { min, max }, confidence } }, confidence }. Never " +
+    "claim a nutrition data source or database of any kind. No prose. No markdown. No explanation.";
   const requestBody = {
     model: "deepseek-flash",
     messages: [
@@ -237,10 +238,13 @@ function normalizeConfidences(parsed) {
     process.exit(1);
   }
 
-  if (!Array.isArray(parsed.foods)) {
-    console.error("\n✗ FAILED — parsed JSON is missing a foods array:", JSON.stringify(parsed));
+  // MEAL CAPTURE UX — the contract is now ONE specific Meal identity ({name, canonicalName,
+  // confidence}); a legacy `foods` array, if the provider sends one anyway, is only informational.
+  if (parsed.isFood === true && (!parsed.meal || typeof parsed.meal !== "object")) {
+    console.error("\n✗ FAILED — parsed JSON is missing the meal identity object:", JSON.stringify(parsed));
     process.exit(1);
   }
+  parsed.foods = Array.isArray(parsed.foods) ? parsed.foods : [];
 
   // PHASE C — isFood must be a REAL JSON boolean (a truthy string like "true" is a validation
   // failure, exactly as route.ts's normalization treats it: never trusted, never coerced true).
@@ -250,9 +254,9 @@ function normalizeConfidences(parsed) {
     process.exit(1);
   }
 
-  console.log("\nfoods (raw, as DeepSeek returned it):", JSON.stringify(parsed.foods, null, 2));
+  console.log("\nmeal identity (raw, as DeepSeek returned it):", JSON.stringify(parsed.meal ?? null, null, 2));
   // PHASE B — two-field identity check: canonicalName should ride beside each everyday name.
-  console.log("canonicalName per food:", JSON.stringify(parsed.foods.map((f) => ({ name: f.name, canonicalName: f.canonicalName ?? "(absent)" }))));
+  console.log("meal name / canonicalName:", JSON.stringify({ name: parsed.meal?.name ?? null, canonicalName: parsed.meal?.canonicalName ?? "(absent)" }));
   // PHASE B — the provider must not claim a nutrition authority even unprompted; say so loudly.
   const fabricated = JSON.stringify(parsed.nutritionEstimate ?? null).includes("USDA");
   console.log("provider claimed a USDA source anyway:", fabricated ? "YES — route.ts normalization would discard it (provenance is code-owned)" : "no");
@@ -263,6 +267,6 @@ function normalizeConfidences(parsed) {
   console.log("nutritionEstimate (normalized):", JSON.stringify(normalized.nutritionEstimate, null, 2));
   console.log("confidence (top-level, normalized):", normalized.confidence);
 
-  console.log(`\n✓ ${parsed.foods.length} food(s) identified (isFood: ${parsed.isFood}) — the real DeepSeek API answered with a well-formed JSON object.`);
+  console.log(`\n✓ meal identity "${parsed.meal?.name ?? "(none — unidentifiable)"}" (isFood: ${parsed.isFood}) — the real DeepSeek API answered with a well-formed JSON object.`);
   process.exit(0);
 })();

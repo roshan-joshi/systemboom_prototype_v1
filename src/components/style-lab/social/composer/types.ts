@@ -8,7 +8,7 @@
  *
  * Nothing here is a Post or a Human Record: until POST everything is draft (§27).
  */
-import type { FoodItemState, FoodSource, MealAIObservation, Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
+import type { FoodItemState, FoodSource, MealAIObservation, MealNutritionRecord, Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
 import { LIBRARY } from "../data";
 
 /** §6 — the eight resolutions of one composition. `social` = no Human Record at all. */
@@ -99,6 +99,9 @@ export interface MealDomain {
    * separately by `aiObservationDismissed` below — dismissal is a UI concern, never data loss.
    */
   aiObservation?: MealAIObservation | null;
+  /** MEAL AUTOFILL — the nutrition this Meal is recorded with (structured fact, else the AI estimate);
+   *  written by the Composer from the card's own sources, carried onto the record as `mealNutrition`. */
+  nutrition?: MealNutritionRecord;
   /** UC-MEAL-AI — the person acted on (accepted/adjusted) the current `aiObservation`, so its
    *  suggestion card stops showing. The observation itself is untouched. */
   aiObservationDismissed?: boolean;
@@ -342,6 +345,7 @@ export function uDraftFromMoment(m: Moment): UDraft {
         // UC-MEAL-AI — the record's own original observation carries over on edit, unchanged;
         // this edit's UI never regenerates or replaces it (immutability, §AI OBSERVATION).
         aiObservation: f.mealAIObservation,
+        nutrition: f.mealNutrition,
       },
       activity: {
         type: f.activityType as ActivityType, distance: f.distance, duration: f.duration, intensity: f.intensity,

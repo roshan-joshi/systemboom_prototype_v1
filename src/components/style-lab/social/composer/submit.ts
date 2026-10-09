@@ -62,6 +62,8 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("notes", m.notes);
       // UC-MEAL-AI — the original AI reading, record-only, immutable once written.
       set("mealAIObservation", m.aiObservation ?? undefined);
+      // MEAL AUTOFILL — the recorded nutrition (a structured fact, else the labelled estimate), with provenance per value.
+      set("mealNutrition", m.nutrition);
       break;
     }
     case "activity": {

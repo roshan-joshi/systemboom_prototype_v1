@@ -30,13 +30,13 @@ import { now } from "@/lib/clock";
 import { easeOut } from "@/lib/motion";
 import { validateBirthDate } from "@/lib/identity/birth";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
-import { matchPeople, PEOPLE, PLACES, type FoodFacts, type MediaAsset, type Privacy } from "../data";
+import { matchPeople, PEOPLE, PLACES, type FoodFacts, type MealAIObservation, type MealAssetState, type MediaAsset, type Privacy } from "../data";
 import { localISO, useSocial } from "../store";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { formatNumberLocale, sbDate } from "@/lib/i18n/format";
 import { allAssets, assetById, MEDIA_LIMIT, registerUploads } from "./media-assets";
 import { ASSIST_CAPABILITIES, extractAssist, setSmartAssist, smartAssistEnabled, type AssistSuggestion } from "./smart-assist";
-import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, ChipSelect, DomainMore, DomainQuick, FIELD, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, MealSuggestion, moreLabelKey, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
+import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, applyAssetFacts, assetEditsFromDraft, ChipSelect, confirmAssetMeal, editAssetField, fillAssetMeal, overlayMealDraft, parseComponents, parseNutrient, seedAssetMeal, synthesizeMeal, type MealAssetField, DomainMore, DomainQuick, FIELD, finalizeMealIdentity, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, mealNutritionOf, MealSuggestion, mealLookupKeys, moreLabelKey, type IntelPhase, IntelWaiting, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
 import { analyzeMealMedia } from "./meal-intelligence/analyzeMealMedia";
 import { commonActivityTypes, recentPeopleIds, recentPlaces } from "./recall";
 import { hasAnyMedia, resolveIntent, type HealthType, type RecordIntent, type UDraft } from "./types";
@@ -93,6 +93,11 @@ const SOCIAL_GLYPH = <Glyph d="M10 3.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM3.
  * feed, is a file the browser cannot decode: it degrades to a labeled placeholder, never a
  * broken-image icon, and never removes the tile from the selection.
  */
+/** a fresh composition starts with an empty facts log (diagnostic seam; module-level so no hook mutates a global) */
+function resetMealFactsLog() {
+  (window as unknown as { __SB_MEAL_FACTS_LOG?: unknown[] }).__SB_MEAL_FACTS_LOG = [];
+}
+
 function Thumb({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -156,10 +161,16 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // changes) never re-fire the same analysis; `mealAnalysisGenRef` lets a superseded (late)
   // response recognize itself and do nothing to the draft (§LATE RESULT PROTECTION) — the
   // observation is still logged either way.
-  const [mealAnalyzing, setMealAnalyzing] = useState(false);
-  const mealAnalysisKeyRef = useRef<string | null>(null);
-  const mealAnalysisGenRef = useRef(0);
-  const mealAnalysisAbortRef = useRef<AbortController | null>(null);
+  // MEAL CAPTURE EXTENSION — per-asset analysis: one run (controller + generation) per attached asset,
+  // each asset's own observation, and the asset whose details the card is showing.
+  const assetRunsRef = useRef<Map<string, { controller: AbortController; gen: number }>>(new Map());
+  const assetGenRef = useRef(0);
+  const [assetObs, setAssetObs] = useState<Record<string, MealAIObservation | null>>({});
+  const [pendingAssets, setPendingAssets] = useState<string[]>([]);
+  // V1.1 — when each photo's analysis started (display only: lets the longer-wait copy count from the photo's own attach)
+  const [assetSince, setAssetSince] = useState<Record<string, number>>({});
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const mealAnalyzing = pendingAssets.length > 0;
   // PHASE C — selection provenance for the ONE-TAP UNDO gesture. Deliberately its own
   // transient, composer-local state and NOT a reading of `intentSource` (owner-directed): the
   // general Smart Assist's accepted text suggestions also set intentSource "ai" and must never
@@ -173,7 +184,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // canonicalName, falling back to the everyday name). SUGGESTION STATE, deliberately kept
   // beside — never inside — the immutable `aiObservation`; cleared when a new media set
   // starts a new analysis. "AI recognizes. USDA supplies facts. AI estimates only as fallback."
-  const [mealFacts, setMealFacts] = useState<Record<string, FoodFacts | null>>({});
+  const [mealFacts, setMealFacts] = useState<Record<string, FoodFacts | "uncertain" | null>>({});
   // §24 — one metadata review per detected asset; edit mode never re-asks (the truth is set).
   const [metaReview, setMetaReview] = useState<{ id: string; resolution: "used" | "ignored" } | null>(null);
   // UC-C4.1 — the EXACT state that existed immediately before a metadata autofill touched
@@ -185,6 +196,22 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
 
   const editing = !!d.editingId;
   const original = editing ? state.moments.find((m) => m.id === d.editingId) : undefined;
+  // MEAL V1 — every attached photo's OWN complete Meal form, keyed by its stable asset id. A Meal being edited that was
+  // saved with per-photo states resumes them (matched by id, or by attach order when the old session's ids are gone).
+  const [assetMeal, setAssetMeal] = useState<Record<string, MealAssetState>>(() => {
+    const stored = original?.fields?.mealAssets;
+    if (!stored?.length) return {};
+    const out: Record<string, MealAssetState> = {};
+    stored.forEach((st, i) => {
+      const id = d.mediaIds.includes(st.assetId) ? st.assetId : d.mediaIds[i];
+      if (id) out[id] = { ...st, assetId: id };
+    });
+    return out;
+  });
+  const assetMealRef = useRef(assetMeal);
+  useEffect(() => {
+    assetMealRef.current = assetMeal;
+  }, [assetMeal]);
   const initialLinkTitle = original?.media?.kind === "link" ? original.media.title : "Boudha morning kora — field recording (12 min)";
   const [linkTitle, setLinkTitle] = useState(initialLinkTitle);
   const [linkState, setLinkState] = useState<"none" | "resolving" | "preview" | "plain">(initial.link ? "preview" : "none");
@@ -428,6 +455,92 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     d.intentSource !== "user" && d.intentSource !== "ai" &&
     mealObs?.isFood === true && mealObs.confidence === "medium";
 
+  /* ---- MEAL CAPTURE EXTENSION — the selected photo owns the detail panel (never arrival order) ---- */
+  const selId = selectedAssetId && draftMedia.some((m) => m.id === selectedAssetId) ? selectedAssetId : (draftMedia[0]?.id ?? null);
+  const selObs = selId ? assetObs[selId] : undefined;
+  const mealView =
+    draftMedia.length > 1 && selId
+      ? { obs: selObs, pending: pendingAssets.includes(selId), index: draftMedia.findIndex((m) => m.id === selId) + 1, total: draftMedia.length, assetId: selId, isPrimary: !!selObs && selObs === d.domains.meal.aiObservation }
+      : undefined;
+  const mealSelectable = resolved === "meal" && draftMedia.length > 1;
+  // V1.1 — each photo's waiting phase, DERIVED from the real request state (never stored): analysis in flight → nutrition lookups in
+  // flight → ready; a failed / switched-off / not-yet-eligible photo is plain manual. No new request, no timer.
+  const photoPhase = (id: string): IntelPhase => {
+    const m = draftMedia.find((x) => x.id === id);
+    if (!m || !assistOn || editing || (m.videoDuration && resolved !== "meal")) return "manual";
+    const o = assetObs[id];
+    if (o === undefined) return "analyzing"; // eligible and no answer yet — in flight (or about to be)
+    if (o === null) return "manual";
+    return mealLookupKeys(o).some((k) => !Object.prototype.hasOwnProperty.call(mealFacts, k)) ? "resolving" : "ready";
+  };
+  const selPhase: IntelPhase = selId ? photoPhase(selId) : "manual";
+  // MEAL V1 — the SELECTED photo's complete form. While a Meal has photos, every Meal editor reads and writes THIS photo's
+  // effective values (through the overlay draft below); a Meal with no photo, or an old one saved without per-photo
+  // states, keeps editing the draft exactly as before.
+  const assetBound = resolved === "meal" && !!selId && (!editing || Object.keys(assetMeal).length > 0);
+  const selCells: MealAssetState | undefined = selId ? (assetMeal[selId] ?? seedAssetMeal(selId, d.domains.meal)) : undefined;
+  const viewDraft: UDraft = assetBound && selCells ? overlayMealDraft({ ...d, intent: resolved }, selCells) : { ...d, intent: resolved };
+  const OVERLAY_KEYS = new Set(["items", "preparation", "occasion", "context"]);
+  const viewSet = (f: (x: UDraft) => UDraft) => {
+    if (!assetBound || !selId || !selCells) {
+      setD(f);
+      return;
+    }
+    const next = f(viewDraft);
+    const edits = assetEditsFromDraft(viewDraft, next);
+    const fields = Object.keys(edits) as MealAssetField[];
+    if (fields.length) {
+      setAssetMeal((prev) => {
+        let st = prev[selId] ?? selCells;
+        for (const field of fields) st = editAssetField(st, field, edits[field] as never);
+        return { ...prev, [selId]: st };
+      });
+    }
+    // everything the photo does not own goes to the real draft (shallow-merged, so nothing concurrent is lost)
+    setD((x) => {
+      let nx = x;
+      for (const k of Object.keys(next) as (keyof UDraft)[]) {
+        if (k === "domains" || k === "intent") continue;
+        if (next[k] !== viewDraft[k]) nx = { ...nx, [k]: next[k] };
+      }
+      const patch: Record<string, unknown> = {};
+      for (const k of Object.keys(next.domains.meal) as (keyof typeof next.domains.meal)[]) {
+        if (!OVERLAY_KEYS.has(k) && next.domains.meal[k] !== viewDraft.domains.meal[k]) patch[k] = next.domains.meal[k];
+      }
+      if (fields.includes("preparation") && !(nx.revealed?.meal ?? []).includes("preparation")) nx = { ...nx, revealed: { ...nx.revealed, meal: [...(nx.revealed?.meal ?? []), "preparation"] } };
+      if (Object.keys(patch).length) nx = { ...nx, domains: { ...nx.domains, meal: { ...nx.domains.meal, ...patch } } };
+      return nx;
+    });
+  };
+  const editAssetText = (field: MealAssetField, text: string) => {
+    if (!selId || !selCells) return;
+    let value: unknown;
+    if (field === "components") value = parseComponents(text);
+    else if (field === "portion") value = text;
+    else {
+      const unit = field === "calories" ? "kcal" : "g";
+      const parsed = parseNutrient(text, unit);
+      if (parsed === null) return; // not a nutrient reading — ignored, never stored
+      value = parsed;
+    }
+    setAssetMeal((prev) => ({ ...prev, [selId]: editAssetField(prev[selId] ?? selCells, field, value as never) }));
+  };
+  const lookRight = () => {
+    if (!selId || !selCells) return;
+    setAssetMeal((prev) => ({ ...prev, [selId]: confirmAssetMeal(prev[selId] ?? selCells) }));
+  };
+  const adjustMeal = () => {
+    setMoreOpen(true);
+    setD((x) => ({ ...x, revealed: { ...x.revealed, meal: [...new Set([...(x.revealed?.meal ?? []), "preparation", "ingredients", "experience", "cost", "foodItems", "notes"])] } }));
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLInputElement>("[data-sb-ufield='items']");
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  };
+
   /* ---- SMART ASSIST (§25–§38): one quiet suggestion, only while enabled ---- */
   useEffect(() => {
     if (!assistOn || editing || suggDismissed.current || d.intentSource === "user" || d.intentSource === "ai" || phase !== "idle") {
@@ -444,145 +557,230 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
    * STATE: "if one exists, reuse it"). `!assistOn` returns before `analyzeMealMedia` is ever
    * referenced, so AI OFF means literally zero calls, zero `/api/analyze-meal` requests, zero
    * DeepSeek calls — a first-class, fully-usable path.
+   *
+   * MEAL CAPTURE EXTENSION — PER-ASSET LIFECYCLE. Every attached asset is analyzed ONCE, on its
+   * own, and keeps its OWN observation (`assetObs`, keyed by the asset's stable id). Adding a photo
+   * never re-analyzes (or aborts) the others; removing one retires only its own run, so a late answer
+   * for a removed asset can never apply. The canonical Meal stays ONE record: its observation
+   * (`domains.meal.aiObservation`, below) is the PRIMARY asset's — the first attached food asset.
    */
   useEffect(() => {
     // PHASE B review fix (adversarial finding #2): turning Smart Assist OFF mid-flight must
-    // honor "AI OFF means literally zero calls" — the in-flight analysis is aborted, its
-    // generation retired (so a late resolution can neither store, auto-select, nor launch
-    // facts lookups), and the key cleared so an explicit re-enable may genuinely re-ask.
-    const retireInFlight = () => {
-      if (!mealAnalysisAbortRef.current) return;
-      mealAnalysisAbortRef.current.abort();
-      mealAnalysisAbortRef.current = null;
-      mealAnalysisGenRef.current++;
-      mealAnalysisKeyRef.current = null;
-      setMealAnalyzing(false);
+    // honor "AI OFF means literally zero calls" — every in-flight analysis is aborted and its run
+    // retired (so a late resolution can neither store, auto-select, nor launch facts lookups), and
+    // the lifecycle cleared so an explicit re-enable may genuinely re-ask.
+    const retireAll = () => {
+      for (const run of assetRunsRef.current.values()) run.controller.abort();
+      assetRunsRef.current.clear();
+      setPendingAssets([]);
     };
     if (editing || !assistOn) {
-      if (!assistOn) retireInFlight();
+      if (!assistOn) retireAll();
       return;
     }
-    const photoAssets = draftMedia.filter((m) => !m.videoDuration);
-    const videoAsset = draftMedia.find((m) => m.videoDuration);
+    const attached = new Set(draftMedia.map((m) => m.id));
+    // PHASE B review fix (adversarial finding #1) + per-asset: a removed asset's run is retired on its
+    // own (its late answer — and any lookups it would launch — can no longer apply). Everything else
+    // is left exactly as it is.
+    for (const [id, run] of assetRunsRef.current) {
+      if (!attached.has(id)) {
+        run.controller.abort();
+        assetRunsRef.current.delete(id);
+      }
+    }
+    const pruneRemoved = () => {
+      setPendingAssets((prev) => (prev.every((id) => attached.has(id)) ? prev : prev.filter((id) => attached.has(id))));
+      setAssetObs((prev) => (Object.keys(prev).every((id) => attached.has(id)) ? prev : Object.fromEntries(Object.entries(prev).filter(([id]) => attached.has(id)))));
+      // MEAL V1 — a removed photo takes ITS form with it; the others keep theirs (keyed by id, so nothing shifts or is reassigned).
+      setAssetMeal((prev) => (Object.keys(prev).every((id) => attached.has(id)) ? prev : Object.fromEntries(Object.entries(prev).filter(([id]) => attached.has(id)))));
+    };
+    pruneRemoved();
+    if (draftMedia.length === 0) return;
     // PHASE C — PHOTOS analyze on attach regardless of the current category (the observation
     // decides what happens next); VIDEO keyframe extraction keeps its original Meal-selected
     // gate (heavier work, and the Phase C brief scopes the broadened trigger to photos).
-    const videoEligible = resolved === "meal" && !!videoAsset;
-    if (photoAssets.length === 0 && !videoEligible) {
-      // PHASE B review fix (adversarial finding #1): if EVERY attached medium is gone, the
-      // analyzed set no longer exists — stop the orphaned analysis instead of letting it
-      // resolve into (and launch lookups for) a draft the person already emptied. A video
-      // that is merely not Meal-selected is NOT "gone", so that case is left untouched.
-      if (draftMedia.length === 0) retireInFlight();
+    const eligible = draftMedia.filter((m) => (m.videoDuration ? resolved === "meal" : true));
+    for (const asset of eligible) {
+      if (assetRunsRef.current.has(asset.id)) continue; // already running/done for this exact asset — one call per unchanged asset
+      if (assetRunsRef.current.size === 0) {
+        // a fresh composition: the facts log starts empty (one composition, one log)
+        resetMealFactsLog();
+      }
+      const controller = new AbortController();
+      const gen = ++assetGenRef.current;
+      assetRunsRef.current.set(asset.id, { controller, gen });
+      const live = () => assetRunsRef.current.get(asset.id)?.gen === gen;
+      setMealCatDismissed(false); // PHASE C — a new asset is a new question
+      setPendingAssets((prev) => (prev.includes(asset.id) ? prev : [...prev, asset.id]));
+      setAssetSince((prev) => ({ ...prev, [asset.id]: Date.now() }));
+      const w = window as unknown as {
+        __SB_MEAL_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }>;
+        __SB_MEAL_FACTS_LOG?: Array<{ canonicalName: string; status: string; facts: unknown; via?: string[] }>;
+      };
+      const log = (entry: { key: string; status: string; observation: unknown }) => {
+        if (!w.__SB_MEAL_ANALYSIS_LOG) w.__SB_MEAL_ANALYSIS_LOG = [];
+        w.__SB_MEAL_ANALYSIS_LOG.push(entry);
+      };
+      // Entries: start → found | miss | uncertain | failed (a late entry from a retired run is dropped).
+      const logFacts = (entry: { canonicalName: string; status: string; facts: unknown; via?: string[] }) => {
+        if (!w.__SB_MEAL_FACTS_LOG) w.__SB_MEAL_FACTS_LOG = [];
+        w.__SB_MEAL_FACTS_LOG.push(entry);
+      };
+      log({ key: asset.id, status: "start", observation: undefined });
+      analyzeMealMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal } : { photoUrls: [asset.src], signal: controller.signal }).then((observation) => {
+        log({ key: asset.id, status: observation !== null ? "done" : "failed", observation });
+        if (!live()) return; // removed, or retired by Smart Assist OFF — a late result never applies
+        setPendingAssets((prev) => prev.filter((id) => id !== asset.id));
+        setAssetObs((prev) => ({ ...prev, [asset.id]: observation }));
+        if (observation === null) return; // safe failure — nothing to show, Save is unaffected
+        // MEAL V1 — this photo's OWN form fills from ITS OWN observation (high + medium; low stays blank), never from
+        // another photo's, and never over anything the person already typed, cleared or confirmed for it.
+        setAssetMeal((prev) => ({ ...prev, [asset.id]: fillAssetMeal(prev[asset.id] ?? seedAssetMeal(asset.id, dRef.current.domains.meal), observation, asset.takenAt) }));
+        // PHASE C §auto-selection — decided at RESPONSE-APPLICATION time, never request time:
+        // the person may have chosen a category while this was in flight, and an explicit choice
+        // ("user", or an accepted suggestion's "ai") is never overridden. The asset must still be
+        // attached (`live()` above). `isFood === true` is already a strictly validated boolean
+        // (route-side); a HIGH non-food or MEDIUM/LOW food never selects here.
+        const cur = dRef.current;
+        const deliberate = cur.intentSource === "user" || cur.intentSource === "ai";
+        const auto = !deliberate && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high";
+        if (auto) {
+          setD((x) => (x.intentSource !== "user" && x.intentSource !== "ai" ? { ...x, intent: "meal" as const, intentSource: "ai" as const } : x)); // re-guarded at application
+          setMealAutoSelected(true);
+        }
+        // PHASE B — after recognition, look up REAL nutrition facts through the one server
+        // boundary (`/api/food-facts`, or the packaged source first for a branded meal). Results
+        // merge into SUGGESTION STATE only — the aiObservation is never touched. A miss or failure
+        // is quiet: the AI estimate remains the visible fallback. `?mockfacts=` / `?mockpackaged=`
+        // forward as `?mock=` (same convention as `mockai`). Launched only while this asset's run
+        // is live and Smart Assist is still on (adversarial findings #1/#2).
+        if (observation.isFood === true && smartAssistEnabled()) {
+          const mockFacts = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mockfacts") : null;
+          const mockPackaged = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mockpackaged") : null;
+          // MEAL CAPTURE UX — with a specific Meal identity the lookup is for THAT meal (one lookup, its
+          // canonical name + any printed brand); an unnamed/low identity looks nothing up. Observations
+          // without `meal` (legacy) keep the per-food lookups.
+          const lookups: { name: string; canonicalName?: string; brand?: string; confidence: "high" | "medium" | "low" }[] = observation.meal
+            ? observation.meal.name && observation.meal.confidence !== "low"
+              ? [{ name: observation.meal.name, canonicalName: observation.meal.canonicalName, brand: observation.meal.brand, confidence: observation.meal.confidence }]
+              : []
+            : observation.foods.filter((f) => f.confidence !== "low").slice(0, 5);
+          const postJson = (url: string, payload: object) =>
+            fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal }).then((r) => {
+              if (!r.ok) throw new Error(`${url} ${r.status}`);
+              return r.json();
+            });
+          for (const food of lookups) {
+            const lookupName = food.canonicalName ?? food.name;
+            // PHASE B2 — the chain, decided per food and never fanned out: a food the model read a
+            // brand on, at HIGH confidence, asks the PACKAGED source (Open Food Facts) first; a miss
+            // or failure there continues to USDA like any other food. Every other food goes to USDA
+            // only. Both miss → no fact, the AI estimate stays.
+            const packaged = food.confidence === "high" && !!food.brand;
+            const via: string[] = [];
+            const chain = packaged ? { via } : {};
+            logFacts({ canonicalName: lookupName, status: "start", facts: undefined, ...chain });
+            const usda = () =>
+              postJson(`/api/food-facts${mockFacts ? `?mock=${encodeURIComponent(mockFacts)}` : ""}`, { canonicalName: lookupName })
+                .then((j: { facts?: FoodFacts | null; uncertain?: boolean }) => {
+                  if (!live()) return; // retired — neither state nor log (finding #6)
+                  const facts = j?.facts ?? null;
+                  const uncertain = !facts && j?.uncertain === true;
+                  const status = facts ? "found" : uncertain ? "uncertain" : "miss";
+                  if (packaged) via.push(`usda:${status}`);
+                  logFacts({ canonicalName: lookupName, status, facts, ...chain });
+                  if (facts) {
+                    setMealFacts((prev) => ({ ...prev, [lookupName]: facts }));
+                    setAssetMeal((prev) => (prev[asset.id] ? { ...prev, [asset.id]: applyAssetFacts(prev[asset.id], facts) } : prev));
+                  } else if (uncertain) setMealFacts((prev) => ({ ...prev, [lookupName]: "uncertain" }));
+                  else setMealFacts((prev) => ({ ...prev, [lookupName]: null })); // a settled miss — the Meal card says so quietly
+                })
+                .catch(() => {
+                  // Quiet by design — a facts failure must never break the Meal (B12).
+                  if (!live()) return;
+                  if (packaged) via.push("usda:failed");
+                  logFacts({ canonicalName: lookupName, status: "failed", facts: null, ...chain });
+                  setMealFacts((prev) => ({ ...prev, [lookupName]: null }));
+                });
+            if (!packaged) {
+              usda();
+              continue;
+            }
+            postJson(`/api/food-facts-packaged${mockPackaged ? `?mock=${encodeURIComponent(mockPackaged)}` : ""}`, { canonicalName: lookupName, brand: food.brand })
+              .then((j: { facts?: FoodFacts | null }) => {
+                if (!live()) return;
+                const facts = j?.facts && j.facts.source === "openfoodfacts" ? j.facts : null; // provenance comes from the route, never assumed
+                if (!facts) {
+                  via.push("openfoodfacts:miss");
+                  return usda();
+                }
+                via.push("openfoodfacts:found");
+                logFacts({ canonicalName: lookupName, status: "found", facts, via });
+                setMealFacts((prev) => ({ ...prev, [lookupName]: facts }));
+                setAssetMeal((prev) => (prev[asset.id] ? { ...prev, [asset.id]: applyAssetFacts(prev[asset.id], facts) } : prev));
+              })
+              .catch(() => {
+                // OFF failing is silent and non-blocking: the chain simply continues to USDA.
+                if (!live()) return;
+                via.push("openfoodfacts:failed");
+                return usda();
+              });
+          }
+        }
+      });
+    }
+  }, [editing, resolved, assistOn, draftMedia]);
+  useEffect(
+    () => () => {
+      for (const run of assetRunsRef.current.values()) run.controller.abort();
+    },
+    [],
+  );
+
+  /*
+   * MEAL CAPTURE EXTENSION — the Meal's canonical observation is the PRIMARY asset's: the first
+   * attached asset (attach order) whose reading is food, else the first reading at all. The
+   * per-asset map is the source of truth; this only chooses which one the ONE Meal record carries
+   * (`mealAIObservation`) and which one Looks right / Adjust / zero-effort act on. It never replaces
+   * an observation the person has already started acting on, unless that asset itself was removed.
+   */
+  const primaryAssetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (editing) return;
+    let pick: { id: string; obs: MealAIObservation } | null = null;
+    for (const m of draftMedia) {
+      const o = assetObs[m.id];
+      if (!o) continue;
+      if (o.isFood === true) {
+        pick = { id: m.id, obs: o };
+        break;
+      }
+      if (!pick) pick = { id: m.id, obs: o };
+    }
+    const cur = dRef.current.domains.meal;
+    const curId = primaryAssetRef.current;
+    const curStillAttached = !!curId && draftMedia.some((m) => m.id === curId);
+    // "acted" = the person has made the Meal theirs (typed their own name, or confirmed/corrected an item).
+    // What the autofill itself put there (a SUGGESTED identity item carrying its own name) does not count.
+    // "acted" = the person has made this photo's form theirs (any field edited, cleared or confirmed), or added their own foods.
+    const curCells = curId ? assetMealRef.current[curId] : undefined;
+    const acted = (curCells ? Object.values(curCells).some((c) => typeof c === "object" && c !== null && "state" in c && (c as { state: string }).state !== "default") : false) || (cur.foodItems ?? []).length > 0;
+    if (cur.aiObservation && curStillAttached && (acted || pick?.id === curId)) return; // keep what the person is working with
+    if ((pick?.obs ?? undefined) === (cur.aiObservation ?? undefined)) {
+      primaryAssetRef.current = pick?.id ?? null;
       return;
     }
-    const key = draftMedia.map((m) => m.id).join(",");
-    if (mealAnalysisKeyRef.current === key) return; // already running/done this session for this exact set
-    mealAnalysisKeyRef.current = key;
-    mealAnalysisAbortRef.current?.abort();
-    const controller = new AbortController();
-    mealAnalysisAbortRef.current = controller;
-    const gen = ++mealAnalysisGenRef.current;
-    setMealCatDismissed(false); // PHASE C — a new media set is a new question
-    setMealFacts({}); // PHASE B — a new media set means a fresh facts board
-    const w = window as unknown as {
-      __SB_MEAL_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }>;
-      __SB_MEAL_FACTS_LOG?: Array<{ canonicalName: string; status: string; facts: unknown }>;
-    };
-    const log = (entry: { key: string; status: string; observation: unknown }) => {
-      if (!w.__SB_MEAL_ANALYSIS_LOG) w.__SB_MEAL_ANALYSIS_LOG = [];
-      w.__SB_MEAL_ANALYSIS_LOG.push(entry);
-    };
-    // PHASE B — the facts log is RESET to empty the moment an analysis starts (the
-    // argument-less call below, per the contract and adversarial findings #4/#6): one
-    // analysis, one log — entries never accumulate across analyses, so a test can both
-    // distinguish "zero lookups were attempted" from "the capability does not exist" AND
-    // trust that every entry belongs to the CURRENT analysis (late entries from a
-    // superseded generation are dropped at the logging site, below).
-    // Entries: start → found | miss | failed.
-    const logFacts = (entry?: { canonicalName: string; status: string; facts: unknown }) => {
-      if (!entry) {
-        w.__SB_MEAL_FACTS_LOG = [];
-        return;
-      }
-      if (!w.__SB_MEAL_FACTS_LOG) w.__SB_MEAL_FACTS_LOG = [];
-      w.__SB_MEAL_FACTS_LOG.push(entry);
-    };
-    logFacts();
-    log({ key, status: "start", observation: undefined });
-    setMealAnalyzing(true);
-    analyzeMealMedia({ photoUrls: photoAssets.map((p) => p.src), videoUrl: videoEligible ? videoAsset?.src : undefined, signal: controller.signal }).then((observation) => {
-      log({ key, status: observation !== null ? "done" : "failed", observation });
-      if (mealAnalysisGenRef.current !== gen) return; // superseded by a newer analysis — do nothing
-      setMealAnalyzing(false);
-      if (observation === null) return; // safe failure — nothing to show, Save is unaffected
-      // PHASE C §auto-selection — decided at RESPONSE-APPLICATION time, never request time:
-      // the person may have chosen a category while this was in flight, and an explicit choice
-      // ("user", or an accepted suggestion's "ai") is never overridden. `mediaUnchanged` also
-      // covers "the analyzed photo was removed before the result landed" — no auto-selection
-      // for media that is no longer the draft's. `isFood === true` is already a strictly
-      // validated boolean (route-side); a HIGH non-food or MEDIUM/LOW food never selects here.
-      const cur = dRef.current;
-      const deliberate = cur.intentSource === "user" || cur.intentSource === "ai";
-      const mediaUnchanged = cur.mediaIds.join(",") === key;
-      const auto = !deliberate && mediaUnchanged && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high";
-      // §LATE RESULT PROTECTION — this only ever sets the AI's OWN reading (and, when `auto`,
-      // the category); it never touches `foodItems`, so a person's manual entry (typed while
-      // this was in flight) is untouched. The observation is STORED regardless of the current
-      // category — it is Meal-domain data either way, and the medium ask reads it from here.
-      setD((x) => {
-        const stillFree = x.intentSource !== "user" && x.intentSource !== "ai"; // re-guarded at application
-        return {
-          ...x,
-          ...(auto && stillFree ? { intent: "meal" as const, intentSource: "ai" as const } : null),
-          domains: { ...x.domains, meal: { ...x.domains.meal, aiObservation: observation } },
-        };
-      });
-      if (auto) setMealAutoSelected(true);
-      // PHASE B — after recognition, look up REAL nutrition facts per recognized food through
-      // the one server boundary (`/api/food-facts`). Lookup key: canonicalName (fallback: the
-      // everyday name); low-confidence foods are never looked up (they are hints, not
-      // identities). Results merge into SUGGESTION STATE only — the aiObservation is never
-      // touched. A miss or failure is quiet: the AI estimate remains the visible fallback.
-      // The page-level `?mockfacts=` seam forwards as `?mock=` (same convention as `mockai`).
-      // Adversarial findings #1/#2 — the launch is gated at RESPONSE-APPLICATION time, like
-      // auto-selection above: never for a media set the person already changed/withdrew
-      // (`mediaUnchanged`), and never after the person turned Smart Assist off mid-flight
-      // (`smartAssistEnabled()` reads the switch's current stored state, not a stale closure).
-      if (observation.isFood === true && mediaUnchanged && smartAssistEnabled()) {
-        const mockFacts = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mockfacts") : null;
-        const lookups = observation.foods.filter((f) => f.confidence !== "low").slice(0, 5);
-        for (const food of lookups) {
-          const lookupName = food.canonicalName ?? food.name;
-          logFacts({ canonicalName: lookupName, status: "start", facts: undefined });
-          fetch(`/api/food-facts${mockFacts ? `?mock=${encodeURIComponent(mockFacts)}` : ""}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ canonicalName: lookupName }),
-            signal: controller.signal,
-          })
-            .then((r) => {
-              if (!r.ok) throw new Error(`food-facts ${r.status}`);
-              return r.json();
-            })
-            .then((j: { facts?: FoodFacts | null }) => {
-              if (mealAnalysisGenRef.current !== gen) return; // superseded — neither state nor log (finding #6)
-              const facts = j?.facts ?? null;
-              logFacts({ canonicalName: lookupName, status: facts ? "found" : "miss", facts });
-              if (facts) setMealFacts((prev) => ({ ...prev, [lookupName]: facts }));
-            })
-            .catch(() => {
-              // Quiet by design — a facts failure must never break the Meal (B12). A lookup
-              // aborted because its analysis was superseded belongs to the OLD log, not the
-              // new one — the generation guard keeps the current analysis's record clean.
-              if (mealAnalysisGenRef.current !== gen) return;
-              logFacts({ canonicalName: lookupName, status: "failed", facts: null });
-            });
-        }
-      }
-    });
-  }, [editing, resolved, assistOn, draftMedia]);
-  useEffect(() => () => mealAnalysisAbortRef.current?.abort(), []);
+    primaryAssetRef.current = pick?.id ?? null;
+    // The Meal record's own observation follows the primary photo. NOTHING else is filled here: visible components are what a
+    // photo SHOWS ("Made of", per photo) — they are never recipe ingredients, so the Ingredients field is left to the person
+    // (or a trusted label/recipe source).
+    const patch = { aiObservation: pick ? pick.obs : undefined };
+    setD((x) => ({ ...x, domains: { ...x.domains, meal: { ...x.domains.meal, ...patch } } }));
+  }, [assetObs, draftMedia, editing]);
+  // test/diagnostic seam (same spirit as `__SB_MEAL_ANALYSIS_LOG`): the per-asset observations, by asset id
+  useEffect(() => {
+    (window as unknown as { __SB_MEAL_ASSET_OBS?: unknown }).__SB_MEAL_ASSET_OBS = assetObs;
+  }, [assetObs]);
 
   /* ---- intent selection (§7/§26 — switching never loses common or per-domain work) ---- */
   const chooseIntent = (k: RecordIntent) => {
@@ -645,7 +843,36 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       }
       // UC-C4.2 §5/§18 — no confirmation gate: `d.place` already carries whatever the person
       // is currently shown (typed, picked, or the metadata default), and travels exactly as-is.
-      const action = buildSubmission(d, original, linkTitle, me.id, newId);
+      // MEAL CAPTURE UX — zero-effort default / correction of the offered Meal identity, applied at POST.
+      // MEAL AUTOFILL — the nutrition recorded is the card's own best source at POST: the structured fact
+      // (USDA / Open Food Facts) if one was found, else the labelled AI estimate. A Meal being edited keeps its own.
+      let ready = d;
+      let mealAssets: MealAssetState[] | undefined;
+      if (resolved === "meal") {
+        if (assetBound && draftMedia.length > 0) {
+          // MEAL V1 — ONE Meal record: the primary photo's effective values are the record's own Meal fields, and EVERY photo's
+          // complete state (with its original observation) rides along. States are never invented: an untouched default is saved
+          // as a suggested default, never as confirmed.
+          const states = draftMedia.map((m) => {
+            const st = assetMeal[m.id] ?? (m.id === selId && selCells ? selCells : seedAssetMeal(m.id, d.domains.meal));
+            return st.observation === undefined && assetObs[m.id] !== undefined ? { ...st, observation: assetObs[m.id] } : st;
+          });
+          const synth = synthesizeMeal(d, states, primaryAssetRef.current ?? draftMedia[0].id);
+          ready = synth.draft;
+          mealAssets = synth.assets;
+        } else {
+          ready = finalizeMealIdentity(d);
+          if (!editing) {
+            const nutrition = mealNutritionOf(ready.domains.meal.aiObservation, mealFacts);
+            ready = { ...ready, domains: { ...ready.domains, meal: { ...ready.domains.meal, nutrition } } };
+          }
+        }
+      }
+      const action = buildSubmission(ready, original, linkTitle, me.id, newId);
+      if (mealAssets) {
+        if (action.type === "post") action.moment.fields = { ...action.moment.fields, mealAssets };
+        else action.patch.fields = { ...(action.patch.fields ?? original?.fields), mealAssets };
+      }
       dispatch(action.type === "post" ? { type: "post", moment: action.moment } : { type: "edit", id: action.id, patch: action.patch });
       if (!editing) dispatch({ type: "udraft", draft: null });
       setPhase("idle");
@@ -777,8 +1004,39 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                 <div className="mt-2" data-sb-media-collage={draftMedia.length}>
                   <div className={`grid gap-[3px] overflow-hidden rounded-[12px] ${draftMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                     {collageShown.map((p, i) => (
-                      <span key={p.id + i} className={`relative block overflow-hidden bg-[var(--sheet-raised)] ${draftMedia.length === 1 ? "max-h-56" : "aspect-[4/3]"}`} style={draftMedia.length === 1 ? { aspectRatio: `${p.w} / ${p.h}` } : undefined} data-sb-thumb={p.id}>
+                      <span key={p.id + i} className={`relative block overflow-hidden bg-[var(--sheet-raised)] ${draftMedia.length === 1 ? "max-h-56" : "aspect-[4/3]"} ${mealSelectable ? `cursor-pointer focus-visible:outline-[var(--focus)] ${selId === p.id ? "outline outline-2 -outline-offset-2 outline-[var(--focus)]" : ""}` : ""}`} style={draftMedia.length === 1 ? { aspectRatio: `${p.w} / ${p.h}` } : undefined} data-sb-thumb={p.id}
+                        data-sb-asset-state={photoPhase(p.id)}
+                        aria-busy={photoPhase(p.id) === "analyzing" || photoPhase(p.id) === "resolving" ? true : undefined}
+                        {...(mealSelectable
+                          ? {
+                              role: "button",
+                              tabIndex: 0,
+                              "aria-pressed": selId === p.id,
+                              "aria-label": `${p.alt}`,
+                              "data-sb-thumb-selected": selId === p.id ? "true" : undefined,
+                              onClick: () => setSelectedAssetId(p.id),
+                              onKeyDown: (e: React.KeyboardEvent) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedAssetId(p.id);
+                                }
+                              },
+                            }
+                          : null)}>
                         <Thumb src={p.src} alt={p.alt} className="h-full w-full object-cover" />
+                        {(photoPhase(p.id) === "analyzing" || photoPhase(p.id) === "resolving") && (
+                          <>
+                            <span className="sb-intel" data-sb-intel-pulse={photoPhase(p.id)} aria-hidden>
+                              <span className="sb-intel-halo" />
+                              <span className="sb-intel-ring" data-sb-intel-orbit>
+                                <span className="sb-intel-arm" style={{ transform: "rotate(0deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                                <span className="sb-intel-arm" style={{ transform: "rotate(130deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                                <span className="sb-intel-arm" style={{ transform: "rotate(250deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                              </span>
+                            </span>
+                            <span className="sr-only" data-sb-intel-status>{photoPhase(p.id) === "analyzing" ? "Reading this photo" : "Checking nutrition"}</span>
+                          </>
+                        )}
                         {i === 0 && draftMedia.length > 1 && <span className="absolute top-1.5 left-1.5 rounded-[4px] bg-[rgba(10,13,20,0.7)] px-1.5 py-0.5 text-[10px] font-semibold text-white">{t("ucomposer.cover")}</span>}
                         {p.videoDuration && (
                           <>
@@ -949,8 +1207,18 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               {/* DOMAIN QUICK — the same composer, adapted in place */}
               {resolved !== "social" && (
                 <div key={resolved} className="sb-reveal mt-3" data-sb-kind-fields={resolved}>
-                  <DomainQuick draft={{ ...d, intent: resolved }} set={setD} min={me.birthDate} onOpenSheet={(s) => openSheet(s)} activityCommon={activityCommon} />
-                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} openMore={() => setMoreOpen(true)} facts={mealFacts} />}
+                  <DomainQuick draft={viewDraft} set={viewSet} min={me.birthDate} onOpenSheet={(s) => openSheet(s)} activityCommon={activityCommon} />
+                  {mealAnalyzing && resolved !== "meal" && !editing &&
+                    (d.intentSource === "user" ? (
+                      <p className="mt-2 text-[12px] text-muted" data-sb-photo-reading role="status">Looking at your photo…</p>
+                    ) : (
+                      selPhase === "analyzing" && (
+                        <div className="mt-2">
+                          <IntelWaiting key={selId ?? "photo"} since={selId ? assetSince[selId] : undefined} />
+                        </div>
+                      )
+                    ))}
+                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} view={mealView} cells={selCells} onLookRight={lookRight} onAdjust={adjustMeal} openMore={() => setMoreOpen(true)} facts={mealFacts} since={selId ? assetSince[selId] : undefined} factsPending={selPhase === "resolving"} />}
                   {hasMore(resolved) && (
                     <div className={resolved === "moment" ? "" : "mt-2"}>
                       <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} className="sb-press -ml-2 inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-more-toggle>
@@ -958,7 +1226,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                       </button>
                       {moreOpen && (
                         <div className="sb-reveal mt-2" data-sb-more>
-                          <DomainMore draft={{ ...d, intent: resolved }} set={setD} min={me.birthDate} />
+                          <DomainMore draft={viewDraft} set={viewSet} min={me.birthDate} assets={assetBound && selCells ? { cells: selCells, onEdit: editAssetText } : undefined} />
                         </div>
                       )}
                     </div>

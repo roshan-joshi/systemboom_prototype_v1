@@ -419,3 +419,78 @@ body::before {
     scroll-behavior: auto !important;
   }
 }
+
+
+/* ---- PHASE V1.1 — INTELLIGENCE WAITING EXPERIENCE: calm CSS-only motion (no JS frame loop, no canvas) ---- */
+.sb-skel {
+  background: var(--hair);
+  animation: sb-skel-breathe 2.6s ease-in-out infinite;
+}
+@keyframes sb-skel-breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.sb-intel {
+  --intel-line: rgba(176, 202, 236, 0.34);
+  --intel-dot: rgba(214, 228, 248, 0.95);
+  --intel-glow: 0 0 6px rgba(150, 190, 240, 0.55);
+  --intel-halo: rgba(176, 202, 236, 0.28);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+[data-theme="light"] .sb-intel {
+  --intel-line: rgba(30, 58, 98, 0.34);
+  --intel-dot: #ffffff;
+  --intel-glow: 0 0 0 1px rgba(30, 58, 98, 0.5);
+  --intel-halo: rgba(30, 58, 98, 0.22);
+}
+.sb-intel-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--intel-halo);
+  animation: sb-intel-breathe 3.8s ease-in-out infinite;
+}
+.sb-intel-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: min(78%, 120px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border: 1px solid var(--intel-line);
+  border-radius: 50%;
+  animation: sb-intel-orbit 16s linear infinite;
+}
+.sb-intel-arm {
+  position: absolute;
+  inset: 0;
+}
+.sb-intel-dot {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--intel-dot);
+  box-shadow: var(--intel-glow);
+}
+@keyframes sb-intel-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes sb-intel-breathe {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-skel,
+  .sb-intel-halo,
+  .sb-intel-ring {
+    animation: none;
+  }
+  .sb-intel-halo { opacity: 0.85; }
+}
