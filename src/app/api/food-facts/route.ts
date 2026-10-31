@@ -23,6 +23,7 @@
  * proof). The Composer sends it only when the page itself was loaded with `?mockfacts=`.
  */
 import { request as httpsRequest } from "node:https";
+import { BLOCKED_HEADER, BLOCKED_MARKER, assertLiveAllowed, blockedUnlessLive, mockScenario } from "@/lib/intelligence/provider-gate";
 import { NextRequest, NextResponse } from "next/server";
 import type { FoodFacts } from "@/components/style-lab/social/data";
 
@@ -440,6 +441,7 @@ function selectionBody(canonicalName: string, foods: UsdaFood[]): { facts: FoodF
  * null-on-failure, same payload — nothing else about the boundary changes.
  */
 function usdaSearch(apiKey: string, body: object): Promise<{ status: number; json: unknown } | null> {
+  assertLiveAllowed("usda", "food-facts:transport"); // P2-B2 transport-level re-check (defence in depth)
   return new Promise((resolve) => {
     const payload = JSON.stringify(body);
     const req = httpsRequest(
@@ -496,7 +498,7 @@ export async function POST(req: NextRequest) {
   const canonicalName = typeof body.canonicalName === "string" ? body.canonicalName.trim().slice(0, 120) : "";
   if (!canonicalName) return NextResponse.json({ facts: null }, { status: 400 });
 
-  const mockRaw = req.nextUrl.searchParams.get("mock");
+  const mockRaw = mockScenario(req); // P2-B2 — local, non-production, non-live servers only
   if (mockRaw !== null) {
     // `scenario` or `scenario:delayMs` (same convention as /api/analyze-meal) — the delay lets a
     // test hold a lookup in flight to prove late-result safety.
@@ -526,6 +528,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (blockedUnlessLive("usda", "food-facts", req)) return NextResponse.json({ facts: null, ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "usda" } });
   const apiKey = process.env.USDA_FDC_API_KEY;
   if (!apiKey) {
     // No key configured — a quiet, safe absence. The Meal flow falls back to the AI estimate.

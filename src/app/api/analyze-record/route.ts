@@ -18,7 +18,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import OpenAI from "openai";
+import { BLOCKED_HEADER, BLOCKED_MARKER, blockedUnlessLive, deepseekClient, mockScenario } from "@/lib/intelligence/provider-gate";
+import { fillFromCompletion, withHeimProvenance, type ProviderTrace } from "@/lib/intelligence/provenance";
 import type { RecordAIObservation, RecordKindAI, RecordSource, RecordValue } from "@/components/style-lab/social/data";
 import { applyKnowledge } from "@/lib/ai/knowledge/knowledge-engine";
 import { reasoningPolicy, type ReasoningPolicy } from "@/lib/ai/reasoning-policy";
@@ -157,7 +158,7 @@ const BYASSET_MEETING: Record<string, RecordAIObservation> = {
   "1333": { category: "meeting", status: "complete", meeting: { actions: withStrength({ value: [{ action: "Prepare graphics", owner: "Alex" }], confidence: "high", source: "image_text" }) } },
 };
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest, trace: ProviderTrace) {
   let body: { category?: unknown; images?: unknown; text?: unknown };
   try {
     body = await req.json();
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 2000) : "";
   if (!kind || (images.length === 0 && !text)) return NextResponse.json({ observation: null }, { status: 400 });
 
-  const mockRaw = req.nextUrl.searchParams.get("mock");
+  const mockRaw = mockScenario(req); // P2-B2 — local, non-production, non-live servers only
   if (mockRaw !== null) {
     const [scenario, delayStr] = mockRaw.split(":");
     const delay = Math.min(Number(delayStr), 10_000);
@@ -195,6 +196,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ observation: scenario === "fail" ? finish(kind, null, text) : canned ? finish(kind, canned, text) : finish(kind, null, text) });
   }
 
+  // blocked = the same deterministic, network-free answer as "provider unavailable" (the Knowledge Engine may still use the words)
+  if (blockedUnlessLive("deepseek", `analyze-record:${kind}`, req)) return NextResponse.json({ observation: finish(kind, null, text), ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "deepseek" } });
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     console.error("[analyze-record] DEEPSEEK_API_KEY is not configured");
@@ -203,7 +206,7 @@ export async function POST(req: NextRequest) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), images.length > 1 ? MULTI_IMAGE_TIMEOUT_MS : SINGLE_IMAGE_TIMEOUT_MS);
   try {
-    const client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" });
+    const client = deepseekClient(apiKey, `analyze-record:${kind}`, req.headers.get("referer"));
     const payload = buildProviderPayload(kind, images, text);
     const policy = policyFor(kind, images);
     // ONE call; ONE bounded retry only when the answer is not valid JSON (a transient formatting failure) — never for an unknown field
@@ -211,9 +214,11 @@ export async function POST(req: NextRequest) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const startedAt = Date.now();
       const completion = await client.chat.completions.create(payload, { signal: controller.signal });
+      fillFromCompletion(trace, completion, payload, startedAt); // P2-B1: content-free provenance only
       console.log(`[analyze-record:${kind}] provider answered in`, Math.round((Date.now() - startedAt) / 100) / 10, "s;", policy.complexity, "/ thinking", policy.thinking, "/ detail", policy.detail, "/ attempt", attempt + 1); // timing + policy only — never content
       const raw = completion.choices[0]?.message?.content;
       const outcome = validateRecordObservation(kind, raw);
+      trace.validation = outcome.ok ? "valid" : "invalid";
       if (outcome.ok) {
         validated = outcome.observation;
         break;
@@ -223,9 +228,15 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ observation: finish(kind, validated, text) });
   } catch (err) {
+    trace.error = true;
     console.error(`[analyze-record:${kind}] provider call failed:`, err instanceof Error ? err.message : err);
     return NextResponse.json({ observation: finish(kind, null, text) });
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** P2-B1 — the handler above is unchanged; this wrapper only adds best-effort, content-free provenance. */
+export async function POST(req: NextRequest) {
+  return withHeimProvenance(req, { taskType: "record_specialist", promptId: (b) => `analyze-record.${typeof b?.category === "string" ? b.category.replace(/[^a-z_]/g, "").slice(0, 20) : "unknown"}`, requestedProvider: "deepseek", requestedModel: MODEL, schemaVersion: "1" }, (trace) => handle(req, trace));
 }

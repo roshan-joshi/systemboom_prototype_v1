@@ -805,6 +805,9 @@ async function attach(page, extra, photos = [SNOW], opts = {}) {
     await clickSel(page, "[data-sb-grouping-done]");
     await sleep(500);
     mix(5, !(await notice()).shown && (await pill(page)) === "activity", `organising every photo into Activity resolves it — the card goes away and Activity is the one primary type (pill ${await pill(page)})`);
+    // P2-B2.1 — the Activity reading is requested only now (the person chose Activity); wait for it to LAND before posting
+    // (the record's activityType comes from it) instead of racing it with a fixed delay
+    await waitFor(page, () => (window.__SB_ACTIVITY_ANALYSIS_LOG ?? []).some((e) => e.status === "done"), null, 80, 100);
     await post(page);
     const mAct = await newest(page);
     mix(6, (await newCount()) === mixBefore + 1 && mAct?.fields?.activityType === "run" && !mAct.fields.items && !mAct.fields.mealAIObservation && !mAct.fields.mealAssets, `posts as ONE Activity record — no Meal fields merged in, no second post (${await newCount() - mixBefore} new post)`);
@@ -1471,7 +1474,9 @@ async function attach(page, extra, photos = [SNOW], opts = {}) {
     await page.evaluate(() => document.querySelector("[data-sb-organizer-tile='thali']")?.click());
     await sleep(200);
     await page.evaluate(() => document.querySelector("[data-sb-organizer-kind='activity']")?.click());
-    await sleep(3200);
+    // P2-B2.1 — wait for the delayed (2.5 s) reading of the new photo to LAND (was a fixed 3.2 s wait that lost the race under load)
+    await waitFor(page, () => (window.__SB_MEAL_ANALYSIS_LOG ?? []).some((e) => e.key === "thali" && e.status === "done"), null, 80, 100);
+    await sleep(300);
     const late = await page.evaluate(() => ({ chip: document.querySelector("[data-sb-organizer-tile='thali'] [data-sb-asset-category]")?.getAttribute("data-sb-asset-category"), done: (window.__SB_MEAL_ANALYSIS_LOG ?? []).some((e) => e.key === "thali" && e.status === "done") }));
     ic("INC-4", late.done && late.chip === "activity" && R.meal === b2 + 1, `a category chosen while the new asset was still analysing survives the late reading (${late.chip}; analysed ${late.done}, one request)`);
     // CAT — all seven kinds reachable from the organizer

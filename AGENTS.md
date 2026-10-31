@@ -2529,3 +2529,135 @@ is exercised on Health, which is deliberately never auto-selected) · VIS-P1-M (
 3 when proposing; the invariant — every action a real 44 px target inside the viewport — is unchanged).
 Mobile/browser: desktop Chromium emulation at 320/360/375/390/412 only. Physical device: NOT RUN. Owner acceptance: PENDING.
 Not committed, not pushed, not deployed.
+
+# SIE P2-B1 — HEIM foundation: local intelligence database, canonical media identity, provider provenance (owner-directed · 2026-10-31)
+
+Owner scope amendment: SYSTEMBOOM_V2 is a LOCAL, single-user development prototype; P2-B1 builds the central intelligence DATABASE FOUNDATION only. **Not built:** observation caching/reuse, correction learning, Knowledge Graph inference, authentication, a separate privacy-closure phase (P2-B2 and later). Existing P1 privacy protections are preserved and no new exposure of private OCR / Health content / GPS / AI observations was added through any API or UI. Full description: `docs/handover/sie-p2b1-heim-foundation.md`; the audit that preceded it: `docs/p2a-intelligence-audit/`.
+
+| Date | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|
+| 2026-10-31 | `db/heim/migrations/001_heim_foundation.{up,down}.sql`, `db/heim/migrate.mjs`, `package.json` (scripts `heim:up/down/status`, deps `pg` + `@types/pg` — the only new dependency, required for the database client), `.env.example` | A real, reproducible local database | Dedicated database `systemboom_intelligence_dev`, schema `heim`: `media_assets`, `id_bridge`, `ai_providers`, `ai_models`, `ai_invocations`, `ai_invocation_media`, `vision_observations` (+ `schema_migrations`). Forward + rollback migration, checksum-tracked. The runner REFUSES any non-localhost host and any database not ending in `_dev` | `heim-foundation.js` HEIM-1…21 |
+| 2026-10-31 | `src/lib/intelligence/heim-store.ts` (new, server only) | The database layer | Local-only pool (same guards; in a production build nothing connects without an explicit local `_dev` URL); race-safe `registerMedia` (advisory lock; bridge first; identical bytes share one canonical row); `recordRun` (invocation + media links + observation in one transaction); `deleteMedia`. Failures log a SQLSTATE code only — never a value | HEIM-6, 43–49 |
+| 2026-10-31 | `src/lib/intelligence/provenance.ts` (new, server only), `src/app/api/analyze-meal/route.ts`, `analyze-activity/route.ts`, `analyze-record/route.ts` | Provider/model provenance on the existing routes without changing them | Each route's handler is UNCHANGED (renamed `handle`, plus two additive lines: `fillFromCompletion` after the provider response, `trace.error = true` in the catch; analyze-record also sets `trace.validation`). A new exported `POST` wraps it in `withHeimProvenance`: after the handler returns it records, best effort within 2.5 s and never throwing, one content-free invocation row (requested vs observed provider/model, verifiable flag, task, prompt id + content-digest version, schema version, status, validation, finish reason, attempts, tokens, latency), links the media, and — Pass 1 category call only — stores the observation. The response is whatever the handler returned. Mock calls are recorded as provider `mock` / model `mock-fixture` (never claimed as DeepSeek). Database down ⇒ routes behave exactly as before | HEIM-22…42, 43–45 |
+| 2026-10-31 | `src/app/api/media/register/route.ts` (new) | Canonical media identity on upload | POST `{sessionKey, assetId, origin, sha256, mime, size}` → `{mediaId}`; validated, idempotent, quiet failure (`mediaId: null`). The body never carries a file, filename, GPS, OCR or observation | HEIM-33…36, 55 |
+| 2026-10-31 | `composer/canonical-media.ts` (new), `composer/media-assets.ts` (+2 lines), `composer/meal-intelligence/analyze{Meal,Activity,Record}Media.ts` (an optional `assetRef` input + a `heimHeaders` spread), `composer/UniversalComposer.tsx` (three call sites pass `assetRefOf(id)`; one import) | Stable canonical id on upload; link each analysis to it without touching any request body | A random per-page-load `SESSION_KEY` (not an identity) keeps repeated temporary ids ("up-1-IMG") apart; uploads are hashed (SHA-256 of the ORIGINAL file, ≤ 64 MB) and registered best effort; the canonical id lives in a module map — deliberately NOT on the asset object, so the accepted asset-immutability checks stay byte-identical; identity reaches the server as opaque `X-SB-*` headers only. Request bodies and provider payloads are unchanged | HEIM-50…59 |
+| 2026-10-31 | `prototype-tests/heim-foundation.js` (new) | Acceptance | 59 checks: migrations + rollback + guards on a throwaway database; schema contracts; routes → provenance/identity/observation; resilience (DB unreachable / non-local URL / production); deletion through the shipped code; a real browser upload. All provider calls are MOCK seams | — |
+
+**Frozen-zone note:** `composer/**` is the accepted Social composer; the edits above are additive (an optional input field, headers, three call-site arguments, an import, two lines in `registerUploads`) and change no behaviour, request body or rendering.
+
+**Owner-superseded assertions: none.** No accepted assertion was changed, weakened or removed.
+
+**Remaining limitations (also in the handover doc):** this phase's own suite uses mock seams only, but the ledger also holds 11 REAL deepseek rows (7 activity_specialist, 4 category_pass1, 07:42–08:01 on 2026-10-31) that were not made deliberately and are unattributed — the owner's concurrent browser use of the shared dev server, or a suite path without a mock pin; they show the real-call fields working (observed model `deepseek-flash` verifiable, prompt digest, finish_reason, tokens, latency) and are billed calls worth tracing · observation JSON includes OCR-visible text and is stored unencrypted in the local database (no API reads it back) · `/api/media/register` and the analysis routes remain unauthenticated and now write locally · the app connects as the local superuser, no RLS · files over 64 MB are not hashed in the browser · the dev database accumulates mock rows · **unresolved API privacy findings P1–P6 and server identity (D2) remain explicit blockers for shared testing and production integration** (`docs/p2a-intelligence-audit/P2A-PRIVACY-AND-AUTHORIZATION.md`).
+
+Not committed, not pushed, not deployed.
+
+**Verified on final source (2026-10-31, P2-B1):** heim-foundation **59/59** (new) · vision-intelligence 131 · record-intelligence PASS (exit 0) · classifier-rules 23 · privacy-intelligence 19 · meal-intelligence 355 · activity-intelligence 273 · field-contract 24 · social-composer 140 · social-4-4a-truth 125 · social-composer-canonical PASS · social-final PASS · media-intelligence 14 · i18n PASS · s3-moments PASS · s6-motion PASS · s7-device-mastery PASS (all exit 0, three sequential streams, no flake) · `tsc --noEmit` 0 · ESLint 0 on `src/lib/intelligence`, `src/app/api`, `composer/**`, `db/heim/migrate.mjs`, `heim-foundation.js` · `next build` exit 0 with `/api/media/register` registered · DeepSeek + USDA markers NOT FOUND in `.next/static` (positive control found) · `pg` / database names NOT FOUND in the client bundle. All provider calls in every suite are mock seams. Owner acceptance: PENDING.
+
+# SIE P2-B2 — zero-billing provider isolation + persistent observation cache (owner-directed · 2026-10-31)
+
+Two gates, in order. Gate 1 had to pass before any caching was built. Detail: `docs/handover/sie-p2b2-provider-isolation.md`
+(Gate 1) and `docs/handover/sie-p2b2-observation-cache.md` (cache). Not built: correction memory (P2-B3), Knowledge Graph
+(P2-B4), authentication/RLS, cross-user cache sharing. No live provider call was made in this phase.
+
+**The 11 unexpected P2-B1 DeepSeek calls — ATTRIBUTED TO TEST (reproduced).** Each ledger row's latency matches one
+"provider answered" log line next to a provider-route request with no `?mock=`; the surrounding log holds only automated
+suite pages (no owner page). Root cause: fixtures were chosen by per-suite query pins and each client forwarded only its own
+pin, so a suite pinning `mockai` but not `mockactivity` (e.g. `vision-runner` → Activity) or not pinning `mockai`
+(`social-composer.js`) sent unmocked requests, and a configured key alone made them live. Under the new guard the same
+fleet produced exactly the same shapes, now BLOCKED (7 Activity + 4 category + geocode), with the originating page logged.
+
+| Date | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|
+| 2026-10-31 | `src/lib/intelligence/provider-gate.ts` (new) | ONE outbound-provider boundary | MOCK is the default for every server; LIVE needs `SB_PROVIDER_MODE=live` + `SB_PROVIDER_LIVE_CONFIRM=billed-provider-calls` and is refused under `NODE_ENV=test`/`CI`/`SB_TEST_RUN`; keys never enable it. The DeepSeek client is built with a gated `fetch`; USDA/OFF/Nominatim check the gate right before their socket. `?mock=` is honoured only on a local, non-production, non-live server | `provider-isolation.js` ISO-002/003/008/010/011 |
+| 2026-10-31 | `src/app/api/analyze-{meal,activity,record}/route.ts`, `food-facts/route.ts`, `food-facts-packaged/route.ts`, `geocode/route.ts` | Route the six provider routes through the gate | Fixture selection via `mockScenario`; without one, a mock-mode server answers the route's ordinary "provider unavailable" shape + `aiBlocked: "LIVE_PROVIDER_BLOCKED"` + header `x-sb-provider-blocked` (UI unchanged — same as an outage); `new OpenAI(...)` replaced by `deepseekClient(...)`; analyze-meal fixture delay capped at 10 s like the others | ISO-008 (all six routes), production probe below |
+| 2026-10-31 | `src/app/api/intelligence/status/route.ts` (new), `prototype-tests/_provider-net-snapshot.js` (new) | Evidence | Dev-only (404 in production) mode + per-provider allowed/blocked counters; the snapshot tool diffs counters, ledger and log around any run | ISO-001/012 |
+| 2026-10-31 | `scripts/dev-live.mjs` (new), `package.json` (`dev:live`), `prototype-tests/_verify-deepseek-live.js` | The only live path | `npm run dev:live` refuses CI/test and non-interactive starts, asks for a typed confirmation, runs on 127.0.0.1:**3211** (suites target :3210); the manual live script refuses without both live variables. **Owner workflow change: the :3210 keep-alive server is now MOCK; real-photo testing with real AI is on :3211** | ISO-010b/c |
+| 2026-10-31 | `db/heim/migrations/002_observation_cache.{up,down}.sql`, `db/heim/migrate.mjs` (rollback bookkeeping) | Persistent cache in PostgreSQL | `vision_observations` + key/fields/representation hash/payload/cacheable/invalidation; `ai_invocations.cost_source`; `observation_cache_claims` (lease single-flight); `observation_cache_events` (hits are `provider_called=false`, CHECK-enforced, linked to the ORIGINAL invocation); view `cache_metrics` | `heim-foundation.js` HEIM-1…8, `observation-cache.js` |
+| 2026-10-31 | `src/lib/intelligence/observation-cache.ts` (new), `provenance.ts`, `heim-store.ts` | The shared CMI/HEIM boundary | Key = scope · media · bytes · preprocessing · provider · model · model generation · prompt id+digest · config digest · schema · policy. Lookup BEFORE the provider gate; hit → stored observation + decisions recomputed; miss → claim → provider/fixture → persist → release; waiters get `waited_hit`; expired leases are taken over. Only clean results are reusable (valid, succeeded, `finish_reason: stop` for real calls); delayed/echo fixtures never. Opaque `deepseek-flash` alias: max age (30 d), observed-model match, generation constant. Scope = the single local principal; cross-user reuse disabled | `observation-cache.js` CACHE-001…030 |
+| 2026-10-31 | `src/app/api/analyze-meal/route.ts` (cache spec, `normalizeProviderOutput` sink) | What a hit must answer | Stores the category-call observation WITHOUT `suggestion` plus the model's category scores; a hit re-runs `classifyCategories` (the same expression the route uses) — decisions are never cached | CACHE-002, -016, -029a |
+| 2026-10-31 | `composer/canonical-media.ts`, `composer/UniversalComposer.tsx` (one argument at the three analysis call sites; `directEntry` added to two effect dependency arrays — a lifetime constant) | Reuse measured per application | `X-SB-Entry: social_composer | circle_of_life` header (telemetry only, never in a key) | CACHE-016/017/023b |
+| 2026-10-31 | `prototype-tests/provider-isolation.js`, `observation-cache.js`, `_cache-benchmark.js` (new) | Acceptance + offline benchmark | 24 + 39 checks; benchmark writes `prototype-evidence/p2b2-observation-cache/benchmark.json` | — |
+
+**Owner-superseded assertions (recorded, never silent):** `heim-foundation.js` HEIM-3 (the schema now also holds the
+P2-B2 claim/event tables + `cache_metrics` view) · HEIM-7/8 (`down` rolls back one migration at a time, so a full
+rollback is 002 then 001; `up` re-applies both) · HEIM-29/30/38/46 (an identical repeat is now a cache HIT: one
+invocation + a hit event instead of a second invocation/observation). The invariants they protect (identity, history kept,
+deletion completeness, reversible migrations) are asserted unchanged. 59/59.
+
+**Coverage gap (reported, not hidden):** only the Pass 1 category call is cached. The Activity and the four record
+specialists have different prompts/contracts and still call their provider (through the Gate 1 guard).
+
+**Verified (2026-10-31):** provider-isolation **24/24** (twice) · observation-cache **39/39** (twice) · heim-foundation
+**59/59** · final fleet with snapshot: **0 allowed provider requests, 0 new non-mock ledger rows** (21 blocked, all
+attributed) · classifier-rules 23 · field-contract 24 · privacy-intelligence 19 · meal-intelligence 355 · social-composer
+140 · social-4-4a-truth 125 · media-intelligence 14 · social-composer-canonical / social-final / i18n / s3 / s6 / s7 PASS ·
+vision-intelligence 131 and record-intelligence 96 **standalone** (in the 3-stream fleet: VIS-P1-019 and P4 failed on fixed
+waits — timing, green standalone, same pattern as the recorded V3-104/V1-66 flakes) · activity-intelligence 273
+standalone on the second rerun; **MIX-11 failed once in three runs** since this phase (see risk below) · `tsc` 0 · ESLint
+0 errors/0 warnings on every changed file · `next build` exit 0 · DeepSeek/USDA markers, the database name and the live
+confirmation phrase NOT FOUND in `.next/static` · a local production server (`next start`, 127.0.0.1:3299, stopped after)
+returned 404 for the status endpoint and blocked `?mock=` requests.
+
+**Open risk — MIX-11 (P1 preservation):** with two photos analysed together under the `mixed` fixture (not cached — it has
+no vision), the Composer's legacy auto-selection takes whichever reading lands first. The route now does database work
+before the handler, which adds timing jitter; once in three runs the Activity reading landed first and Activity requests
+were sent. Hypothesis, not proven: a pre-existing order-of-arrival race in the Composer, exposed by the new latency. Not
+fixed (Composer redesign is out of scope) — owner decision.
+
+Not committed, not pushed, not deployed.
+
+# SIE P2-B2.1 — stabilization: MIX-11, localhost binding, isolation + cache re-verification (owner-directed · 2026-10-31)
+
+Detail: `docs/handover/sie-p2b2-1-stabilization.md`. No P2-B3/P2-B4 work, no paid AI call, no cache broadening.
+
+**MIX-11 root cause (proven, deterministic): arrival-order-dependent automatic category selection in the Composer — not the
+cache.** Meal/Activity were decided per response from ONE photo's reading and the first `"ai"` selection (SYSTEMBOOM's own
+included) was then final; the seven-category rule acted on partial evidence while a photo was pending. The P2-B2 boundary only
+changed response timing. `prototype-tests/category-order.js` delivers each photo's real server answer in a scripted order;
+against the committed Composer it failed 8 checks (7 order defects: construction-first → transient Project + 2 Project
+requests; activity-first → Activity + 2 Activity requests = MIX-11; a 2.5 s delay → the same; a mid-analysis human tap
+landing on the transient selection's one-tap undo), and passes 18/18 after the fix.
+
+| Date | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|
+| 2026-10-31 | `composer/UniversalComposer.tsx` | MIX-11 | One `decideAutoCategory()` replaces the per-response selection; runs after every reading (success **or failure**) and after a removal; applies the UNCHANGED policy over ALL readings: food first (monotonic → Meal committed at once, preserving the progressive per-photo Meal flow), then Activity, then the UHI-DEC-017 agreement (Health never) — the last two wait until every attached reading is in. SYSTEMBOOM revises only its own choice; a person's choice, an accepted suggestion and a one-tap undo (new `autoUndoneRef`) are never overridden. Classifier and specialist contracts untouched; a single photo still selects at once | `category-order.js` 18/18; `activity-intelligence` 273 (MIX-11 ✓); `meal-intelligence` 355 |
+| 2026-10-31 | `prototype-tests/vision-intelligence.js`, `record-intelligence.js`, `activity-intelligence.js`, `heim-foundation.js` | Fixed waits that lost races under fleet load | Replaced with state-based waits (a specific kind's reading landed; this page's echo arrived; the new photo's reading done; registration bridged + analysis answered). Same assertions; no timeout inflation | three-stream fleet: vision 131 and record 96 green IN the fleet (previously only standalone) |
+| 2026-10-31 | `prototype-tests/category-order.js` (new) | Deterministic order evidence | ORDER-1…8 + single-photo baselines | — |
+
+**Owner-superseded assertions: none.** (A first fix that deferred Meal too failed `meal-intelligence` E20/V1-128 — accepted
+progressive per-photo Meal behaviour — and was refined, not the tests.)
+
+**Localhost binding — PROPOSED, not applied:** PostgreSQL listens on 127.0.0.1/::1 only (verified). The :3210 dev server
+listens on `*:3210` (LAN-reachable). `.claude/dev-keepalive.sh` is the owner's untracked script → proposed `-H 127.0.0.1`
+(diff in the doc); applying it ends phone-over-Wi-Fi testing of :3210 — owner decision.
+
+**Verified on final source (2026-10-31):** category-order 18/18 · provider-isolation 24/24 · observation-cache 39/39 ·
+heim-foundation 59/59 (standalone, after its own wait fix) · classifier-rules 23 · field-contract 24 · privacy-intelligence 19
+· vision-intelligence 131 · record-intelligence 96 · meal-intelligence 355 · activity-intelligence 273 · social-composer 140 ·
+social-4-4a-truth 125 · media-intelligence 14 · social-composer-canonical / social-final / i18n / s3 / s6 / s7 PASS · fleet
+provider evidence: 0 allowed, 0 new non-mock ledger rows · `tsc` 0 · ESLint 0 errors/0 warnings (changed files; the repo's
+existing `require()` pattern in the older suites aside) · `next build` exit 0, markers NOT FOUND in `.next/static`.
+Not committed, not pushed, not deployed.
+
+## UHI-MULTI-001 — Complete Experience and Individual Evidence Preservation (owner-approved refinement of P2-B2.1 · 2026-10-31)
+
+Supersedes the P2-B2.1 "Meal commits at once" refinement. Detail: `docs/handover/sie-p2b2-1-stabilization.md` §4.
+
+| Date | File | Reason | Behavioural effect | Test / evidence |
+|---|---|---|---|---|
+| 2026-10-31 | `composer/UniversalComposer.tsx` | §8–§12 | `decideAutoCategory` commits the POST's category only when every attached photo has completed or failed, to the experience a STRICT MAJORITY of the photos that state one agree on (each photo states its own experience under the unchanged per-photo policy: seven-category verdict when present — `high`, not `noMatch`; Meal needs a high food reading; Activity needs the category call's selection; legacy readings keep Phase C/V3; failures state nothing); 1-to-1 conflict → no commitment; Health never. Never over a person's choice, an accepted suggestion, a one-tap undo or a Circle direct entry (ENRICH, new explicit guard). The food-first re-derivations in `pruneRemoved` are replaced by the same decision. New `data-sb-category-commit` on the pill: `person` / `auto` / `awaiting` / `none` (preview vs commitment) | `multi-experience.js` MULTI-001…013 (16/16); `category-order.js` 18/18 |
+| 2026-10-31 | `src/lib/intelligence/provenance.ts`, `heim-store.ts` | §2–§3 storage audit | The photo's decision-free reading (`payload`: food flag, Meal identity, Activity hint, category scores) is stored for EVERY observation; `cacheable` alone governs reuse. Before: only reusable rows had it (182 of 214 had none). No migration (002 already allows it) | MULTI-002/003; new rows without payload since the change: 0 |
+| 2026-10-31 | `prototype-tests/meal-intelligence.js` (E20, V1-128), `activity-intelligence.js` (MIX-6 wait) | Superseded assertions + fragile waits | E20/V1-128 asserted the per-photo Meal form BEFORE the slow photo answered (an early commitment, forbidden by §8) — restated at commitment time: the panel opens on the selected photo 1, never on the last-arriving photo; their fixed 3.2/3.3 s sleeps → wait for the readings to land. MIX-6: wait for the Activity reading (requested only when the person chose Activity) before posting | meal 355/355, activity 273/273 standalone |
+| 2026-10-31 | `prototype-tests/multi-experience.js` (new) | Acceptance | MULTI-001…013 on the held-response harness | — |
+
+**Owner-superseded assertions (recorded, never silent):** `meal-intelligence` E20 and V1-128 (before-arrival half), as above.
+MIX-3 still passes unchanged: its pill shows the selected photo's own kind in a mixed composition (the accepted
+selected-media rule); the post itself is no longer auto-committed to Meal in a 1-to-1 conflict.
+
+**Verified on final source (2026-10-31):** multi-experience 16/16 · category-order 18/18 · provider-isolation 24/24 ·
+observation-cache 39/39 · heim-foundation 59/59 · classifier-rules 23 · field-contract 24 · privacy-intelligence 19 ·
+vision-intelligence 131 · record-intelligence 96 · meal-intelligence 355 · activity-intelligence 273 · social-composer 140 ·
+social-4-4a-truth 125 · media-intelligence 14 · social-composer-canonical / social-final / i18n / s3 / s6 / s7 PASS · fleet:
+0 allowed provider requests, 0 new non-mock ledger rows · `tsc` 0 · ESLint 0 · `next build` exit 0, markers NOT FOUND.
+Intermittent under three-stream fleet load or once standalone, green on rerun: meal V1-66 (recorded flake class), activity
+GRID-05 and A08–A12 (organizer/collage fixed waits), vision VIS-P1-013. Not committed, not pushed, not deployed.

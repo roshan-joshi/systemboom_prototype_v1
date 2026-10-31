@@ -34,6 +34,7 @@
  * with `?mockpackaged=`.
  */
 import { request as httpsRequest } from "node:https";
+import { BLOCKED_HEADER, BLOCKED_MARKER, assertLiveAllowed, blockedUnlessLive, mockScenario } from "@/lib/intelligence/provider-gate";
 import { NextRequest, NextResponse } from "next/server";
 import type { FoodFacts } from "@/components/style-lab/social/data";
 
@@ -198,6 +199,7 @@ function offSearch(path: string): Promise<{ status: number; json: unknown } | nu
         resolve(v);
       }
     };
+    assertLiveAllowed("openfoodfacts", "food-facts-packaged:transport"); // transport-level re-check (defence in depth)
     const req = httpsRequest({ host: OFF_HOST, path, method: "GET", family: 4, headers: { "User-Agent": USER_AGENT, Accept: "application/json" } }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
@@ -238,7 +240,7 @@ export async function POST(req: NextRequest) {
   const brand = typeof body.brand === "string" && body.brand.trim() ? body.brand.trim().slice(0, 60) : undefined;
   if (!canonicalName) return NextResponse.json({ facts: null }, { status: 400 });
 
-  const mockRaw = req.nextUrl.searchParams.get("mock");
+  const mockRaw = mockScenario(req); // P2-B2 — local, non-production, non-live servers only
   if (mockRaw !== null) {
     const [mock, delayStr] = mockRaw.split(":");
     const delay = Number(delayStr);
@@ -272,6 +274,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (blockedUnlessLive("openfoodfacts", "food-facts-packaged", req)) return NextResponse.json({ facts: null, ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "openfoodfacts" } });
   try {
     const shape = buildSearchRequest(canonicalName, brand);
     const res = await offSearch(shape.url.slice(`https://${OFF_HOST}`.length));

@@ -20,10 +20,11 @@
  * loaded with `?mockai=`.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { classifyCategories } from "@/lib/ai/vision/classify";
+import { classifyCategories, normalizeScores } from "@/lib/ai/vision/classify";
 import { normalizeVision } from "@/lib/ai/vision/universal-visual-observation";
 import { createHash } from "node:crypto";
-import OpenAI from "openai";
+import { BLOCKED_HEADER, BLOCKED_MARKER, blockedUnlessLive, deepseekClient, mockScenario } from "@/lib/intelligence/provider-gate";
+import { fillFromCompletion, promptDigestOf, withHeimProvenance, type ObservationCacheSpec, type ProviderTrace } from "@/lib/intelligence/provenance";
 import type { AIConfidence, MealAIObservation, MealIdentity, NutritionEstimate, NutritionValue, ObservedFood, OcrObservation } from "@/components/style-lab/social/data";
 
 const MODEL = "deepseek-flash";
@@ -189,7 +190,8 @@ function normalizeNutritionValue(v: unknown, unit: string): NutritionValue | und
  * field all degrade to a safely partial (or fully null) observation rather than propagating a
  * crash into the Meal flow (§PROVIDER RESPONSE VALIDATION).
  */
-function normalizeProviderOutput(raw: string | null | undefined): MealAIObservation | null {
+/** `sink` (P2-B2) receives the model's validated category scores — observation material a cache hit needs to recompute the suggestion */
+function normalizeProviderOutput(raw: string | null | undefined, sink?: ProviderTrace["extras"]): MealAIObservation | null {
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -318,6 +320,7 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
 
   // V0.4 P1 — Pass 1 (neutral vision) + Stage B (the deterministic seven-category suggestion). Additive; legacy fields untouched.
   const vision = normalizeVision(o.vision, MODEL);
+  if (sink && o.categories) sink.categoryScores = normalizeScores(o.categories);
   const suggestion = vision || o.categories ? classifyCategories(vision, o.categories, { isFood, activityHigh: !!activityCategory && activityCategory.confidence === "high" && activityCategory.primary !== false }) : undefined;
 
   return {
@@ -656,7 +659,7 @@ function imageAspect(dataUrl: string): string {
   return "?";
 }
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest, trace: ProviderTrace) {
   let body: { images?: unknown };
   try {
     body = await req.json();
@@ -668,10 +671,10 @@ export async function POST(req: NextRequest) {
     : [];
   if (images.length === 0) return NextResponse.json({ observation: null }, { status: 400 });
 
-  const mockRaw = req.nextUrl.searchParams.get("mock");
+  const mockRaw = mockScenario(req); // P2-B2 — the fixture seam is honoured only on a local, non-production, non-live server
   if (mockRaw !== null) {
     const [scenario, delayStr] = mockRaw.split(":");
-    const delay = Number(delayStr);
+    const delay = Math.min(Number(delayStr), 10_000); // P2-B2 — capped like the other routes (the seam is unauthenticated)
     if (Number.isFinite(delay) && delay > 0) await sleep(delay);
     // §SERVER PRIVACY PAYLOAD test seam ONLY — never reachable without the mock param, and
     // never produced by a real provider call. Proves the exact outgoing payload is clean.
@@ -704,11 +707,13 @@ export async function POST(req: NextRequest) {
     // V0.4 P1 — `vision-<scene>` / `vision-byasset`: RAW model shapes run through the REAL normalization + classifier
     if (scenario.startsWith("vision-")) {
       const tag = scenario === "vision-byasset" ? VISION_BY_ASPECT[imageAspect(images[0].dataUrl)] ?? "chair" : scenario.slice("vision-".length);
-      return NextResponse.json({ observation: normalizeProviderOutput(JSON.stringify(VISION_RAW[tag] ?? VISION_RAW.chair)) });
+      return NextResponse.json({ observation: normalizeProviderOutput(JSON.stringify(VISION_RAW[tag] ?? VISION_RAW.chair), trace.extras) });
     }
     return NextResponse.json({ observation: buildMockObservation(scenario) });
   }
 
+  // P2-B2 GATE 1 — no live provider call unless this server was started LIVE on purpose; an API key alone never enables it
+  if (blockedUnlessLive("deepseek", "analyze-meal", req)) return NextResponse.json({ observation: null, ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "deepseek" } });
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     // No key configured — a quiet, safe failure. Never surfaced to the person as an error.
@@ -720,10 +725,11 @@ export async function POST(req: NextRequest) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" });
+    const client = deepseekClient(apiKey, "analyze-meal", req.headers.get("referer"));
     const payload = buildProviderPayload(images);
     const startedAt = Date.now();
     const completion = await client.chat.completions.create(payload, { signal: controller.signal });
+    fillFromCompletion(trace, completion, payload, startedAt); // P2-B1: content-free provenance only
     // server-side diagnostics only (never sent to the client): how long the provider took and what it spent
     console.log("[analyze-meal] provider answered in", Math.round((Date.now() - startedAt) / 100) / 10, "s; usage:", JSON.stringify(completion.usage));
     const raw = completion.choices[0]?.message?.content;
@@ -733,13 +739,58 @@ export async function POST(req: NextRequest) {
       // leaking anything client-side.
       console.error("[analyze-meal] provider returned empty content. finish_reason:", completion.choices?.[0]?.finish_reason, "usage:", JSON.stringify(completion.usage));
     }
-    const observation = normalizeProviderOutput(raw);
+    const observation = normalizeProviderOutput(raw, trace.extras);
     return NextResponse.json({ observation });
   } catch (err) {
     // Server-side logging only — the client never receives provider error details.
+    trace.error = true;
     console.error("[analyze-meal] provider call failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ observation: null });
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * P2-B2 — this route's contract with the shared observation cache. What is stored is the validated OBSERVATION of the
+ * category call (Pass 1 vision + the Meal/Activity readings + the model's own category scores) with the seven-category
+ * DECISION removed; a hit recomputes the suggestion with today's classifier, exactly as line-for-line above.
+ */
+const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+let pass1Versions: { promptDigest: string; configDigest: string } | null = null;
+const pass1VersionsNow = () => {
+  if (!pass1Versions) {
+    const p = buildProviderPayload([]);
+    pass1Versions = { promptDigest: promptDigestOf(p) ?? "unknown", configDigest: sha256hex(JSON.stringify({ model: p.model, max_tokens: p.max_tokens, response_format: p.response_format, extra_body: p.extra_body })) };
+  }
+  return pass1Versions;
+};
+const PASS1_CACHE: ObservationCacheSpec = {
+  keyParts(scenario) {
+    if (scenario !== null) {
+      // delayed fixtures exist to test timing and `echo` returns no observation — neither is ever reused
+      if (scenario.includes(":") || scenario === "echo") return null;
+      return { provider: "mock", model: "mock-fixture", promptId: `mock:${scenario}`, promptDigest: sha256hex(scenario), analysisConfigDigest: "mock", schema: "category-pass1/1" };
+    }
+    const v = pass1VersionsNow();
+    return { provider: "deepseek", model: MODEL, promptId: "analyze-meal.pass1", promptDigest: v.promptDigest, analysisConfigDigest: v.configDigest, schema: "category-pass1/1" };
+  },
+  toStored(observation, trace) {
+    const rest = { ...observation };
+    delete rest.suggestion; // a decision, never cached
+    return { observation: rest, ...(trace.extras.categoryScores ? { categoryScores: trace.extras.categoryScores } : {}) };
+  },
+  fromStored(payload) {
+    const obs = payload.observation as MealAIObservation;
+    const scores = payload.categoryScores as Record<string, number> | undefined;
+    const activityHigh = !!obs.activityCategory && obs.activityCategory.confidence === "high" && obs.activityCategory.primary !== false;
+    const suggestion = obs.vision || scores ? classifyCategories(obs.vision ?? null, scores, { isFood: obs.isFood, activityHigh }) : undefined;
+    return { observation: { ...obs, ...(suggestion ? { suggestion } : null) } };
+  },
+  unavailable: () => ({ observation: null }),
+};
+
+/** P2-B1 — the handler above is unchanged; this wrapper adds best-effort, content-free provenance, Pass 1 storage and (P2-B2) the observation cache. */
+export async function POST(req: NextRequest) {
+  return withHeimProvenance(req, { taskType: "category_pass1", promptId: "analyze-meal.pass1", requestedProvider: "deepseek", requestedModel: MODEL, schemaVersion: "1" }, (trace) => handle(req, trace), PASS1_CACHE);
 }

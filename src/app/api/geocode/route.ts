@@ -17,6 +17,7 @@
  * resolves a small, explicit coordinate table instead of making any real network request,
  * so automated tests never depend on, or hit, a live external service.
  */
+import { BLOCKED_HEADER, BLOCKED_MARKER, assertLiveAllowed, blockedUnlessLive, mockScenario } from "@/lib/intelligence/provider-gate";
 import { NextRequest, NextResponse } from "next/server";
 
 interface NominatimAddress {
@@ -58,6 +59,7 @@ async function realReverseGeocode(lat: number, lon: number): Promise<string | nu
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
+    assertLiveAllowed("nominatim", "geocode:transport"); // transport-level re-check (defence in depth)
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=12&addressdetails=1&accept-language=en`,
       { signal: controller.signal, headers: { Accept: "application/json", "User-Agent": "SYSTEMBOOM-prototype/1.0 (composer reverse-geocode)" } },
@@ -78,7 +80,8 @@ export async function GET(req: NextRequest) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     return NextResponse.json({ place: null }, { status: 400 });
   }
-  const mock = req.nextUrl.searchParams.get("mock") === "1";
+  const mock = mockScenario(req) === "1"; // P2-B2 — local, non-production, non-live servers only
+  if (!mock && blockedUnlessLive("nominatim", "geocode", req)) return NextResponse.json({ place: null, ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "nominatim" } });
   const place = mock ? mockPlace(lat, lon) : await realReverseGeocode(lat, lon);
   return NextResponse.json({ place });
 }

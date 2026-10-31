@@ -53,6 +53,8 @@ const waitFor = async (page, fn, arg, tries = 30, gap = 200) => {
 const pill = (page) => page.evaluate(() => document.querySelector("[data-sb-record-pill]")?.getAttribute("data-sb-record-pill") ?? null);
 const domains = (page) => page.evaluate(() => window.__SB_RECORD_DOMAINS ?? null);
 const recObs = (page) => page.evaluate(() => window.__SB_RECORD_OBS ?? {});
+/** P2-B2.1 — the `mock=echo` responses are collected node-side; wait until at least `n` have arrived (bounded) */
+const waitEcho = async (n, tries = 100) => { for (let i = 0; i < tries && R.echo.length < n; i++) await sleep(100); };
 const waitRecDone = (page, n = 1, tries = 60) => waitFor(page, (k) => (window.__SB_RECORD_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= k, n, tries, 200);
 const waitMealDone = (page, n = 1, tries = 60) => waitFor(page, (k) => (window.__SB_MEAL_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= k, n, tries, 200);
 const newest = async (page) => (await state(page)).moments.filter((m) => m.id.startsWith("m-new-"))[0];
@@ -179,7 +181,9 @@ async function attachAs(page, extra, photos, aria, opts = {}) {
 
     await attachAs(page, "&mockrecord=project:1800", [NYAT], "Project");
     await setField(page, "projectTitle", "My own name");
-    await sleep(2400);
+    // P2-B2.1 — wait for the delayed (1.8 s) Project reading to LAND (was a fixed 2.4 s wait that lost the race under load)
+    await waitFor(page, () => (window.__SB_RECORD_ANALYSIS_LOG ?? []).some((e) => e.key.startsWith("project:") && e.status === "done"), null, 80, 100);
+    await sleep(300);
     dm = await domains(page);
     ok(dm?.project?.title === "My own name" && dm?.project?.goal === "Help local sellers connect with customers" && dm?.project?.field?.title?.state === "corrected", `P4: a name typed before the reading arrives wins; the goal still fills (name "${dm?.project?.title}")`);
     await post(page);
@@ -408,13 +412,13 @@ async function attachAs(page, extra, photos, aria, opts = {}) {
 
     // adaptive reasoning + vision policy (through the privacy echo)
     await attachAs(page, "&mockrecord=echo", [GARDEN], "Meeting");
-    await waitFor(page, () => false, null, 8, 250);
+    await waitEcho(1); // P2-B2.1 — wait for THIS page's echo response (was a fixed 2 s wait)
     const polM = R.echo[0]?._debugPolicy;
     const payM = R.echo[0]?._debugProviderPayload;
     ok(polM?.thinking === "enabled" && polM?.detail === "high" && payM?.extra_body?.thinking?.type === "enabled" && payM?.messages?.[1]?.content?.[1]?.image_url?.detail === "high" && payM?.max_tokens === 6000, `RSN-1: a document-heavy category with an image gets thinking enabled + high image detail + a larger budget (${JSON.stringify(polM)})`);
     ok(/expert executive assistant/.test(payM?.messages?.[0]?.content ?? "") && /Before answering, perform this evidence review INTERNALLY/.test(payM?.messages?.[0]?.content ?? ""), "PERSONA-1: the Meeting specialist persona + internal evidence review drive the system prompt");
     await attachAs(page, "&mockrecord=echo", [TERR], "Problem");
-    await waitFor(page, () => false, null, 8, 250);
+    await waitEcho(1); // P2-B2.1 — wait for THIS page's echo response (was a fixed 2 s wait)
     const polP = R.echo[R.echo.length - 1]?._debugPolicy;
     const payP = R.echo[R.echo.length - 1]?._debugProviderPayload;
     ok(polP?.thinking === "disabled" && polP?.complexity === "simple" && /expert troubleshooting analyst/.test(payP?.messages?.[0]?.content ?? ""), `RSN-2/PERSONA-2: a simple Problem scene keeps the standard configuration and the Problem persona (${JSON.stringify(polP)})`);
@@ -539,7 +543,7 @@ async function attachAs(page, extra, photos, aria, opts = {}) {
     // C13: privacy — the provider payload carries only the image and the words
     await attachAs(page, "&mockrecord=echo", [NYAT], "Project");
     await setText(page, "Our marketplace");
-    await waitFor(page, () => false, null, 8, 250);
+    await waitEcho(1); // P2-B2.1 — wait for THIS page's echo response (was a fixed 2 s wait)
     const payload = R.echo[0]?._debugProviderPayload;
     const ps = JSON.stringify(payload ?? {});
     ok(!!payload && payload.model === "deepseek-flash" && /data:image/.test(ps) && !/nyatapola\.jpg|sourceMetadata|Giulia|u-demo-001|takenPlace|gps|filename/i.test(ps.replace(/data:image[^"]+/g, "")), "C13: the provider payload holds the image bytes + words only — no filename, metadata, GPS, identity");

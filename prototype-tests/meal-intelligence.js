@@ -2372,11 +2372,18 @@ async function runW(page) {
       await x.attach3(":slowb", 2);
       await x.clickThumb(page, 0);
       const mid20 = await x.ui(page);
-      await sleep(3200);
+      // P2-B2.1 — wait for B's delayed (2.5 s) reading to LAND (it now completes the evidence the commitment waits for) instead of
+      // a fixed 3.2 s that lost the race under fleet load
+      await page.waitForFunction(() => (window.__SB_MEAL_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= 3, { timeout: 15000 }).catch(() => {});
+      await sleep(600);
       const ao20 = await x.assetObs(page);
       const u20 = await x.ui(page);
+      // SUPERSEDED 2026-10-31 by UHI-MULTI-001 §8: the Meal form no longer opens BEFORE every photo's reading is in (the post's
+      // category is committed only on complete evidence), so the before-arrival half ("Dal bhat" while B was pending) is
+      // replaced by: nothing ELSE was shown while B was pending, and when the commitment happens the panel opens on the
+      // SELECTED photo 1 — never on B, the photo that arrived last (the arrival-order invariant this test protects)
       ok(
-        mid20.identity === "Dal bhat" && Object.values(ao20 ?? {}).some((o) => o?.meal?.name === "Mango lassi") && u20.identity === "Dal bhat" && u20.indicator === "Photo 1 of 3",
+        mid20.identity !== "Mango lassi" && Object.values(ao20 ?? {}).some((o) => o?.meal?.name === "Mango lassi") && u20.identity === "Dal bhat" && u20.indicator === "Photo 1 of 3",
         `E20: B's late result is stored under B (${Object.values(ao20 ?? {}).map((o) => o?.meal?.name)}) but the visible panel stays on the selected photo ("${u20.identity}", "${u20.indicator}") — arrival order never controls it`,
       );
       await x.attach3();
@@ -3054,11 +3061,16 @@ async function runW(page) {
       await openThree("&mockai=v1assets:slowb&mockfacts=miss", 2);
       await clickThumb(page, 0);
       const u0 = await readForm(page);
-      await sleep(3300);
+      // P2-B2.1 — wait for photo 2's delayed reading to LAND (state, not a fixed 3.3 s)
+      await page.waitForFunction(() => (window.__SB_MEAL_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= 3, { timeout: 15000 }).catch(() => {});
+      await sleep(600);
       const u1 = await readForm(page);
       const obsU = await assetObsNow();
       const indicator = await page.evaluate(() => document.querySelector("[data-sb-photo-indicator]")?.textContent ?? null);
-      v1(eqf(u0, u1) && F.every((k) => u1[k] === A[k]) && Object.values(obsU ?? {}).some((o) => o?.meal?.name === "Mango lassi") && indicator === "Photo 1 of 3", `photo 2's late answer is stored under photo 2 but never swaps the visible form — photo 1 stays selected and fully shown ("${indicator}"); arrival order never owns the UI`);
+      // SUPERSEDED 2026-10-31 by UHI-MULTI-001 §8: the per-photo form appears only once every reading is in, so "u0 equals u1"
+      // (a form visible BEFORE photo 2 answered) is replaced by: when photo 2 — the LAST to answer — completes the evidence, the
+      // form shows photo 1, fully, never photo 2 (arrival order still never owns the UI)
+      v1(!JSON.stringify(u0).includes("Mango lassi") && F.every((k) => u1[k] === A[k]) && Object.values(obsU ?? {}).some((o) => o?.meal?.name === "Mango lassi") && indicator === "Photo 1 of 3", `photo 2's late answer is stored under photo 2 but never swaps the visible form — photo 1 stays selected and fully shown ("${indicator}"); arrival order never owns the UI`);
       // V1-129 — visible components are what a photo SHOWS; they are never recipe ingredients
       console.log("V1-129. VISIBLE COMPONENTS DO NOT POPULATE RECIPE INGREDIENTS");
       await openOne("&mockai=details&mockfacts=miss");

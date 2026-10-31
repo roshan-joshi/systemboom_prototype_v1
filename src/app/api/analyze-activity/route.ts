@@ -18,7 +18,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import OpenAI from "openai";
+import { BLOCKED_HEADER, BLOCKED_MARKER, blockedUnlessLive, deepseekClient, mockScenario } from "@/lib/intelligence/provider-gate";
+import { fillFromCompletion, withHeimProvenance, type ProviderTrace } from "@/lib/intelligence/provenance";
 import type { AIConfidence, ActivityAIObservation } from "@/components/style-lab/social/data";
 
 const MODEL = "deepseek-flash";
@@ -220,7 +221,7 @@ function buildMockObservation(scenario: string): ActivityAIObservation | null {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest, trace: ProviderTrace) {
   let body: { images?: unknown };
   try {
     body = await req.json();
@@ -232,7 +233,7 @@ export async function POST(req: NextRequest) {
     : [];
   if (images.length === 0) return NextResponse.json({ observation: null }, { status: 400 });
 
-  const mockRaw = req.nextUrl.searchParams.get("mock");
+  const mockRaw = mockScenario(req); // P2-B2 — local, non-production, non-live servers only
   if (mockRaw !== null) {
     const [scenario, delayStr] = mockRaw.split(":");
     const delay = Math.min(Number(delayStr), 10_000);
@@ -249,6 +250,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ observation: buildMockObservation(scenario) });
   }
 
+  if (blockedUnlessLive("deepseek", "analyze-activity", req)) return NextResponse.json({ observation: null, ...BLOCKED_MARKER }, { headers: { [BLOCKED_HEADER]: "deepseek" } });
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     console.error("[analyze-activity] DEEPSEEK_API_KEY is not configured");
@@ -258,17 +260,25 @@ export async function POST(req: NextRequest) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), images.length > 1 ? MULTI_IMAGE_TIMEOUT_MS : SINGLE_IMAGE_TIMEOUT_MS);
   try {
-    const client = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" });
+    const client = deepseekClient(apiKey, "analyze-activity", req.headers.get("referer"));
     const startedAt = Date.now();
-    const completion = await client.chat.completions.create(buildProviderPayload(images), { signal: controller.signal });
+    const payload = buildProviderPayload(images);
+    const completion = await client.chat.completions.create(payload, { signal: controller.signal });
+    fillFromCompletion(trace, completion, payload, startedAt); // P2-B1: content-free provenance only
     console.log("[analyze-activity] provider answered in", Math.round((Date.now() - startedAt) / 100) / 10, "s");
     const raw = completion.choices[0]?.message?.content;
     if (!raw) console.error("[analyze-activity] provider returned empty content. finish_reason:", completion.choices?.[0]?.finish_reason);
     return NextResponse.json({ observation: normalizeProviderOutput(raw) });
   } catch (err) {
+    trace.error = true;
     console.error("[analyze-activity] provider call failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ observation: null });
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** P2-B1 — the handler above is unchanged; this wrapper only adds best-effort, content-free provenance. */
+export async function POST(req: NextRequest) {
+  return withHeimProvenance(req, { taskType: "activity_specialist", promptId: "analyze-activity", requestedProvider: "deepseek", requestedModel: MODEL, schemaVersion: "1" }, (trace) => handle(req, trace));
 }

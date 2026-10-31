@@ -12,6 +12,7 @@
  */
 import type { MealAIObservation } from "./types";
 import { extractVideoKeyframes } from "./keyframes";
+import { heimHeaders, type AssetRef } from "../canonical-media";
 
 /**
  * UC-MEAL-AI test-only determinism seam (same convention as `?mockgeo=1`): a page loaded with
@@ -61,6 +62,8 @@ export interface AnalyzeMealMediaInput {
    *  original file is never sent. */
   videoUrl?: string;
   /** Cancels the in-flight request (unmount/navigation/composition change). */
+  /** P2-B1 — which asset this reading is FOR; sent as opaque headers only (never in the body or the provider payload) */
+  assetRef?: AssetRef;
   signal?: AbortSignal;
 }
 
@@ -91,7 +94,7 @@ export async function analyzeMealMedia(input: AnalyzeMealMediaInput): Promise<Me
       const qs = mock !== null ? `?mock=${encodeURIComponent(mock)}` : "";
       const res = await fetch(`/api/analyze-meal${qs}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...heimHeaders(input.assetRef) },
         body: JSON.stringify({ images: images.map((dataUrl) => ({ dataUrl })) }),
         signal: controller.signal,
       });

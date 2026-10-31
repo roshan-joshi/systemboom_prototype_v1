@@ -35,6 +35,7 @@ import { localISO, useSocial } from "../store";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { formatNumberLocale, sbDate } from "@/lib/i18n/format";
 import { allAssets, assetById, MEDIA_LIMIT, registerUploads } from "./media-assets";
+import { assetRefOf } from "./canonical-media";
 import { ASSIST_CAPABILITIES, extractAssist, setSmartAssist, smartAssistEnabled, type AssistSuggestion } from "./smart-assist";
 import { ActivityCategorySuggestion, ActivitySuggestion, RecordSuggestion, VisionSuggestionCard, ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, applyAssetFacts, assetEditsFromDraft, ChipSelect, confirmAssetMeal, editAssetField, fillAssetMeal, overlayMealDraft, parseComponents, parseNutrient, seedAssetMeal, synthesizeMeal, type MealAssetField, DomainMore, DomainQuick, FIELD, finalizeMealIdentity, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, mealNutritionOf, MealSuggestion, mealLookupKeys, moreLabelKey, type IntelPhase, IntelWaiting, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
 import { analyzeMealMedia } from "./meal-intelligence/analyzeMealMedia";
@@ -235,6 +236,8 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // refs for the removal re-derivation inside the Meal effect (read, never a dependency)
   const autoRef = useRef({ meal: false, act: false });
   const autoVisionRef = useRef<RecordIntent | null>(null);
+  // P2-B2.1 — the person undid SYSTEMBOOM's own choice in this composition: never re-select automatically after that
+  const autoUndoneRef = useRef(false);
   const assetObsRef = useRef<Record<string, MealAIObservation | null>>({});
   const setPendingActivity = (id: string, on: boolean) => {
     setActPending((prev) => (on ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id)));
@@ -568,6 +571,9 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const mixedDetected = assistOn && !editing && mixedKinds.size > 1;
   const mixedBlock = mixedDetected && d.intentSource !== "user";
   const canPost = !over && !minKey && !beforeBirth && evProblem !== "future" && phase !== "posting" && !mixedBlock;
+  // UHI-MULTI-001 — the POST's category commitment, distinct from the per-photo previews (chips, readings) that may appear
+  // early: the person's choice, SYSTEMBOOM's automatic commitment, or still awaiting the remaining photos' readings
+  const categoryCommit = d.intentSource === "user" ? "person" : d.intentSource === "ai" && (mealAutoSelected || actAutoSelected || !!autoByVision) ? "auto" : pendingAssets.length > 0 && assistOn ? "awaiting" : "none";
 
   /* ---- PHASE C — the MEDIUM-confidence category ask (never a modal, never while Meal is
    * already selected, never over a deliberate choice, gone for good once declined) ---- */
@@ -819,34 +825,66 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         removedAny = true;
       }
     }
+    /*
+     * UHI-MULTI-001 (P2-B2.1) — COMPLETE EXPERIENCE, INDIVIDUAL EVIDENCE. Every photo is still analysed and kept on its own
+     * (per-asset readings, chips and the stored HEIM observation are previews that may appear early). The POST's category —
+     * the whole-experience commitment — is decided ONCE, only when every attached photo has completed or failed, from the
+     * combined evidence under the established per-photo policy:
+     *   · each photo states its OWN primary experience the way it always has: a seven-category verdict when it carries one
+     *     (settled = "high", never noMatch — UHI-DEC-014's subject rules already applied), Meal only with a high food reading,
+     *     Activity only when the category call says select; a legacy reading without a verdict keeps Phase C / V3 (food → Meal,
+     *     selected Activity → Activity); low/medium/noMatch photos state nothing and failures contribute no evidence;
+     *   · the post commits automatically to the experience that a STRICT MAJORITY of the photos stating one agree on — so a
+     *     birthday set with one cake photo is a Life Moment, a single photo decides alone, and a 1-to-1 conflict commits
+     *     nothing (the person chooses); Health is never committed automatically.
+     * Arrival order cannot change this (it runs on the complete set). SYSTEMBOOM revises only its own earlier commitment; a
+     * person's choice, an accepted suggestion, a one-tap undo and a Circle direct entry (ENRICH) are never touched. The
+     * classifier and the specialist contracts are unchanged. (Replaces the per-response, first-answer-wins selection: MIX-11.)
+     */
+    const photoExperience = (o: MealAIObservation): RecordIntent | null => {
+      const v = o.suggestion;
+      let k: RecordIntent | null;
+      if (v) k = !v.noMatch && v.primary.confidence === "high" ? v.primary.kind : null;
+      else k = o.isFood === true && o.confidence === "high" ? "meal" : categoryVerdict(o) === "select" ? "activity" : null;
+      if (k === "meal" && !(o.isFood === true && o.confidence === "high")) return null; // Meal needs a high food reading (Phase C)
+      if (k === "activity" && categoryVerdict(o) !== "select") return null; // Activity needs the category call's selection (V3)
+      return k;
+    };
+    const decideAutoCategory = () => {
+      const cur = dRef.current;
+      if (cur.intentSource === "user" || autoUndoneRef.current || !smartAssistEnabled() || directEntry) return;
+      const own = autoRef.current.meal || autoRef.current.act || !!autoVisionRef.current;
+      if (cur.intentSource === "ai" && !own) return; // an accepted suggestion is a deliberate act
+      const ids = [...assetRunsRef.current.keys()];
+      if (ids.some((id) => !(id in assetObsRef.current))) return; // §8 — commit only on complete evidence
+      const stated = ids
+        .map((id) => assetObsRef.current[id])
+        .filter((o): o is MealAIObservation => !!o)
+        .map(photoExperience)
+        .filter((k): k is RecordIntent => !!k);
+      const tally = new Map<RecordIntent, number>();
+      for (const k of stated) tally.set(k, (tally.get(k) ?? 0) + 1);
+      let target: RecordIntent | null = null;
+      for (const [k, n] of tally) if (n * 2 > stated.length) target = k; // strict majority of the photos that state one
+      if (target === "health") target = null; // a sensitive category is suggested, never committed
+      if (editing && target && target !== "meal" && target !== "activity") target = null; // unchanged: no seven-category commit while editing
+      const current: RecordIntent | null = autoRef.current.meal ? "meal" : autoRef.current.act ? "activity" : autoVisionRef.current;
+      if (target === current) return;
+      const vision = target && target !== "meal" && target !== "activity" ? target : null;
+      autoRef.current = { meal: target === "meal", act: target === "activity" }; // synchronous: the next decision must see this one
+      autoVisionRef.current = vision;
+      setMealAutoSelected(target === "meal");
+      setActAutoSelected(target === "activity");
+      setAutoByVision(vision);
+      setD((x) => (x.intentSource === "user" ? x : target ? { ...x, intent: target, intentSource: "ai" as const } : x.intentSource === "ai" ? { ...x, intent: "social", intentSource: "default" as const } : x));
+    };
     const pruneRemoved = () => {
       // SELECTED-MEDIA CONTEXT — an AUTO-selected post category must not outlive the photo that selected it: when media is removed
       // and the category was the AI's (never the person's), it is re-derived from the readings that remain, with the same HIGH-only
       // rule the response handler applies (food first, then Activity), else back to the plain media default.
-      // UHI-DEC-017 — the readings changed, so SYSTEMBOOM's own choice is re-derived from what is left (same rule, no order)
-      if (removedAny && autoVisionRef.current) {
-        const settled = draftMedia
-          .map((m) => (attached.has(m.id) ? assetObsRef.current[m.id]?.suggestion : undefined))
-          .filter((v): v is NonNullable<typeof v> => !!v && !v.noMatch && v.primary.confidence === "high")
-          .map((v) => v.primary.kind);
-        const agreed = settled.length > 0 && settled.every((k) => k === settled[0]) ? settled[0] : null;
-        const next: RecordIntent | null = agreed && agreed !== "health" && agreed !== "meal" && agreed !== "activity" ? agreed : null;
-        autoVisionRef.current = next;
-        setAutoByVision(next);
-        setD((x) => (x.intentSource === "user" ? x : next ? { ...x, intent: next, intentSource: "ai" as const } : { ...x, intent: "social", intentSource: "default" as const }));
-      }
-      if (removedAny && (autoRef.current.meal || autoRef.current.act)) {
-        const remaining = draftMedia.map((m) => assetObsRef.current[m.id]).filter((o): o is MealAIObservation => !!o);
-        // UHI-DEC-014 — re-derivation applies the SAME experience-first rule as the response handler (a reading whose
-        // verdict is not Meal/Activity never re-selects it when another photo is removed).
-        const settledAs = (o: MealAIObservation, k: string) => !o.suggestion || (o.suggestion.primary.kind === k && o.suggestion.primary.confidence === "high");
-        const meal = remaining.some((o) => o.isFood === true && o.confidence === "high" && settledAs(o, "meal"));
-        const act = !meal && remaining.some((o) => categoryVerdict(o) === "select" && settledAs(o, "activity"));
-        const next: RecordIntent = meal ? "meal" : act ? "activity" : "social";
-        setD((x) => (x.intentSource === "user" ? x : { ...x, intent: next, intentSource: next === "social" ? "default" : "ai" }));
-        setMealAutoSelected(meal);
-        setActAutoSelected(act);
-      }
+      // UHI-MULTI-001 — a removal changes the evidence: SYSTEMBOOM's own commitment is re-decided from what is left by the ONE
+      // rule (`decideAutoCategory`); a person's choice is never touched (the per-response re-derivations it replaces were food-first).
+      if (removedAny) decideAutoCategory();
       setPendingAssets((prev) => (prev.every((id) => attached.has(id)) ? prev : prev.filter((id) => attached.has(id))));
       setAssetObs((prev) => (Object.keys(prev).every((id) => attached.has(id)) ? prev : Object.fromEntries(Object.entries(prev).filter(([id]) => attached.has(id)))));
       // MEAL V1 — a removed photo takes ITS form with it; the others keep theirs (keyed by id, so nothing shifts or is reassigned).
@@ -888,12 +926,17 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         w.__SB_MEAL_FACTS_LOG.push(entry);
       };
       log({ key: asset.id, status: "start", observation: undefined });
-      analyzeMealMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal } : { photoUrls: [asset.src], signal: controller.signal }).then((observation) => {
+      analyzeMealMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal, assetRef: assetRefOf(asset.id, directEntry ? "circle_of_life" : "social_composer") } : { photoUrls: [asset.src], signal: controller.signal, assetRef: assetRefOf(asset.id, directEntry ? "circle_of_life" : "social_composer") }).then((observation) => {
         log({ key: asset.id, status: observation !== null ? "done" : "failed", observation });
         if (!live()) return; // removed, or retired by Smart Assist OFF — a late result never applies
         setPendingAssets((prev) => prev.filter((id) => id !== asset.id));
         setAssetObs((prev) => ({ ...prev, [asset.id]: observation }));
-        if (observation === null) return; // safe failure — nothing to show, Save is unaffected
+        if (observation === null) {
+          // safe failure — nothing to show, Save is unaffected; but it COMPLETES the evidence, so the decision runs (P2-B2.1)
+          assetObsRef.current = { ...assetObsRef.current, [asset.id]: null };
+          decideAutoCategory();
+          return;
+        }
         // MEAL V1 — this photo's OWN form fills from ITS OWN observation (high + medium; low stays blank), never from
         // another photo's, and never over anything the person already typed, cleared or confirmed for it.
         setAssetMeal((prev) => ({ ...prev, [asset.id]: fillAssetMeal(prev[asset.id] ?? seedAssetMeal(asset.id, dRef.current.domains.meal), observation, asset.takenAt) }));
@@ -902,54 +945,12 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         // ("user", or an accepted suggestion's "ai") is never overridden. The asset must still be
         // attached (`live()` above). `isFood === true` is already a strictly validated boolean
         // (route-side); a HIGH non-food or MEDIUM/LOW food never selects here.
-        const cur = dRef.current;
-        const deliberate = cur.intentSource === "user" || cur.intentSource === "ai";
-        // UHI-DEC-014 — food being PRESENT is not the same as the meal being the experience. Where the reading carries a
-        // seven-category verdict (V0.4 Pass 1), Meal may auto-select only when that verdict says the meal IS the primary
-        // experience; a birthday cake therefore offers the choice instead of selecting Meal. A legacy reading with no
-        // verdict keeps the accepted Phase C behaviour exactly (isFood + HIGH).
-        // …and an AMBIGUOUS verdict (the classifier states its primary as "likely", not "best") is a question for the
-        // person, never a silent selection — Example C of UHI-DEC-014.
-        const verdict = observation.suggestion?.primary;
-        const settled = verdict?.confidence === "high";
-        const mealIsTheExperience = verdict === undefined || (verdict.kind === "meal" && settled);
-        const auto = !deliberate && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high" && mealIsTheExperience;
-        if (auto) {
-          setD((x) => (x.intentSource !== "user" && x.intentSource !== "ai" ? { ...x, intent: "meal" as const, intentSource: "ai" as const } : x)); // re-guarded at application
-          setMealAutoSelected(true);
-        }
-        // V3 — the SAME category decision, extended: a photo that is not food and that the category call judged an Activity with HIGH
-        // confidence selects Activity under the identical rules (response-application time, never over a deliberate choice, undoable).
-        // Food always wins: `categoryVerdict` is "none" for any food image, so Activity can never steal a Meal.
-        const activityIsTheExperience = verdict === undefined || (verdict.kind === "activity" && settled);
-        if (!deliberate && !auto && smartAssistEnabled() && categoryVerdict(observation) === "select" && activityIsTheExperience) {
-          setD((x) => (x.intentSource !== "user" && x.intentSource !== "ai" ? { ...x, intent: "activity" as const, intentSource: "ai" as const } : x));
-          setActAutoSelected(true);
-        }
-        /*
-         * UHI-DEC-017 — INTELLIGENT AUTOMATIC CATEGORY SELECTION. Decided from EVERY reading this composition currently
-         * holds (this one included), never from arrival order — two photographs are analysed at once, and whichever answers
-         * last must reach the same conclusion. SYSTEMBOOM organises only when every settled reading agrees on ONE experience
-         * that is its own supported subject (the UHI-DEC-014 ceiling already holds an unsupported category below the lead
-         * band), the recommendation is SETTLED (`high` — an ambiguous lead is stated as "likely" and never acts) and it is a
-         * real match (`noMatch` is the neutral fallback, never a claim). HEALTH is excluded: the owner's table says SUGGEST a
-         * sensitive category, never select it; Meal and Activity keep their own specialist rules above. The moment the
-         * readings stop agreeing, SYSTEMBOOM withdraws ITS OWN choice and asks — a choice the PERSON made is never touched.
-         */
+        // PHASE C / V3 / UHI-DEC-014 / UHI-DEC-017 — automatic category selection, decided at RESPONSE-APPLICATION time from the
+        // COMPLETE set of readings this composition holds (never from arrival order, never over a person's choice): see
+        // `decideAutoCategory` above. The policy itself — food first, Activity only when it is the experience, the
+        // seven-category agreement for the other kinds, Health never — is unchanged.
         assetObsRef.current = { ...assetObsRef.current, [asset.id]: observation }; // synchronous: the next answer must see this one
-        if (!auto && smartAssistEnabled() && !editing && !directEntry) {
-          const settled = draftMedia
-            .map((m) => assetObsRef.current[m.id]?.suggestion)
-            .filter((v): v is NonNullable<typeof v> => !!v && !v.noMatch && v.primary.confidence === "high")
-            .map((v) => v.primary.kind);
-          const agreed = settled.length > 0 && settled.every((k) => k === settled[0]) ? settled[0] : null;
-          const next: RecordIntent | null = agreed && agreed !== "health" && agreed !== "meal" && agreed !== "activity" ? agreed : null;
-          if (next !== autoVisionRef.current) {
-            autoVisionRef.current = next; // synchronous for the same reason
-            setAutoByVision(next);
-            setD((x) => (x.intentSource === "user" ? x : next ? { ...x, intent: next, intentSource: "ai" as const } : x.intentSource === "ai" ? { ...x, intent: "social", intentSource: "default" as const } : x));
-          }
-        }
+        decideAutoCategory();
         // PHASE B — after recognition, look up REAL nutrition facts through the one server
         // boundary (`/api/food-facts`, or the packaged source first for a branded meal). Results
         // merge into SUGGESTION STATE only — the aiObservation is never touched. A miss or failure
@@ -1097,14 +1098,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       const live = () => actRunsRef.current.get(asset.id)?.gen === gen;
       setPendingActivity(asset.id, true);
       log({ key: asset.id, status: "start", observation: undefined });
-      analyzeActivityMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal } : { photoUrls: [asset.src], signal: controller.signal }).then((observation) => {
+      analyzeActivityMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal, assetRef: assetRefOf(asset.id, directEntry ? "circle_of_life" : "social_composer") } : { photoUrls: [asset.src], signal: controller.signal, assetRef: assetRefOf(asset.id, directEntry ? "circle_of_life" : "social_composer") }).then((observation) => {
         log({ key: asset.id, status: observation !== null ? "done" : "failed", observation });
         if (!live()) return; // removed, or retired by Smart Assist OFF — a late result never applies
         setPendingActivity(asset.id, false);
         setActObs((prev) => ({ ...prev, [asset.id]: observation }));
       });
     }
-  }, [editing, resolved, assistOn, draftMedia]);
+  }, [editing, resolved, assistOn, draftMedia, directEntry]); // directEntry is fixed for the composer's lifetime (telemetry header only)
   useEffect(
     () => () => {
       for (const run of actRunsRef.current.values()) run.controller.abort();
@@ -1176,14 +1177,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       setRecSince((prev) => ({ ...prev, [tg.key]: Date.now() }));
       log({ key: tg.key, status: "start", observation: undefined });
       const a = tg.asset;
-      analyzeRecordMedia({ category: tg.kind, ...(a ? (a.videoDuration ? { videoUrl: a.src } : { photoUrls: [a.src] }) : {}), text: dRef.current.text, signal: controller.signal }).then((observation) => {
+      analyzeRecordMedia({ category: tg.kind, ...(a ? (a.videoDuration ? { videoUrl: a.src } : { photoUrls: [a.src] }) : {}), ...(a ? { assetRef: assetRefOf(a.id, directEntry ? "circle_of_life" : "social_composer") } : {}), text: dRef.current.text, signal: controller.signal }).then((observation) => {
         log({ key: tg.key, status: observation !== null ? "done" : "failed", observation });
         if (!live()) return; // removed, retired, or a stale generation — a late result never applies
         setRecPending((prev) => prev.filter((k) => k !== tg.key));
         setRecObs((prev) => ({ ...prev, [tg.key]: observation }));
       });
     }
-  }, [editing, resolved, assistOn, draftMedia, textStable, recKindMap, recObs]);
+  }, [editing, resolved, assistOn, draftMedia, textStable, recKindMap, recObs, directEntry]); // directEntry: constant (telemetry header only)
   useEffect(
     () => () => {
       for (const run of recRunsRef.current.values()) run.controller.abort();
@@ -1729,12 +1730,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                       // An EXPLICITLY chosen Meal never takes this branch — its pill opens the
                       // chooser exactly as before (`mealAutoSelected` dies in chooseIntent).
                       if (resolved === "meal" && mealAutoSelected && !mixedContext) {
+                        autoUndoneRef.current = true;
                         setMealAutoSelected(false);
                         setD((x) => ({ ...x, intent: "social", intentSource: "default" }));
                         return;
                       }
                       // V3 — the same one-tap undo for an AI-AUTO-selected Activity (an explicit choice never takes this branch).
                       if (resolved === "activity" && actAutoSelected && !mixedContext) {
+                        autoUndoneRef.current = true;
                         setActAutoSelected(false);
                         setD((x) => ({ ...x, intent: "social", intentSource: "default" }));
                         return;
@@ -1744,6 +1747,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                     className={`${CHIP} bg-[var(--boom-soft)] text-text`}
                     data-sb-record-details
                     data-sb-record-pill={contextIntent}
+                    data-sb-category-commit={categoryCommit}
                     data-sb-intent-indicator={contextIntent}
                     data-sb-context-media={mixedContext && selId ? selId : undefined}
                   >

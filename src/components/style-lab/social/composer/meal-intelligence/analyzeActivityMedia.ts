@@ -11,6 +11,7 @@
  */
 import type { ActivityAIObservation } from "../../data";
 import { extractVideoKeyframes } from "./keyframes";
+import { heimHeaders, type AssetRef } from "../canonical-media";
 
 function mockParam(): string | null {
   try {
@@ -46,6 +47,8 @@ export interface AnalyzeActivityMediaInput {
   photoUrls?: string[];
   /** keyframes are extracted client-side; the original file is never sent */
   videoUrl?: string;
+  /** P2-B1 — which asset this reading is FOR; sent as opaque headers only (never in the body or the provider payload) */
+  assetRef?: AssetRef;
   signal?: AbortSignal;
 }
 
@@ -68,7 +71,7 @@ export async function analyzeActivityMedia(input: AnalyzeActivityMediaInput): Pr
       const qs = mock !== null ? `?mock=${encodeURIComponent(mock)}` : "";
       const res = await fetch(`/api/analyze-activity${qs}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...heimHeaders(input.assetRef) },
         body: JSON.stringify({ images: images.map((dataUrl) => ({ dataUrl })) }),
         signal: controller.signal,
       });

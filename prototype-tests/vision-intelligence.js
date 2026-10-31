@@ -47,7 +47,9 @@ const details = async (page) => { await page.evaluate(() => { const b = document
 const kind = async (page, aria) => { await details(page); await page.evaluate((a) => [...document.querySelectorAll(`[data-sb-kind-row] button[aria-label='${a}']`)][0]?.click(), aria); await sleep(400); };
 const waitFor = async (page, fn, arg, tries = 30, gap = 200) => { for (let i = 0; i < tries; i++) { if (await page.evaluate(fn, arg)) return true; await sleep(gap); } return false; };
 const pill = (page) => page.evaluate(() => document.querySelector("[data-sb-record-pill]")?.getAttribute("data-sb-record-pill") ?? null);
-const waitRecDone = (page, n = 1, tries = 60) => waitFor(page, (k) => (window.__SB_RECORD_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= k, n, tries, 200);
+// P2-B2.1 — wait for the reading of a SPECIFIC kind (a count of any finished reading is already satisfied by an earlier
+// auto-selected Project reading, so the test could look before the Meeting reading had landed — the VIS-P1-019 fleet flake)
+const waitRecKind = (page, kind, tries = 60) => waitFor(page, (k) => (window.__SB_RECORD_ANALYSIS_LOG ?? []).some((e) => e.key.startsWith(`${k}:`) && (e.status === "done" || e.status === "failed")), kind, tries, 200);
 const waitMealDone = (page, n = 1, tries = 60) => waitFor(page, (k) => (window.__SB_MEAL_ANALYSIS_LOG ?? []).filter((e) => e.status === "done" || e.status === "failed").length >= k, n, tries, 200);
 const newest = async (page) => (await state(page)).moments.filter((m) => m.id.startsWith("m-new-"))[0];
 const obs = (page) => page.evaluate(() => window.__SB_MEAL_ASSET_OBS ?? {});
@@ -335,7 +337,7 @@ async function attach(page, mock, photos, opts = {}) {
     c = await card(page);
     ok(c?.primary === "project", `VIS-P1-019: …Project is the suggestion before the person chooses (${c?.primary})`);
     await kind(page, "Meeting");
-    await waitRecDone(page, 1, 40);
+    await waitRecKind(page, "meeting");
     await sleep(600);
     let ui = await page.evaluate(() => {
       const rec = document.querySelector("[data-sb-record-card]");
@@ -374,7 +376,7 @@ async function attach(page, mock, photos, opts = {}) {
     // a corrected value is never overwritten by the reading that follows a further switch
     await attach(page, "vision-construction", [NYAT], { extra: "&mockrecord=meeting-construction" });
     await kind(page, "Meeting");
-    await waitRecDone(page, 1, 40);
+    await waitRecKind(page, "meeting");
     await sleep(400);
     await setField(page, "subject", "Site walkthrough with the client");
     await sleep(300);
@@ -399,7 +401,7 @@ async function attach(page, mock, photos, opts = {}) {
     await attach(page, "vision-construction", [NYAT], { viewport: PHONES.iphone375, extra: "&mockrecord=meeting-construction" });
     await waitCard(page);
     await kind(page, "Meeting");
-    await waitRecDone(page, 1, 40);
+    await waitRecKind(page, "meeting");
     await sleep(500);
     const m375 = await page.evaluate(() => {
       const rec = document.querySelector("[data-sb-record-card]");
@@ -447,7 +449,7 @@ async function attach(page, mock, photos, opts = {}) {
     await attach(page, "vision-construction", [NYAT], { extra: "&mockrecord=meeting-construction" });
     await waitFor(page, () => document.querySelector("[data-sb-record-pill]")?.getAttribute("data-sb-record-pill") === "project", null, 30, 200);
     await kind(page, "Meeting");
-    await waitRecDone(page, 1, 40);
+    await waitRecKind(page, "meeting");
     await sleep(500);
     const afterChange = await page.evaluate(() => ({ pill: document.querySelector("[data-sb-record-pill]")?.getAttribute("data-sb-record-pill"), text: document.querySelector("[data-sb-composer]")?.innerText ?? "", hint: !!document.querySelector("[data-sb-record-category-hint]"), subject: document.querySelector("[data-sb-ufield='subject']")?.value ?? null }));
     ok(afterChange.pill === "meeting" && !afterChange.hint && !/Looks like Project|Organized as Project|Continue as Project/i.test(afterChange.text), `AUTO-P1-007: SYSTEMBOOM chose Project, the person chose Meeting — Meeting stands with no Project message anywhere (pill ${afterChange.pill})`);
@@ -490,7 +492,7 @@ async function attach(page, mock, photos, opts = {}) {
     // 013/018 — the person's own values survive everything
     await attach(page, "vision-construction", [NYAT], { extra: "&mockrecord=kb-construction" });
     await waitFor(page, () => document.querySelector("[data-sb-record-pill]")?.getAttribute("data-sb-record-pill") === "project", null, 30, 200);
-    await waitRecDone(page, 1, 40);
+    await waitRecKind(page, "project");
     await sleep(400);
     await setField(page, "projectTitle", "Riverside depot");
     await sleep(250);

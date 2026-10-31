@@ -23,6 +23,7 @@ import { LIBRARY, type MediaAsset } from "../data";
 import { extractSourceMetadata } from "./media-metadata";
 import { reverseGeocode } from "./geocode-client";
 import { extractPosterFrame } from "./meal-intelligence/keyframes";
+import { registerCanonicalMedia } from "./canonical-media";
 
 /** ONE configurable technical limit (§11) — never a "10" scattered through the UI. */
 export const MEDIA_LIMIT = 10;
@@ -151,6 +152,8 @@ export function registerUploads(files: FileList | File[], onMetadataReady?: (id:
         }
       });
     }
+    // P2-B1 — register the ORIGINAL file's identity (SHA-256 + mime + size) so the asset gets a stable canonical id; best effort, never blocks
+    void registerCanonicalMedia(asset.id, f);
     session.push(asset);
     added.push(asset);
   }

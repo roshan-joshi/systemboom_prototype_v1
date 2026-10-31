@@ -107,6 +107,12 @@ function normalizeConfidences(parsed) {
 }
 
 (async () => {
+  // P2-B2 GATE 1 — this script makes REAL, BILLED calls, so it refuses to run without the same explicit live intent the
+  // server requires (an API key alone is never enough), and never under CI / NODE_ENV=test / SB_TEST_RUN.
+  if (process.env.SB_PROVIDER_MODE !== "live" || process.env.SB_PROVIDER_LIVE_CONFIRM !== "billed-provider-calls" || process.env.CI || process.env.NODE_ENV === "test" || process.env.SB_TEST_RUN) {
+    console.error("refused: live provider calls need SB_PROVIDER_MODE=live SB_PROVIDER_LIVE_CONFIRM=billed-provider-calls (and no CI/test env).");
+    process.exit(2);
+  }
   const env = loadEnvLocal();
   const apiKey = env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
