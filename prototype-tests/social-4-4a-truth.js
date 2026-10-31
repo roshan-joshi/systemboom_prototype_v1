@@ -35,7 +35,7 @@ async function open(page, vp, q = "") {
   // PHASE C mock-safety (same owner-approved Option A as social-composer.js): composer
   // flows here attach photos; `mockai=nonfood` keeps the broadened photo trigger off the
   // real provider and guarantees zero category side effects. Nothing else reads `mockai`.
-  await page.goto(`${BASE}?theme=light&harness=0&mockai=nonfood${q}`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}?theme=light&harness=0&mockai=nonfood&mockrecord=off${q}`, { waitUntil: "networkidle2" });
   await sleep(900);
 }
 const state = (page) => page.evaluate(() => window.__SB_SOCIAL_STATE);

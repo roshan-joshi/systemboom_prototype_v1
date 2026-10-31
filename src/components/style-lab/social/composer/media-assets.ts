@@ -22,6 +22,7 @@
 import { LIBRARY, type MediaAsset } from "../data";
 import { extractSourceMetadata } from "./media-metadata";
 import { reverseGeocode } from "./geocode-client";
+import { extractPosterFrame } from "./meal-intelligence/keyframes";
 
 /** ONE configurable technical limit (§11) — never a "10" scattered through the UI. */
 export const MEDIA_LIMIT = 10;
@@ -54,15 +55,50 @@ export function assetById(id: string): MediaAsset | undefined {
  * Video EXIF/GPS extraction is a documented live seam, not attempted in this pass (see
  * AGENTS.md "Phase UC-C4.4").
  */
+const HEIC_TYPES = new Set(["image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"]);
+/** HEIC/HEIF by MIME, or by extension when the browser reports no type at all (some platforms do). */
+export const isHeicFile = (f: File): boolean => HEIC_TYPES.has(f.type.toLowerCase()) || (f.type === "" && /\.(heic|heif)$/i.test(f.name));
+
+/**
+ * HEIC/HEIF prototype — ORIGINAL → browser-safe JPEG DERIVATIVE, client-side (`heic2any`, loaded on first use only). The
+ * original is never mutated: its own URL/name/type are kept on `asset.original`; `src` becomes the derivative the browser,
+ * canvas and the AI pipeline can actually read. Failure is a quiet per-asset state (`error: "heic"`), never a thrown error.
+ */
+async function deriveJpeg(asset: MediaAsset, f: File, originalUrl: string, notify?: (id: string) => void) {
+  try {
+    const { default: heic2any } = await import("heic2any");
+    const out = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.9 });
+    const blob = Array.isArray(out) ? out[0] : out;
+    if (!blob) throw new Error("no output");
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      asset.w = img.naturalWidth || asset.w;
+      asset.h = img.naturalHeight || asset.h;
+      notify?.(asset.id);
+    };
+    img.src = url;
+    asset.src = url;
+    asset.original = { name: f.name, type: f.type || "image/heic", src: originalUrl };
+    asset.processing = false;
+  } catch {
+    asset.processing = false;
+    asset.error = "heic";
+  }
+  notify?.(asset.id);
+}
+
 export function registerUploads(files: FileList | File[], onMetadataReady?: (id: string) => void): MediaAsset[] {
   const added: MediaAsset[] = [];
   for (const f of Array.from(files)) {
     const isVideo = f.type.startsWith("video/");
-    if (!isVideo && !f.type.startsWith("image/")) continue; // §10 — photos/videos here; documents are a live seam
+    const heic = !isVideo && isHeicFile(f);
+    if (!isVideo && !heic && !f.type.startsWith("image/")) continue; // §10 — photos/videos here; documents are a live seam
     const url = URL.createObjectURL(f);
     const asset: MediaAsset = {
       id: `up-${++seq}-${f.name.replace(/[^a-z0-9]+/gi, "").slice(0, 12) || "file"}`,
       src: url,
+      ...(heic || isVideo ? { processing: true } : {}),
       w: 1600,
       h: 1200,
       alt: f.name,
@@ -79,13 +115,27 @@ export function registerUploads(files: FileList | File[], onMetadataReady?: (id:
         asset.duration = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
       };
       v.src = url;
+      // VIDEO PREVIEW — the person must SEE what they attached: a poster frame is drawn from the clip's own first frame
+      // (client-side, never uploaded); until it exists the asset is "processing"; a format the browser cannot decode
+      // (.mov/HEVC on many browsers) becomes a clear per-asset error, never a blank box. AI keyframes wait for this too.
+      extractPosterFrame(url).then((poster) => {
+        if (poster) asset.poster = poster;
+        else asset.error = "video";
+        asset.processing = false;
+        onMetadataReady?.(asset.id);
+      });
     } else {
-      const img = new Image();
-      img.onload = () => {
-        asset.w = img.naturalWidth || asset.w;
-        asset.h = img.naturalHeight || asset.h;
-      };
-      img.src = url;
+      if (heic) {
+        // the derivative is made from the ORIGINAL file; metadata (below) is read from the original too, never from the derivative
+        deriveJpeg(asset, f, url, onMetadataReady);
+      } else {
+        const img = new Image();
+        img.onload = () => {
+          asset.w = img.naturalWidth || asset.w;
+          asset.h = img.naturalHeight || asset.h;
+        };
+        img.src = url;
+      }
       extractSourceMetadata(f).then((meta) => {
         asset.sourceMetadata = meta;
         if (meta.normalized.capturedAt) asset.takenAt = meta.normalized.capturedAt;

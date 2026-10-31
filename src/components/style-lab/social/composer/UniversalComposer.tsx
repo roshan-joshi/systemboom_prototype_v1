@@ -22,7 +22,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, ArrowRight, Camera, ChevronDown, ChevronLeft, FolderOpen, Image as ImageIcon, Link2, MapPin, Play, Search, Sparkles, Star, Upload, Users, X } from "lucide-react";
 import { useFocusTrap } from "@/components/identity/useFocusTrap";
@@ -30,14 +30,20 @@ import { now } from "@/lib/clock";
 import { easeOut } from "@/lib/motion";
 import { validateBirthDate } from "@/lib/identity/birth";
 import { PersonIdentity } from "@/components/identity/PersonIdentity";
-import { matchPeople, PEOPLE, PLACES, type FoodFacts, type MealAIObservation, type MealAssetState, type MediaAsset, type Privacy } from "../data";
+import { matchPeople, PEOPLE, PLACES, type ActivityAIObservation, type RecordAIObservation, type RecordKindAI, type FoodFacts, type MealAIObservation, type MealAssetState, type MediaAsset, type Privacy } from "../data";
 import { localISO, useSocial } from "../store";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { formatNumberLocale, sbDate } from "@/lib/i18n/format";
 import { allAssets, assetById, MEDIA_LIMIT, registerUploads } from "./media-assets";
 import { ASSIST_CAPABILITIES, extractAssist, setSmartAssist, smartAssistEnabled, type AssistSuggestion } from "./smart-assist";
-import { ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, applyAssetFacts, assetEditsFromDraft, ChipSelect, confirmAssetMeal, editAssetField, fillAssetMeal, overlayMealDraft, parseComponents, parseNutrient, seedAssetMeal, synthesizeMeal, type MealAssetField, DomainMore, DomainQuick, FIELD, finalizeMealIdentity, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, mealNutritionOf, MealSuggestion, mealLookupKeys, moreLabelKey, type IntelPhase, IntelWaiting, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
+import { ActivityCategorySuggestion, ActivitySuggestion, RecordSuggestion, VisionSuggestionCard, ACTIVITY_COMMON, ACTIVITY_TYPES, activityKey, applyAssetFacts, assetEditsFromDraft, ChipSelect, confirmAssetMeal, editAssetField, fillAssetMeal, overlayMealDraft, parseComponents, parseNutrient, seedAssetMeal, synthesizeMeal, type MealAssetField, DomainMore, DomainQuick, FIELD, finalizeMealIdentity, HEALTH_COMMON, HEALTH_TYPES, hasMore, healthTypeKey, KIND_DESC_KEY, KIND_LABEL_KEY, LABEL, MealCategorySuggestion, mealNutritionOf, MealSuggestion, mealLookupKeys, moreLabelKey, type IntelPhase, IntelWaiting, occasionKey, PLACEHOLDER_KEY, RECORD_KINDS, setDomain, TField } from "./domains";
 import { analyzeMealMedia } from "./meal-intelligence/analyzeMealMedia";
+import { analyzeActivityMedia } from "./meal-intelligence/analyzeActivityMedia";
+import { analyzeRecordMedia } from "./meal-intelligence/analyzeRecordMedia";
+import { applyRecordObservation, asHealthType, confirmRecordDomain, RECORD_SHOWN, type RecordDomain } from "./record-fields";
+import { Grouping } from "./Grouping";
+import { ASSET_KINDS, buildGroups, EMPTY_GROUPING, forgetAsset, mergeGroups, moveTo as groupMoveTo, moveToKind, startNewGroup, type GroupCategory, type GroupingState } from "./grouping-model";
+import { activityProvenance, applyActivityObservation, applyTextReading, categoryVerdict, confirmActivity, revokeActivityAsset } from "./activity-fields";
 import { commonActivityTypes, recentPeopleIds, recentPlaces } from "./recall";
 import { hasAnyMedia, resolveIntent, type HealthType, type RecordIntent, type UDraft } from "./types";
 import { buildSubmission, minimumProblem, successKey } from "./submit";
@@ -45,6 +51,15 @@ import { buildSubmission, minimumProblem, successKey } from "./submit";
 const TEXT_LIMIT = 2000;
 
 type Phase = "idle" | "posting" | "failed" | "discard";
+type AssetKind = (typeof ASSET_KINDS)[number];
+/** a tiny stable hash of the settled words — the key of a text-only specialist reading */
+function hashText(t: string): string {
+  let h = 5381;
+  const str = t.trim();
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+const isRecKind = (k: string | undefined): k is RecordKindAI => k === "project" || k === "problem" || k === "meeting" || k === "health";
 type SheetId = "record" | "media" | "mymedia" | "organizer" | "people" | "place" | "activityType" | "healthType" | null;
 
 /**
@@ -180,6 +195,54 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // PHASE C — the medium-confidence "Looks like a Meal — use it?" ask was declined for this
   // composition. Reset when a NEW media set starts a new analysis (a new photo is a new question).
   const [mealCatDismissed, setMealCatDismissed] = useState(false);
+  const [visionDismissed, setVisionDismissed] = useState(false); // V0.4 P1 — "Continue without" is final for this composition
+  /**
+   * UHI-DEC-017 — the category SYSTEMBOOM organised this composition as, when the seven-category verdict was strong and
+   * unambiguous enough to act on. Composer-local provenance, deliberately NOT a new `intentSource` value: the draft's own
+   * authority model (`default` < `media` < `ai` < `user`, plus `origin: "circle"` for a direct specialist entry) already
+   * carries the priority order, and `ai` is exactly "selected by SYSTEMBOOM". This state only remembers WHICH kind it chose,
+   * so the card can confirm it and a removed photo can take its choice back with it. Null the moment the person chooses.
+   */
+  const [autoByVision, setAutoByVision] = useState<RecordIntent | null>(null);
+  /** a direct entry from a specialist world (the Circle's "Record here") — its category is the person's, never SYSTEMBOOM's */
+  const directEntry = initial.origin === "circle";
+  // MIXED-MEDIA PROTOTYPE — the person's own per-photo category corrections (stable asset id → kind); carried by Keep draft
+  const [assetCategory, setAssetCategory] = useState<Record<string, AssetKind>>(() => initial.assetCategories ?? {});
+  // SOCIAL-4 — specialist readings (Project · Problem · Meeting · Health), ONE per (kind, asset) — or (kind, the words) when there is
+  // no media — composer-local like the Meal/Activity lifecycles; results cache per key, a late result applies only while live.
+  const [recObs, setRecObs] = useState<Record<string, RecordAIObservation | null>>({});
+  const [recPending, setRecPending] = useState<string[]>([]);
+  const [recSince, setRecSince] = useState<Record<string, number>>({});
+  const recRunsRef = useRef(new Map<string, { controller: AbortController; gen: number }>());
+  const recGenRef = useRef(0);
+  const recAppliedRef = useRef(new Set<string>());
+  const [textStable, setTextStable] = useState("");
+  // MIXED-MEDIA GROUPING — the person's own organisation of this post's media (Composer-local; carried by Keep draft only)
+  const [grouping, setGrouping] = useState<GroupingState>(() => initial.grouping ?? EMPTY_GROUPING);
+  // Phase A — ONE Media Organizer (the "organizer" sheet) with two modes; grouping is hosted inside it, never a second surface
+  const [organizerMode, setOrganizerMode] = useState<"all" | "group">("all");
+  const openOrganizer = (mode: "all" | "group", opener?: HTMLElement | null) => { setOrganizerMode(mode); openSheet("organizer", opener); };
+  const groupSeq = useRef(0);
+  const groupPrefix = useId();
+  const newGroupId = () => `g-u${groupPrefix.replace(/[^a-z0-9]/gi, "")}-${++groupSeq.current}`;
+  // V3 — ACTIVITY analysis (stage 2 of category-first). Composer-local on purpose (like the Meal lifecycle): one reading per asset,
+  // keyed by its stable id; nothing here is persisted into the draft (the field CELLS that matter — ownership — live in the draft).
+  const [actObs, setActObs] = useState<Record<string, ActivityAIObservation | null>>({});
+  const [, setActPending] = useState<string[]>([]);
+  const [actSince, setActSince] = useState<Record<string, number>>({});
+  const [actAutoSelected, setActAutoSelected] = useState(false);
+  const [actCatDismissed, setActCatDismissed] = useState(false);
+  // refs for the removal re-derivation inside the Meal effect (read, never a dependency)
+  const autoRef = useRef({ meal: false, act: false });
+  const autoVisionRef = useRef<RecordIntent | null>(null);
+  const assetObsRef = useRef<Record<string, MealAIObservation | null>>({});
+  const setPendingActivity = (id: string, on: boolean) => {
+    setActPending((prev) => (on ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id)));
+    if (on) setActSince((prev) => ({ ...prev, [id]: Date.now() }));
+  };
+  const actRunsRef = useRef(new Map<string, { controller: AbortController; gen: number }>());
+  const actGenRef = useRef(0);
+  const actAppliedRef = useRef(new Set<string>());
   // PHASE B — structured nutrition FACTS per looked-up food (keyed by the lookup name:
   // canonicalName, falling back to the everyday name). SUGGESTION STATE, deliberately kept
   // beside — never inside — the immutable `aiObservation`; cleared when a new media set
@@ -199,7 +262,8 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // MEAL V1 — every attached photo's OWN complete Meal form, keyed by its stable asset id. A Meal being edited that was
   // saved with per-photo states resumes them (matched by id, or by attach order when the old session's ids are gone).
   const [assetMeal, setAssetMeal] = useState<Record<string, MealAssetState>>(() => {
-    const stored = original?.fields?.mealAssets;
+    // a resumed KEEP DRAFT brings back each photo's own state (edits and clears included) the same way an edit of a saved Meal does
+    const stored = original?.fields?.mealAssets ?? initial.mealAssets;
     if (!stored?.length) return {};
     const out: Record<string, MealAssetState> = {};
     stored.forEach((st, i) => {
@@ -240,7 +304,16 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     sheetOpener.current = opener ?? (document.activeElement as HTMLElement | null);
     setSheet(id);
   };
+  // Phase A — "+ Add more" inside the organizer: the media pipeline's sheets close BACK to the organizer (mode preserved), so the
+  // person never leaves it; any other close goes to the composer as before
+  const sheetReturn = useRef<SheetId>(null);
   const closeSheet = () => {
+    const back = sheetReturn.current;
+    sheetReturn.current = null;
+    if (back) {
+      setSheet(back);
+      return;
+    }
     setSheet(null);
     requestAnimationFrame(() => sheetOpener.current?.focus?.());
   };
@@ -272,10 +345,10 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const draftMedia = d.mediaIds
     .map((id, i) => {
       const a = assetById(id);
-      if (a) return { id, src: a.src, alt: a.alt, w: a.w, h: a.h, videoDuration: a.mediaKind === "video" ? a.duration ?? "0:00" : undefined, takenAt: a.takenAt, takenPlace: a.takenPlace };
+      if (a) return { id, src: a.src, alt: a.alt, w: a.w, h: a.h, videoDuration: a.mediaKind === "video" ? a.duration ?? "0:00" : undefined, takenAt: a.takenAt, takenPlace: a.takenPlace, processing: a.processing, error: a.error, poster: a.poster };
       const idx = id.startsWith("orig-") ? Number(id.slice(5)) : -1;
       const o = origItems[idx] ?? origItems[i];
-      return o ? { id, src: o.src, alt: o.alt, w: o.w, h: o.h, videoDuration: o.videoDuration, takenAt: undefined, takenPlace: undefined } : null;
+      return o ? { id, src: o.src, alt: o.alt, w: o.w, h: o.h, videoDuration: o.videoDuration, takenAt: undefined, takenPlace: undefined, processing: undefined, error: undefined, poster: undefined } : null;
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
   const singleVideo = draftMedia.length === 1 && !!draftMedia[0].videoDuration;
@@ -377,7 +450,10 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // a just-attached asset (registerUploads' `onMetadataReady`). Re-runs the EXACT SAME
   // `applyDetectedMetadata` derivation against the LATEST draft — no new logic, just a
   // re-trigger now that the asset's own takenAt/takenPlace are populated for real.
+  // HEIC prototype — an asset's derivative/metadata landed: re-render so the collage, the analysis gates and the draft see it
+  const [, setMediaTick] = useState(0);
   const rederiveFromAsset = (assetId: string) => {
+    setMediaTick((t) => t + 1);
     const x = dRef.current;
     if (!x.mediaIds.includes(assetId)) return; // removed from the draft before metadata arrived
     const { next, snapshot } = applyDetectedMetadata(x, x.mediaIds);
@@ -387,6 +463,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const addUploads = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const added = registerUploads(files, rederiveFromAsset);
+    if (d.mediaIds.length + added.length > MEDIA_LIMIT) setIssue("ucomposer.mediaLimit"); // D11 — never silently dropped
     const mediaIds = [...d.mediaIds, ...added.map((a) => a.id)].slice(0, MEDIA_LIMIT);
     const { next, snapshot } = applyDetectedMetadata({ ...d, mediaIds, link: undefined }, mediaIds);
     if (snapshot) setMetaSnapshot(snapshot);
@@ -445,7 +522,52 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   /* ---- §20 minimum + §44 clear validation ---- */
   const over = d.text.length > TEXT_LIMIT;
   const minKey = minimumProblem(d);
-  const canPost = !over && !minKey && !beforeBirth && evProblem !== "future" && phase !== "posting";
+  // V3 — MIXED RECORD TYPES. One Social post has ONE primary record category (a cross-domain publication is a deferred architecture,
+  // not built here), so when the per-asset category reads already held for this composition disagree — a photo that is food AND a
+  // photo that is an Activity — the composer says so and holds Post until the PERSON picks one primary type (an explicit choice).
+  // Nothing is stored for this: it is derived from the existing per-asset observations, so it needs no schema and nothing persists.
+  // MIXED-MEDIA PROTOTYPE — each asset's own category: the person's correction first, else what its category read says.
+  const categoryOf = (id: string): AssetKind | undefined => {
+    if (assetCategory[id]) return assetCategory[id];
+    const o = assetObs[id];
+    if (!o) return undefined;
+    if (o.isFood === true && o.confidence !== "low") return "meal";
+    if (categoryVerdict(o) !== "none") return "activity";
+    return undefined;
+  };
+  const mixedKinds = new Set<AssetKind>();
+  for (const m of draftMedia) {
+    const c = categoryOf(m.id);
+    if (!c) continue;
+    mixedKinds.add(c);
+  }
+  // GROUPING category: the same per-asset reading, read for organising (not for the gate): a settled non-food, non-activity
+  // photo is a Life Moment; a failed or low-confidence read "needs review" (never forced into a kind); unread = pending.
+  const groupCategoryOf = (id: string): GroupCategory | undefined => {
+    if (assetCategory[id]) return assetCategory[id];
+    const o = assetObs[id];
+    if (o === undefined) return undefined;
+    if (o === null) return "review";
+    if (o.isFood === true) return o.confidence === "low" ? "review" : "meal";
+    const v = categoryVerdict(o);
+    if (v !== "none") return "activity";
+    if (o.activityCategory?.isActivity) return "review";
+    return "moment";
+  };
+  const groupView = buildGroups(grouping, draftMedia.map((m) => m.id), groupCategoryOf);
+  const groupOf = (id: string) => groupView.groups.find((g) => g.mediaIds.includes(id));
+  // Done: the organised post's kind is an EXPLICIT choice — one group left → that kind (Needs review → Life Moment); several
+  // groups → the one generic Life-Moment shell that carries every photo (mixedAssets record-only)
+  const settleKind = (): RecordIntent => {
+    if (groupView.groups.length !== 1) return "moment";
+    const c = groupView.groups[0].category;
+    return c === "meal" || c === "activity" ? c : "moment";
+  };
+  const organisedCard = assistOn && !editing && groupView.groups.length > 1 && !grouping.organised;
+  const organisedSummary = !editing && grouping.organised && groupView.groups.length > 1;
+  const mixedDetected = assistOn && !editing && mixedKinds.size > 1;
+  const mixedBlock = mixedDetected && d.intentSource !== "user";
+  const canPost = !over && !minKey && !beforeBirth && evProblem !== "future" && phase !== "posting" && !mixedBlock;
 
   /* ---- PHASE C — the MEDIUM-confidence category ask (never a modal, never while Meal is
    * already selected, never over a deliberate choice, gone for good once declined) ---- */
@@ -453,21 +575,114 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const mealCatAsk =
     assistOn && !editing && phase === "idle" && anyMedia && resolved !== "meal" && !mealCatDismissed &&
     d.intentSource !== "user" && d.intentSource !== "ai" &&
-    mealObs?.isFood === true && mealObs.confidence === "medium";
+    mealObs?.isFood === true && mealObs.confidence === "medium" &&
+    // UHI-DEC-014 — the medium ask is the same claim in a quieter voice: it may not contradict the seven-category verdict
+    // (food present at a celebration asks nothing; the Intelligence card offers the real choice instead).
+    (mealObs.suggestion === undefined || mealObs.suggestion.primary.kind === "meal");
+
+  /* ---- V3 — the MEDIUM-confidence ACTIVITY category ask (same rules as Meal's: never a modal, never over a deliberate choice,
+   * never while Activity is selected, gone for good once declined). The reading that decides is the first attached activity asset's. ---- */
+  const actAskObs = draftMedia.map((m) => assetObs[m.id]).find((o) => !!o && categoryVerdict(o) === "ask");
+  const actCatAsk =
+    assistOn && !editing && phase === "idle" && anyMedia && resolved !== "activity" && !actCatDismissed &&
+    d.intentSource !== "user" && d.intentSource !== "ai" && !!actAskObs &&
+    (actAskObs.suggestion === undefined || actAskObs.suggestion.primary.kind === "activity");
 
   /* ---- MEAL CAPTURE EXTENSION — the selected photo owns the detail panel (never arrival order) ---- */
   const selId = selectedAssetId && draftMedia.some((m) => m.id === selectedAssetId) ? selectedAssetId : (draftMedia[0]?.id ?? null);
+  // SELECTED-MEDIA CONTEXT — ONE anchor for every media-specific surface: in a mixed composition the pill, the contextual form,
+  // the intelligence card, Adjust/Looks right and More follow the SELECTED asset's effective group (its own reading, or the
+  // person's correction); otherwise the post's one category. Analysis gating and the save path keep reading `resolved`.
+  // Per-asset context applies when the composition GENUINELY holds different record kinds (food AND activity read — the gate's own
+  // definition) or once the person has organised it; a merely plain photo inside a Meal/Activity post stays part of that post (the
+  // accepted Meal behaviour: a photo with no reading is a blank, editable Meal form, not a different record).
+  const personOrganised = Object.keys(assetCategory).length > 0 || grouping.organised || grouping.groups.length > 0 || Object.keys(grouping.placed).length > 0;
+  const mixedContext = !editing && draftMedia.length > 1 && groupView.groups.length > 1 && (mixedKinds.size > 1 || personOrganised);
+  const selGroupCategory = selId ? groupOf(selId)?.category : undefined;
+  // a post-level kind the person chose explicitly (Health · Problem · Project · Meeting — not per-asset kinds in this prototype)
+  // is the whole post's context, even in a mixed composition
+  const contextIntent: RecordIntent = mixedContext && selGroupCategory ? (selGroupCategory === "review" ? "moment" : selGroupCategory) : resolved;
+  // SOCIAL-4 — the specialist kind the context is in, and the key of the reading that belongs to the selected asset (or the words)
+  const recKind: RecordKindAI | null = isRecKind(contextIntent) ? contextIntent : null;
+  // each attached asset's EFFECTIVE kind as one string — the reading effect re-runs exactly when an asset's kind changes
+  const recKindMap = draftMedia.map((m) => `${m.id}=${mixedContext ? (groupOf(m.id)?.category ?? "") : resolved}`).join("|");
+  const recTextKey = `text:${hashText(d.text)}`;
+  const recKey = recKind ? `${recKind}:${draftMedia.length ? selId ?? "" : recTextKey}` : null;
+  const recSelectedObs = recKey ? recObs[recKey] : undefined;
+  /* ---- V0.4 P1 — SMART CATEGORY SUGGESTIONS from the neutral Pass 1 reading. The card belongs to the selected asset (else the
+   * first read one); it shows ONLY while the category is not the person's own choice, never in a mixed composition (the
+   * organised card owns that), never over a legacy Meal/Activity ask, never for a Circle "Record here" draft, and never after
+   * "Continue without". It SUGGESTS — selection is always the person's (Use = an explicit choice). ---- */
+  const visionObs = (() => {
+    if (!anyMedia) return undefined;
+    const pick = (id?: string) => (id ? assetObs[id] : undefined);
+    const sel = selId ? pick(selId) : undefined;
+    if (sel?.suggestion) return sel;
+    return draftMedia.map((m) => assetObs[m.id]).find((o) => !!o?.suggestion);
+  })();
+  const visionSuggestion = visionObs?.suggestion;
+  const visionOrganized = !!autoByVision && d.intentSource === "ai" && visionSuggestion?.primary.kind === autoByVision && resolved === autoByVision;
+  const visionCard =
+    assistOn && !editing && phase === "idle" && anyMedia && !mixedContext && !visionDismissed && initial.origin !== "circle" &&
+    d.intentSource !== "user" && !mealCatAsk && !actCatAsk && !!visionSuggestion &&
+    // UHI-DEC-017 — the card either PROPOSES a category or CONFIRMS the one SYSTEMBOOM organised. It adds nothing when the
+    // composition already is that category for another reason (a Meal/Activity the specialist rules selected, which keep
+    // their own silent flow, or the plain Life-Moment fallback with no match).
+    (visionOrganized || (!(visionSuggestion.primary.kind === resolved && visionSuggestion.primary.kind !== "moment") &&
+      !(visionSuggestion.noMatch && resolved !== "moment" && resolved !== "social")));
+  const visionSeen = visionObs?.vision?.scene.description || visionObs?.vision?.scene.label || "";
+  // true only while SYSTEMBOOM's own choice still stands and still matches what the card is about to confirm
+
+  // Change on the pill / the chooser while a mixed composition is selected: the choice applies to the SELECTED asset only, through
+  // the existing grouping operations (human authority — a late reading never moves it back). Other kinds stay a post-level choice.
+  // ONE per-asset category change (the organizer's and, in a mixed composition, the chooser's): the existing grouping move +
+  // the person's correction; when every photo then agrees the post's own kind follows explicitly. Never an AI rerun.
+  const setAssetKind = (id: string, k: AssetKind) => {
+    setGrouping((st) => moveToKind(st, groupView.groups, id, k, newGroupId));
+    setAssetCategory((prev) => ({ ...prev, [id]: k }));
+    const others = draftMedia.filter((m) => m.id !== id).map((m) => groupOf(m.id)?.category);
+    if (others.length && others.every((c) => c === k)) chooseIntent(k);
+  };
+  const chooserScope = useRef<"post" | "asset">("post");
+  const pickKind = (k: RecordIntent) => {
+    if ((mixedContext || chooserScope.current === "asset") && selId && k !== "social") {
+      chooserScope.current = "post";
+      setAssetKind(selId, k);
+      return;
+    }
+    chooserScope.current = "post";
+    chooseIntent(k);
+  };
   const selObs = selId ? assetObs[selId] : undefined;
   const mealView =
     draftMedia.length > 1 && selId
       ? { obs: selObs, pending: pendingAssets.includes(selId), index: draftMedia.findIndex((m) => m.id === selId) + 1, total: draftMedia.length, assetId: selId, isPrimary: !!selObs && selObs === d.domains.meal.aiObservation }
       : undefined;
-  const mealSelectable = resolved === "meal" && draftMedia.length > 1;
+  const mealSelectable = (resolved === "meal" || mixedContext) && draftMedia.length > 1;
   // V1.1 — each photo's waiting phase, DERIVED from the real request state (never stored): analysis in flight → nutrition lookups in
   // flight → ready; a failed / switched-off / not-yet-eligible photo is plain manual. No new request, no timer.
   const photoPhase = (id: string): IntelPhase => {
     const m = draftMedia.find((x) => x.id === id);
-    if (!m || !assistOn || editing || (m.videoDuration && resolved !== "meal")) return "manual";
+    if (m?.processing) return "processing"; // HEIC prototype — the photo itself is being made readable; not AI
+    if (!m || m.error || !assistOn || editing || (m.videoDuration && resolved !== "meal" && resolved !== "activity")) return "manual";
+    const kindOf = mixedContext ? groupOf(id)?.category : resolved;
+    if (isRecKind(kindOf)) {
+      // SOCIAL-4 — a specialist reading has its own lifecycle; the category read (stage 1) still runs first for a photo
+      const ro = recObs[`${kindOf}:${id}`];
+      if (ro === undefined) return recPending.includes(`${kindOf}:${id}`) || !m.videoDuration ? "analyzing" : "manual";
+      return ro === null ? "manual" : "ready";
+    }
+    if (kindOf === "activity") {
+      // V3 — Activity's own derived phase: the Activity reading is the only stage left once Activity is selected. An Activity-read
+      // photo inside a post that is NOT (yet) Activity has only its category read to wait on — stage 2 never runs for it, so its
+      // phase settles on that read (never an endless "analyzing").
+      if (resolved !== "activity") {
+        const mo = assetObs[id];
+        return mo === undefined ? "analyzing" : mo === null ? "manual" : "ready";
+      }
+      const ao = actObs[id];
+      return ao === undefined ? "analyzing" : ao === null ? "manual" : "ready";
+    }
     const o = assetObs[id];
     if (o === undefined) return "analyzing"; // eligible and no answer yet — in flight (or about to be)
     if (o === null) return "manual";
@@ -477,9 +692,9 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // MEAL V1 — the SELECTED photo's complete form. While a Meal has photos, every Meal editor reads and writes THIS photo's
   // effective values (through the overlay draft below); a Meal with no photo, or an old one saved without per-photo
   // states, keeps editing the draft exactly as before.
-  const assetBound = resolved === "meal" && !!selId && (!editing || Object.keys(assetMeal).length > 0);
+  const assetBound = contextIntent === "meal" && !!selId && (!editing || Object.keys(assetMeal).length > 0);
   const selCells: MealAssetState | undefined = selId ? (assetMeal[selId] ?? seedAssetMeal(selId, d.domains.meal)) : undefined;
-  const viewDraft: UDraft = assetBound && selCells ? overlayMealDraft({ ...d, intent: resolved }, selCells) : { ...d, intent: resolved };
+  const viewDraft: UDraft = assetBound && selCells ? overlayMealDraft({ ...d, intent: contextIntent }, selCells) : { ...d, intent: contextIntent };
   const OVERLAY_KEYS = new Set(["items", "preparation", "occasion", "context"]);
   const viewSet = (f: (x: UDraft) => UDraft) => {
     if (!assetBound || !selId || !selCells) {
@@ -541,6 +756,18 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     });
   };
 
+  // V3 — Adjust: open the existing Activity fields and put the cursor in the first one; no modal, no second editor, no request.
+  const adjustActivity = () => {
+    setMoreOpen(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLInputElement>("[data-sb-ufield='distance']") ?? document.querySelector<HTMLInputElement>("[data-sb-domain-quick='activity'] input");
+      if (el) {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  };
+
   /* ---- SMART ASSIST (§25–§38): one quiet suggestion, only while enabled ---- */
   useEffect(() => {
     if (!assistOn || editing || suggDismissed.current || d.intentSource === "user" || d.intentSource === "ai" || phase !== "idle") {
@@ -572,7 +799,9 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     const retireAll = () => {
       for (const run of assetRunsRef.current.values()) run.controller.abort();
       assetRunsRef.current.clear();
-      setPendingAssets([]);
+      // prototype UX closure — a no-op when already empty: with Smart Assist OFF this effect re-runs on every render (its media
+      // dependency is rebuilt each render), and an unconditional `[]` re-rendered forever ("Maximum update depth exceeded")
+      setPendingAssets((prev) => (prev.length ? [] : prev));
     };
     if (editing || !assistOn) {
       if (!assistOn) retireAll();
@@ -582,13 +811,42 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     // PHASE B review fix (adversarial finding #1) + per-asset: a removed asset's run is retired on its
     // own (its late answer — and any lookups it would launch — can no longer apply). Everything else
     // is left exactly as it is.
+    let removedAny = false;
     for (const [id, run] of assetRunsRef.current) {
       if (!attached.has(id)) {
         run.controller.abort();
         assetRunsRef.current.delete(id);
+        removedAny = true;
       }
     }
     const pruneRemoved = () => {
+      // SELECTED-MEDIA CONTEXT — an AUTO-selected post category must not outlive the photo that selected it: when media is removed
+      // and the category was the AI's (never the person's), it is re-derived from the readings that remain, with the same HIGH-only
+      // rule the response handler applies (food first, then Activity), else back to the plain media default.
+      // UHI-DEC-017 — the readings changed, so SYSTEMBOOM's own choice is re-derived from what is left (same rule, no order)
+      if (removedAny && autoVisionRef.current) {
+        const settled = draftMedia
+          .map((m) => (attached.has(m.id) ? assetObsRef.current[m.id]?.suggestion : undefined))
+          .filter((v): v is NonNullable<typeof v> => !!v && !v.noMatch && v.primary.confidence === "high")
+          .map((v) => v.primary.kind);
+        const agreed = settled.length > 0 && settled.every((k) => k === settled[0]) ? settled[0] : null;
+        const next: RecordIntent | null = agreed && agreed !== "health" && agreed !== "meal" && agreed !== "activity" ? agreed : null;
+        autoVisionRef.current = next;
+        setAutoByVision(next);
+        setD((x) => (x.intentSource === "user" ? x : next ? { ...x, intent: next, intentSource: "ai" as const } : { ...x, intent: "social", intentSource: "default" as const }));
+      }
+      if (removedAny && (autoRef.current.meal || autoRef.current.act)) {
+        const remaining = draftMedia.map((m) => assetObsRef.current[m.id]).filter((o): o is MealAIObservation => !!o);
+        // UHI-DEC-014 — re-derivation applies the SAME experience-first rule as the response handler (a reading whose
+        // verdict is not Meal/Activity never re-selects it when another photo is removed).
+        const settledAs = (o: MealAIObservation, k: string) => !o.suggestion || (o.suggestion.primary.kind === k && o.suggestion.primary.confidence === "high");
+        const meal = remaining.some((o) => o.isFood === true && o.confidence === "high" && settledAs(o, "meal"));
+        const act = !meal && remaining.some((o) => categoryVerdict(o) === "select" && settledAs(o, "activity"));
+        const next: RecordIntent = meal ? "meal" : act ? "activity" : "social";
+        setD((x) => (x.intentSource === "user" ? x : { ...x, intent: next, intentSource: next === "social" ? "default" : "ai" }));
+        setMealAutoSelected(meal);
+        setActAutoSelected(act);
+      }
       setPendingAssets((prev) => (prev.every((id) => attached.has(id)) ? prev : prev.filter((id) => attached.has(id))));
       setAssetObs((prev) => (Object.keys(prev).every((id) => attached.has(id)) ? prev : Object.fromEntries(Object.entries(prev).filter(([id]) => attached.has(id)))));
       // MEAL V1 — a removed photo takes ITS form with it; the others keep theirs (keyed by id, so nothing shifts or is reassigned).
@@ -599,7 +857,8 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     // PHASE C — PHOTOS analyze on attach regardless of the current category (the observation
     // decides what happens next); VIDEO keyframe extraction keeps its original Meal-selected
     // gate (heavier work, and the Phase C brief scopes the broadened trigger to photos).
-    const eligible = draftMedia.filter((m) => (m.videoDuration ? resolved === "meal" : true));
+    // HEIC prototype — a photo still being converted (or one that could not be) has no pixels to read yet: not eligible
+    const eligible = draftMedia.filter((m) => !m.processing && !m.error && (m.videoDuration ? resolved === "meal" : true));
     for (const asset of eligible) {
       if (assetRunsRef.current.has(asset.id)) continue; // already running/done for this exact asset — one call per unchanged asset
       if (assetRunsRef.current.size === 0) {
@@ -611,6 +870,8 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
       assetRunsRef.current.set(asset.id, { controller, gen });
       const live = () => assetRunsRef.current.get(asset.id)?.gen === gen;
       setMealCatDismissed(false); // PHASE C — a new asset is a new question
+      setVisionDismissed(false); // V0.4 P1 — likewise for the vision suggestion
+      setActCatDismissed(false);
       setPendingAssets((prev) => (prev.includes(asset.id) ? prev : [...prev, asset.id]));
       setAssetSince((prev) => ({ ...prev, [asset.id]: Date.now() }));
       const w = window as unknown as {
@@ -643,10 +904,51 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         // (route-side); a HIGH non-food or MEDIUM/LOW food never selects here.
         const cur = dRef.current;
         const deliberate = cur.intentSource === "user" || cur.intentSource === "ai";
-        const auto = !deliberate && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high";
+        // UHI-DEC-014 — food being PRESENT is not the same as the meal being the experience. Where the reading carries a
+        // seven-category verdict (V0.4 Pass 1), Meal may auto-select only when that verdict says the meal IS the primary
+        // experience; a birthday cake therefore offers the choice instead of selecting Meal. A legacy reading with no
+        // verdict keeps the accepted Phase C behaviour exactly (isFood + HIGH).
+        // …and an AMBIGUOUS verdict (the classifier states its primary as "likely", not "best") is a question for the
+        // person, never a silent selection — Example C of UHI-DEC-014.
+        const verdict = observation.suggestion?.primary;
+        const settled = verdict?.confidence === "high";
+        const mealIsTheExperience = verdict === undefined || (verdict.kind === "meal" && settled);
+        const auto = !deliberate && smartAssistEnabled() && observation.isFood === true && observation.confidence === "high" && mealIsTheExperience;
         if (auto) {
           setD((x) => (x.intentSource !== "user" && x.intentSource !== "ai" ? { ...x, intent: "meal" as const, intentSource: "ai" as const } : x)); // re-guarded at application
           setMealAutoSelected(true);
+        }
+        // V3 — the SAME category decision, extended: a photo that is not food and that the category call judged an Activity with HIGH
+        // confidence selects Activity under the identical rules (response-application time, never over a deliberate choice, undoable).
+        // Food always wins: `categoryVerdict` is "none" for any food image, so Activity can never steal a Meal.
+        const activityIsTheExperience = verdict === undefined || (verdict.kind === "activity" && settled);
+        if (!deliberate && !auto && smartAssistEnabled() && categoryVerdict(observation) === "select" && activityIsTheExperience) {
+          setD((x) => (x.intentSource !== "user" && x.intentSource !== "ai" ? { ...x, intent: "activity" as const, intentSource: "ai" as const } : x));
+          setActAutoSelected(true);
+        }
+        /*
+         * UHI-DEC-017 — INTELLIGENT AUTOMATIC CATEGORY SELECTION. Decided from EVERY reading this composition currently
+         * holds (this one included), never from arrival order — two photographs are analysed at once, and whichever answers
+         * last must reach the same conclusion. SYSTEMBOOM organises only when every settled reading agrees on ONE experience
+         * that is its own supported subject (the UHI-DEC-014 ceiling already holds an unsupported category below the lead
+         * band), the recommendation is SETTLED (`high` — an ambiguous lead is stated as "likely" and never acts) and it is a
+         * real match (`noMatch` is the neutral fallback, never a claim). HEALTH is excluded: the owner's table says SUGGEST a
+         * sensitive category, never select it; Meal and Activity keep their own specialist rules above. The moment the
+         * readings stop agreeing, SYSTEMBOOM withdraws ITS OWN choice and asks — a choice the PERSON made is never touched.
+         */
+        assetObsRef.current = { ...assetObsRef.current, [asset.id]: observation }; // synchronous: the next answer must see this one
+        if (!auto && smartAssistEnabled() && !editing && !directEntry) {
+          const settled = draftMedia
+            .map((m) => assetObsRef.current[m.id]?.suggestion)
+            .filter((v): v is NonNullable<typeof v> => !!v && !v.noMatch && v.primary.confidence === "high")
+            .map((v) => v.primary.kind);
+          const agreed = settled.length > 0 && settled.every((k) => k === settled[0]) ? settled[0] : null;
+          const next: RecordIntent | null = agreed && agreed !== "health" && agreed !== "meal" && agreed !== "activity" ? agreed : null;
+          if (next !== autoVisionRef.current) {
+            autoVisionRef.current = next; // synchronous for the same reason
+            setAutoByVision(next);
+            setD((x) => (x.intentSource === "user" ? x : next ? { ...x, intent: next, intentSource: "ai" as const } : x.intentSource === "ai" ? { ...x, intent: "social", intentSource: "default" as const } : x));
+          }
         }
         // PHASE B — after recognition, look up REAL nutrition facts through the one server
         // boundary (`/api/food-facts`, or the packaged source first for a branded meal). Results
@@ -729,13 +1031,210 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         }
       });
     }
-  }, [editing, resolved, assistOn, draftMedia]);
+  }, [editing, resolved, assistOn, draftMedia, directEntry]);
   useEffect(
     () => () => {
       for (const run of assetRunsRef.current.values()) run.controller.abort();
     },
     [],
   );
+
+  /*
+   * V3 — ACTIVITY, stage 2 of CATEGORY-FIRST. Stage 1 is the existing category intelligence (the Meal analysis, extended with an
+   * Activity category call for a photo that is not food); this stage — the Activity-specific reading — starts ONLY once Activity is
+   * the selected category (auto-selected at HIGH, accepted at MEDIUM, or chosen by the person). It never selects anything itself, so
+   * a late result can never reselect Activity after the person moved on. Each attached asset is read ONCE per lifecycle; a removed
+   * asset's run is retired on its own. VIDEO is eligible here (keyframes, client-side) — only because Activity is already selected.
+   * `!assistOn` returns before `analyzeActivityMedia` is referenced: AI OFF = zero requests.
+   */
+  useEffect(() => {
+    const retireAll = () => {
+      for (const run of actRunsRef.current.values()) run.controller.abort();
+      actRunsRef.current.clear();
+      actAppliedRef.current.clear();
+      setActPending((prev) => (prev.length ? [] : prev)); // no-op when already empty — never a render loop
+    };
+    if (editing || !assistOn) {
+      if (!assistOn) retireAll();
+      return;
+    }
+    const attached = new Set(draftMedia.map((m) => m.id));
+    const removed: string[] = [];
+    for (const [id, run] of actRunsRef.current) {
+      if (!attached.has(id)) {
+        run.controller.abort();
+        actRunsRef.current.delete(id);
+        removed.push(id);
+      }
+    }
+    for (const id of [...actAppliedRef.current]) if (!attached.has(id) && !removed.includes(id)) removed.push(id);
+    if (removed.length) {
+      // a removed asset takes back what ITS reading wrote (and the person never touched); the others re-apply on top
+      for (const id of [...actAppliedRef.current]) actAppliedRef.current.delete(id);
+      const pruneActivity = () => {
+        setActPending((prev) => prev.filter((id) => attached.has(id)));
+        setActObs((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => attached.has(id))));
+        setD((x) => {
+          let a = x.domains.activity;
+          for (const id of removed) a = revokeActivityAsset(a, id);
+          return a === x.domains.activity ? x : { ...x, domains: { ...x.domains, activity: a } };
+        });
+      };
+      pruneActivity();
+    }
+    if (draftMedia.length === 0 || resolved !== "activity") return;
+    const w = window as unknown as { __SB_ACTIVITY_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }> };
+    const log = (entry: { key: string; status: string; observation: unknown }) => {
+      if (!w.__SB_ACTIVITY_ANALYSIS_LOG) w.__SB_ACTIVITY_ANALYSIS_LOG = [];
+      w.__SB_ACTIVITY_ANALYSIS_LOG.push(entry);
+    };
+    for (const asset of draftMedia) {
+      if (asset.processing || asset.error) continue; // HEIC prototype — no pixels yet (or none possible)
+      if (actRunsRef.current.has(asset.id)) continue; // one reading per unchanged asset lifecycle
+      const controller = new AbortController();
+      const gen = ++actGenRef.current;
+      actRunsRef.current.set(asset.id, { controller, gen });
+      const live = () => actRunsRef.current.get(asset.id)?.gen === gen;
+      setPendingActivity(asset.id, true);
+      log({ key: asset.id, status: "start", observation: undefined });
+      analyzeActivityMedia(asset.videoDuration ? { videoUrl: asset.src, signal: controller.signal } : { photoUrls: [asset.src], signal: controller.signal }).then((observation) => {
+        log({ key: asset.id, status: observation !== null ? "done" : "failed", observation });
+        if (!live()) return; // removed, or retired by Smart Assist OFF — a late result never applies
+        setPendingActivity(asset.id, false);
+        setActObs((prev) => ({ ...prev, [asset.id]: observation }));
+      });
+    }
+  }, [editing, resolved, assistOn, draftMedia]);
+  useEffect(
+    () => () => {
+      for (const run of actRunsRef.current.values()) run.controller.abort();
+    },
+    [],
+  );
+  useEffect(() => {
+    (window as unknown as { __SB_ACTIVITY_ASSET_OBS?: unknown }).__SB_ACTIVITY_ASSET_OBS = actObs;
+  }, [actObs]);
+  // test/diagnostic seam (same spirit as the Meal globals): the Activity field cells of the live draft
+  useEffect(() => {
+    (window as unknown as { __SB_ACTIVITY_CELLS?: unknown }).__SB_ACTIVITY_CELLS = d.domains.activity.field;
+  }, [d.domains.activity.field]);
+  // SOCIAL-4 — the words settle 900 ms after typing stops (so a text-only reading is asked once per settled text, never per keystroke)
+  useEffect(() => {
+    const t = window.setTimeout(() => setTextStable(d.text.trim()), 900);
+    return () => window.clearTimeout(t);
+  }, [d.text]);
+  /*
+   * SOCIAL-4 — SPECIALIST READINGS, category-gated. Only an asset whose EFFECTIVE kind is Project · Problem · Meeting · Health is read,
+   * and only for THAT kind (the composition's authoritative choice: the person's, or the grouping's); a photo is read once per
+   * (kind, asset) and cached — re-selecting, switching kinds and back, opening More, Looks right, edits, Keep draft and Post never
+   * re-ask. With no media the words are read once per settled text. `!assistOn` returns before the helper is referenced: AI OFF = 0.
+   */
+  useEffect(() => {
+    const retireAll = () => {
+      for (const run of recRunsRef.current.values()) run.controller.abort();
+      recRunsRef.current.clear();
+      recAppliedRef.current.clear();
+      setRecPending((prev) => (prev.length ? [] : prev));
+    };
+    if (editing || !assistOn) {
+      if (!assistOn) retireAll();
+      return;
+    }
+    const attached = new Set(draftMedia.map((m) => m.id));
+    for (const [key, run] of recRunsRef.current) {
+      const id = key.slice(key.indexOf(":") + 1);
+      if (!id.startsWith("text:") && !attached.has(id)) {
+        run.controller.abort();
+        recRunsRef.current.delete(key);
+      }
+    }
+    const kindOf = new Map(recKindMap.split("|").filter(Boolean).map((e) => e.split("=") as [string, string]));
+    const targets: { key: string; kind: RecordKindAI; asset?: (typeof draftMedia)[number] }[] = [];
+    if (draftMedia.length) {
+      for (const m of draftMedia) {
+        if (m.processing || m.error) continue;
+        const k = kindOf.get(m.id);
+        if (!isRecKind(k)) continue;
+        if (m.videoDuration && resolved !== k) continue; // keyframes only for the post's own kind (heavier work)
+        targets.push({ key: `${k}:${m.id}`, kind: k, asset: m });
+      }
+    } else if (isRecKind(resolved) && textStable.length >= 3) {
+      targets.push({ key: `${resolved}:text:${hashText(textStable)}`, kind: resolved });
+    }
+    const w = window as unknown as { __SB_RECORD_ANALYSIS_LOG?: Array<{ key: string; status: string; observation: unknown }> };
+    const log = (entry: { key: string; status: string; observation: unknown }) => {
+      if (!w.__SB_RECORD_ANALYSIS_LOG) w.__SB_RECORD_ANALYSIS_LOG = [];
+      w.__SB_RECORD_ANALYSIS_LOG.push(entry);
+    };
+    for (const tg of targets) {
+      if (recRunsRef.current.has(tg.key) || Object.prototype.hasOwnProperty.call(recObs, tg.key)) continue; // once per (kind, asset|text)
+      const controller = new AbortController();
+      const gen = ++recGenRef.current;
+      recRunsRef.current.set(tg.key, { controller, gen });
+      const live = () => recRunsRef.current.get(tg.key)?.gen === gen;
+      setRecPending((prev) => (prev.includes(tg.key) ? prev : [...prev, tg.key]));
+      setRecSince((prev) => ({ ...prev, [tg.key]: Date.now() }));
+      log({ key: tg.key, status: "start", observation: undefined });
+      const a = tg.asset;
+      analyzeRecordMedia({ category: tg.kind, ...(a ? (a.videoDuration ? { videoUrl: a.src } : { photoUrls: [a.src] }) : {}), text: dRef.current.text, signal: controller.signal }).then((observation) => {
+        log({ key: tg.key, status: observation !== null ? "done" : "failed", observation });
+        if (!live()) return; // removed, retired, or a stale generation — a late result never applies
+        setRecPending((prev) => prev.filter((k) => k !== tg.key));
+        setRecObs((prev) => ({ ...prev, [tg.key]: observation }));
+      });
+    }
+  }, [editing, resolved, assistOn, draftMedia, textStable, recKindMap, recObs]);
+  useEffect(
+    () => () => {
+      for (const run of recRunsRef.current.values()) run.controller.abort();
+    },
+    [],
+  );
+  useEffect(() => {
+    (window as unknown as { __SB_RECORD_OBS?: unknown }).__SB_RECORD_OBS = recObs;
+  }, [recObs]);
+  useEffect(() => {
+    (window as unknown as { __SB_RECORD_DOMAINS?: unknown }).__SB_RECORD_DOMAINS = { project: d.domains.project, problem: d.domains.problem, meeting: d.domains.meeting, health: d.domains.health };
+  }, [d.domains.project, d.domains.problem, d.domains.meeting, d.domains.health]);
+  // SOCIAL-4 — the reading that belongs to the CURRENT context (the selected asset's, or the words') fills ITS kind's fields through the
+  // V2 contract — HIGH/MEDIUM into untouched empty fields only; never over an edit, a confirmation or a clear; a reading cached under
+  // another kind or another asset never touches the active form. Idempotent, so re-selection costs nothing.
+  // V3 GROUP INTELLIGENCE: every asset that belongs with the selected one (its group — or the whole composition when it is
+  // one kind) contributes its own reading, in asset order, into fields still empty; a reading is applied once per key, and a
+  // reading cached under another kind or another group never touches the active form.
+  const recGroupKeys = recKind && draftMedia.length ? (mixedContext && selId ? (groupOf(selId)?.mediaIds ?? [selId]) : draftMedia.map((m) => m.id)).map((id) => `${recKind}:${id}`).join("|") : recKey ?? "";
+  useEffect(() => {
+    if (!recKind || !recKey || editing) return;
+    const keys = recGroupKeys.split("|").filter(Boolean);
+    const pending = keys.filter((k) => { const o = recObs[k]; return !!o && o.status === "complete" && !recAppliedRef.current.has(k); });
+    if (!pending.length) return;
+    for (const k of pending) recAppliedRef.current.add(k);
+    setD((x) => {
+      let cur = x.domains[recKind] as RecordDomain;
+      for (const k of pending) {
+        const o = recObs[k]!;
+        const id = k.slice(k.indexOf(":") + 1);
+        cur = applyRecordObservation(recKind, cur, o, id.startsWith("text:") ? undefined : id);
+      }
+      if (cur === x.domains[recKind]) return x;
+      const nd = recKind === "health" ? { ...(cur as typeof x.domains.health), healthType: asHealthType((cur as typeof x.domains.health).healthType) ?? (cur as typeof x.domains.health).healthType } : cur;
+      return { ...x, domains: { ...x.domains, [recKind]: nd } };
+    });
+  }, [recKind, recKey, recGroupKeys, recObs, editing]);
+  // V3 — Social Quick is prefilled from the reading ONLY once Activity is the selected category: the primary asset first, a later
+  // asset only fills what is still empty. Every fill goes through the field contract (user edit / clear / confirm is never replaced).
+  useEffect(() => {
+    if (resolved !== "activity" || editing || !assistOn) return;
+    const primaryId = draftMedia.find((m) => actObs[m.id]?.isActivity)?.id;
+    const todo = draftMedia.filter((m) => actObs[m.id]?.isActivity && !actAppliedRef.current.has(m.id)).sort((a, b) => (a.id === primaryId ? -1 : b.id === primaryId ? 1 : 0));
+    if (!todo.length) return;
+    for (const m of todo) actAppliedRef.current.add(m.id);
+    setD((x) => {
+      let a = x.domains.activity;
+      for (const m of todo) a = applyActivityObservation(a, actObs[m.id] as ActivityAIObservation, m.id === primaryId, m.id);
+      return a === x.domains.activity ? x : { ...x, domains: { ...x.domains, activity: a } };
+    });
+  }, [resolved, editing, assistOn, draftMedia, actObs]);
 
   /*
    * MEAL CAPTURE EXTENSION — the Meal's canonical observation is the PRIMARY asset's: the first
@@ -780,20 +1279,30 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   // test/diagnostic seam (same spirit as `__SB_MEAL_ANALYSIS_LOG`): the per-asset observations, by asset id
   useEffect(() => {
     (window as unknown as { __SB_MEAL_ASSET_OBS?: unknown }).__SB_MEAL_ASSET_OBS = assetObs;
+    assetObsRef.current = assetObs;
   }, [assetObs]);
+  useEffect(() => {
+    autoRef.current = { meal: mealAutoSelected, act: actAutoSelected };
+    autoVisionRef.current = autoByVision;
+  }, [mealAutoSelected, actAutoSelected, autoByVision]);
 
   /* ---- intent selection (§7/§26 — switching never loses common or per-domain work) ---- */
   const chooseIntent = (k: RecordIntent) => {
     setD((x) => ({ ...x, intent: k, intentSource: "user" }));
     setMealAutoSelected(false); // PHASE C — an explicit choice is never "auto-selected"; the undo gesture dies here
+    setActAutoSelected(false);
+    setAutoByVision(null); // UHI-DEC-017 — human correction always wins: SYSTEMBOOM's own choice is over
+    autoVisionRef.current = null;
     setMoreOpen(false);
     setSugg(null);
   };
   const applySuggestion = (s: AssistSuggestion) => {
     setMealAutoSelected(false); // PHASE C — accepting a text suggestion is a deliberate act, never the auto-selection's undo target
+    setActAutoSelected(false);
     setD((x) => {
       let next: UDraft = { ...x, intent: s.kind ?? x.intent, intentSource: "ai" };
-      if (s.kind === "activity") next = { ...next, domains: { ...next.domains, activity: { ...next.domains.activity, type: s.activityType ?? next.domains.activity.type, distance: s.distance ?? next.domains.activity.distance, duration: s.duration ?? next.domains.activity.duration } } };
+      // V3 — the person's OWN words: the reading keeps `user_text` provenance and never replaces a value they already own.
+      if (s.kind === "activity") next = { ...next, domains: { ...next.domains, activity: applyTextReading(next.domains.activity, { type: s.activityType, distance: s.distance, duration: s.duration }) } };
       if (s.kind === "meal" && s.occasion) next = { ...next, domains: { ...next.domains, meal: { ...next.domains.meal, occasion: s.occasion } } };
       // UC-C4.1 §5/§6 — accepting "Use details" IS the person's deliberate confirmation.
       // UC-C4.2 §12 — provenance consistency only: the words were the person's own, Smart
@@ -824,7 +1333,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
     if (phase === "posting") return; // §30 lock — one POST
     if (!canPost) {
       // §44 — explain and focus, never a mystery-disabled button.
-      setIssue(minKey ?? (over ? "ucomposer.tooLong" : beforeBirth ? "composer.beforeLife" : evProblem === "future" ? "composer.futureDate" : null));
+      setIssue(minKey ?? (mixedBlock ? "ucomposer.mixedHint" : over ? "ucomposer.tooLong" : beforeBirth ? "composer.beforeLife" : evProblem === "future" ? "composer.futureDate" : null));
       textRef.current?.focus();
       return;
     }
@@ -869,6 +1378,48 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
         }
       }
       const action = buildSubmission(ready, original, linkTitle, me.id, newId);
+      if (resolved === "activity") {
+        // V3 — the original AI reading of the PRIMARY asset rides on the record (record-only, immutable once written); an edit keeps
+        // the record's own and never regenerates it. Provenance is rebuilt from the cells, or kept from the record on an edit.
+        const primaryId = draftMedia.find((m) => actObs[m.id]?.isActivity)?.id;
+        const observation = editing ? original?.fields?.activityAIObservation : primaryId ? (actObs[primaryId] ?? undefined) : undefined;
+        const prov = activityProvenance(ready.domains.activity) ?? (editing ? original?.fields?.activityProvenance : undefined);
+        const extra = { ...(observation ? { activityAIObservation: observation } : {}), ...(prov ? { activityProvenance: prov } : {}) };
+        if (Object.keys(extra).length) {
+          if (action.type === "post") action.moment.fields = { ...action.moment.fields, ...extra };
+          else action.patch.fields = { ...(action.patch.fields ?? original?.fields), ...extra };
+        }
+      }
+      // V0.4 P1 — the primary asset's neutral visual observation travels at record depth (never rendered, never a claim)
+      {
+        const primaryVision = draftMedia.map((m) => assetObs[m.id]?.vision).find((v) => !!v) ?? (editing ? original?.fields?.visualObservation : undefined);
+        if (primaryVision) {
+          if (action.type === "post") action.moment.fields = { ...action.moment.fields, visualObservation: primaryVision };
+          else action.patch.fields = { ...(action.patch.fields ?? original?.fields), visualObservation: primaryVision }; // an edit keeps the owner's private observation
+        }
+      }
+      if (isRecKind(resolved) && !editing) {
+        // SOCIAL-4 — the reading the record was made with (selected asset's, or the words'), record-only and immutable; Health keeps it
+        // on the private record exactly like every other Health depth (never the Social projection)
+        const o = recKey ? recObs[recKey] : undefined;
+        if (o && o.status === "complete") {
+          if (action.type === "post") action.moment.fields = { ...action.moment.fields, recordAIObservation: o };
+          else action.patch.fields = { ...(action.patch.fields ?? original?.fields), recordAIObservation: o };
+        }
+      }
+      if (resolved === "moment" && groupView.groups.length > 1 && !editing) {
+        // MIXED-MEDIA PROTOTYPE — ONE generic post carrying every photo; each photo's own category + readings travel record-only
+        // (nothing is rendered beyond a count line, no Meal/Activity field is copied, no canonical Meal/Activity record is claimed)
+        const mixedAssets = draftMedia.map((m) => {
+          const mo = assetObs[m.id];
+          const ao = actObs[m.id];
+          const gc = groupOf(m.id)?.category;
+          const category = gc && gc !== "review" ? gc : ("moment" as const);
+          const ro = isRecKind(gc) && gc !== "health" ? recObs[`${gc}:${m.id}`] : undefined; // a Health reading never leaves the private record
+          return { assetId: m.id, category, ...(mo ? { mealAIObservation: mo } : {}), ...(ao ? { activityAIObservation: ao } : {}), ...(ro ? { recordAIObservation: ro } : {}) };
+        });
+        if (action.type === "post") action.moment.fields = { ...action.moment.fields, mixedAssets };
+      }
       if (mealAssets) {
         if (action.type === "post") action.moment.fields = { ...action.moment.fields, mealAssets };
         else action.patch.fields = { ...(action.patch.fields ?? original?.fields), mealAssets };
@@ -884,11 +1435,11 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
   const audienceName = (a: Privacy) => (a === "public" ? t("privacy.public") : a === "friends" ? t("privacy.friends") : t("privacy.onlyMe"));
   // §7 — the smart pill's subtype word, when the record already knows one.
   const pillSub =
-    resolved === "meal" && d.domains.meal.occasion
-      ? d.domains.meal.occasion === "other" && d.domains.meal.occasionCustom ? d.domains.meal.occasionCustom : t(occasionKey(d.domains.meal.occasion))
-      : resolved === "activity" && d.domains.activity.type
+    contextIntent === "meal" && viewDraft.domains.meal.occasion
+      ? viewDraft.domains.meal.occasion === "other" && viewDraft.domains.meal.occasionCustom ? viewDraft.domains.meal.occasionCustom : t(occasionKey(viewDraft.domains.meal.occasion))
+      : contextIntent === "activity" && d.domains.activity.type
         ? t(activityKey(d.domains.activity.type))
-        : resolved === "health" && d.domains.health.healthType
+        : contextIntent === "health" && d.domains.health.healthType
           ? t(healthTypeKey(d.domains.health.healthType))
           : null;
 
@@ -1002,9 +1553,13 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               {/* MEDIA (§15) — 1 strong preview · 2–4 collage · 5+ compact collage + "+N" */}
               {draftMedia.length > 0 && (
                 <div className="mt-2" data-sb-media-collage={draftMedia.length}>
-                  <div className={`grid gap-[3px] overflow-hidden rounded-[12px] ${draftMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                    {collageShown.map((p, i) => (
-                      <span key={p.id + i} className={`relative block overflow-hidden bg-[var(--sheet-raised)] ${draftMedia.length === 1 ? "max-h-56" : "aspect-[4/3]"} ${mealSelectable ? `cursor-pointer focus-visible:outline-[var(--focus)] ${selId === p.id ? "outline outline-2 -outline-offset-2 outline-[var(--focus)]" : ""}` : ""}`} style={draftMedia.length === 1 ? { aspectRatio: `${p.w} / ${p.h}` } : undefined} data-sb-thumb={p.id}
+                  {/* the collage CONTAINER owns the geometry (one bounded frame per count — never the images' own heights):
+                      1 → one 4:3 preview · 2 → two equal columns (2:1) · 3 → one large + two stacked (3:2) · 4+ → a 2×2 frame (4:3),
+                      the fourth tile carrying the translucent "+N more" overlay as a sibling INSIDE its cell, never a fifth cell */}
+                  <div className={`grid gap-[3px] overflow-hidden rounded-[12px] bg-[var(--hair)] ${draftMedia.length === 1 ? "grid-cols-1 aspect-[4/3]" : draftMedia.length === 2 ? "grid-cols-2 aspect-[2/1]" : draftMedia.length === 3 ? "grid-cols-[3fr_2fr] grid-rows-2 aspect-[3/2]" : "grid-cols-2 grid-rows-2 aspect-[4/3]"}`} data-sb-collage-grid={Math.min(draftMedia.length, 5)}>
+                    {collageShown.map((p, i) => {
+                      const tile = (
+                      <span key={p.id + i} className={`relative block h-full w-full min-h-0 overflow-hidden bg-[var(--sheet-raised)] ${draftMedia.length === 3 && i === 0 ? "row-span-2" : ""} ${mealSelectable ? `cursor-pointer focus-visible:outline-[var(--focus)] ${selId === p.id ? "outline outline-2 -outline-offset-2 outline-[var(--focus)]" : ""}` : ""}`} style={draftMedia.length === 1 ? { aspectRatio: `${p.w} / ${p.h}` } : undefined} data-sb-thumb={p.id}
                         data-sb-asset-state={photoPhase(p.id)}
                         aria-busy={photoPhase(p.id) === "analyzing" || photoPhase(p.id) === "resolving" ? true : undefined}
                         {...(mealSelectable
@@ -1023,7 +1578,23 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                               },
                             }
                           : null)}>
-                        <Thumb src={p.src} alt={p.alt} className="h-full w-full object-cover" />
+                        {p.processing ? (
+                          <span role="img" aria-label={t("ucomposer.processingPhoto")} className="flex h-full w-full items-center justify-center bg-[var(--sheet-raised)] px-1 text-center text-[10px] text-muted" data-sb-media-processing>
+                            {t("ucomposer.processingPhoto")}
+                            <span className="sb-intel" aria-hidden><span className="sb-intel-halo" /></span>
+                          </span>
+                        ) : p.error ? (
+                          <span role="img" aria-label={p.alt} className="flex h-full w-full items-center justify-center bg-[var(--sheet-raised)] px-1 text-center text-[10px] text-muted" data-sb-media-error={p.error}>
+                            {p.alt}
+                          </span>
+                        ) : (
+                          <Thumb src={p.poster ?? p.src} alt={p.alt} className="h-full w-full object-cover" />
+                        )}
+                        {groupView.groups.length > 1 && groupOf(p.id) && (
+                          <span className="absolute bottom-1.5 right-1.5 rounded-[4px] bg-[rgba(10,13,20,0.7)] px-1.5 py-0.5 text-[10px] font-semibold text-white" data-sb-asset-category={groupOf(p.id)!.category}>
+                            {groupOf(p.id)!.category === "review" ? t("ucomposer.needsReview") : kindName(groupOf(p.id)!.category as RecordIntent)}
+                          </span>
+                        )}
                         {(photoPhase(p.id) === "analyzing" || photoPhase(p.id) === "resolving") && (
                           <>
                             <span className="sb-intel" data-sb-intel-pulse={photoPhase(p.id)} aria-hidden>
@@ -1037,7 +1608,6 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                             <span className="sr-only" data-sb-intel-status>{photoPhase(p.id) === "analyzing" ? "Reading this photo" : "Checking nutrition"}</span>
                           </>
                         )}
-                        {i === 0 && draftMedia.length > 1 && <span className="absolute top-1.5 left-1.5 rounded-[4px] bg-[rgba(10,13,20,0.7)] px-1.5 py-0.5 text-[10px] font-semibold text-white">{t("ucomposer.cover")}</span>}
                         {p.videoDuration && (
                           <>
                             <span aria-hidden className="absolute inset-0 flex items-center justify-center">
@@ -1047,22 +1617,39 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                           </>
                         )}
                         {p.takenAt && <span aria-hidden title={t("composer.hasDateInFile")} className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--boom)]" />}
-                        {collageExtra > 0 && i === collageShown.length - 1 && (
-                          <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-[rgba(10,13,20,0.55)] text-[18px] font-semibold text-white tabular-nums">+{collageExtra}</span>
-                        )}
                       </span>
-                    ))}
+                      );
+                      if (!(collageExtra > 0 && i === 3)) return tile;
+                      // the fourth cell: photo 4 underneath, the "+N more" button as a translucent overlay in the SAME cell —
+                      // a real control opening the one Media Organizer (Phase A); it never selects tile 4 and never adds a cell
+                      return (
+                        <span key={`${p.id}-overflow`} className="relative block h-full w-full min-h-0 overflow-hidden" data-sb-collage-overflow-cell>
+                          {tile}
+                          <button type="button" aria-label={t("ucomposer.showAllMedia", { n: draftMedia.length })} onClick={(e) => openOrganizer("all", e.currentTarget)} className="sb-press absolute inset-0 z-[1] flex items-center justify-center bg-[rgba(10,13,20,0.5)] text-[16px] font-semibold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.6)] hover:bg-[rgba(10,13,20,0.58)] focus-visible:outline-[var(--focus)] focus-visible:-outline-offset-2" data-sb-media-more={collageExtra}>
+                            {t("ucomposer.moreN", { n: collageExtra })}
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                   <p className="mt-1 flex items-baseline gap-2 text-[12px] text-muted">
-                    <span className="tabular-nums">{t("ucomposer.nMedia", { n: draftMedia.length })}</span>
-                    <button type="button" onClick={(e) => openSheet("organizer", e.currentTarget)} className="sb-press min-h-7 rounded-full px-1.5 font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-media-edit>
+                    <span className="tabular-nums" data-sb-media-count>{draftMedia.length >= MEDIA_LIMIT ? t("ucomposer.nOfLimitMedia", { n: draftMedia.length, limit: MEDIA_LIMIT }) : t("ucomposer.nMedia", { n: draftMedia.length })}</span>
+                    <button type="button" onClick={(e) => openOrganizer("all", e.currentTarget)} className="sb-press min-h-7 rounded-full px-1.5 font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-media-edit>
                       {t("ucomposer.editMedia")}
                     </button>
                   </p>
                   {/* the accepted single-video caption, in place */}
                   {singleVideo && (
                     <input value={d.videoCaption ?? ""} onChange={(e) => setD((x) => ({ ...x, videoCaption: e.target.value || undefined }))} placeholder={t("composer.caption")} aria-label={t("composer.caption")} className={`${FIELD} mt-2 w-full`} />
-                  )}
+              )}
+                  {draftMedia.filter((m) => m.error).map((m) => (
+                    <p key={m.id} role="alert" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted" {...(m.error === "video" ? { "data-sb-video-error": m.id } : { "data-sb-heic-error": m.id })}>
+                      <span>{t(m.error === "video" ? "ucomposer.videoUnsupported" : "ucomposer.heicFailed")}</span>
+                      <button type="button" onClick={() => toggleAsset(m.id)} className="sb-press min-h-7 rounded-full px-1.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-heic-remove={m.id}>
+                        {t("composer.removePhoto", { n: draftMedia.findIndex((x) => x.id === m.id) + 1 })}
+                      </button>
+                    </p>
+                  ))}
                 </div>
               )}
 
@@ -1141,8 +1728,14 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                       // and no re-selection (application happens once per analysis result).
                       // An EXPLICITLY chosen Meal never takes this branch — its pill opens the
                       // chooser exactly as before (`mealAutoSelected` dies in chooseIntent).
-                      if (resolved === "meal" && mealAutoSelected) {
+                      if (resolved === "meal" && mealAutoSelected && !mixedContext) {
                         setMealAutoSelected(false);
+                        setD((x) => ({ ...x, intent: "social", intentSource: "default" }));
+                        return;
+                      }
+                      // V3 — the same one-tap undo for an AI-AUTO-selected Activity (an explicit choice never takes this branch).
+                      if (resolved === "activity" && actAutoSelected && !mixedContext) {
+                        setActAutoSelected(false);
                         setD((x) => ({ ...x, intent: "social", intentSource: "default" }));
                         return;
                       }
@@ -1150,12 +1743,13 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                     }}
                     className={`${CHIP} bg-[var(--boom-soft)] text-text`}
                     data-sb-record-details
-                    data-sb-record-pill={resolved}
-                    data-sb-intent-indicator={resolved}
+                    data-sb-record-pill={contextIntent}
+                    data-sb-intent-indicator={contextIntent}
+                    data-sb-context-media={mixedContext && selId ? selId : undefined}
                   >
-                    <span aria-hidden className="inline-flex">{KIND_GLYPH[resolved]}</span>
+                    <span aria-hidden className="inline-flex">{KIND_GLYPH[contextIntent]}</span>
                     <span className={CHIP_WORD}>
-                      {kindName(resolved)}
+                      {kindName(contextIntent)}
                       {pillSub ? ` · ${pillSub}` : ""}
                     </span>
                     <span aria-hidden className={`${CHIP_WORD} text-muted`} data-sb-intent-change>{t("ucomposer.change")}</span>
@@ -1203,12 +1797,69 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               {/* PHASE C — the medium-confidence ask lives OUTSIDE the Meal-only domain block:
                   it exists precisely while Meal is NOT selected. Yes IS an explicit selection. */}
               {mealCatAsk && <MealCategorySuggestion onYes={() => chooseIntent("meal")} onNo={() => setMealCatDismissed(true)} />}
+              {visionCard && visionSuggestion && (
+                <VisionSuggestionCard
+                  seen={visionSeen}
+                  sceneLabel={visionObs?.vision?.scene.label ?? ""}
+                  confidence={visionSuggestion.primary.confidence}
+                  primary={visionSuggestion.primary.kind}
+                  primaryName={kindName(visionSuggestion.primary.kind)}
+                  alternatives={visionSuggestion.alternatives.map((a) => ({ kind: a.kind, name: kindName(a.kind) }))}
+                  noMatch={visionSuggestion.noMatch}
+                  organized={visionOrganized}
+                  onUse={() => { chooseIntent(visionSuggestion.primary.kind); setVisionDismissed(true); }}
+                  onChoose={() => { chooserScope.current = "post"; openSheet("record"); }}
+                  onSkip={() => setVisionDismissed(true)}
+                />
+              )}
+              {(organisedCard || mixedBlock) && (
+                <div role="group" aria-label={t("ucomposer.organisedTitle")} className="mt-2 grid gap-1.5 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] px-3 py-2 text-[13px] text-text" data-sb-mixed-records data-sb-organised-card>
+                  <p className="text-[13px] font-semibold text-text" data-sb-mixed-title>{t("ucomposer.organisedTitle")}</p>
+                  <p className="text-[12px] text-muted">{t("ucomposer.organisedFound", { n: new Set(groupView.groups.map((g) => g.category)).size })}</p>
+                  <p className="grid gap-0.5 text-[12px] text-text" data-sb-mixed-summary>
+                    {groupView.groups.map((g) => (
+                      <span key={g.id} data-sb-organised-line={g.category}>{g.category === "review" ? t("ucomposer.needsReview") : kindName(g.category as RecordIntent)} · {g.mediaIds.length}</span>
+                    ))}
+                  </p>
+                  <span className="inline-flex flex-wrap gap-1">
+                    <button type="button" onClick={() => { setGrouping((st) => ({ ...st, organised: true })); chooseIntent("moment"); }} title={t("ucomposer.mixedKeepAllHint")} className="sb-press inline-flex min-h-9 items-center rounded-full bg-steel/10 px-3 text-[13px] font-medium text-text focus-visible:outline-[var(--focus)]" data-sb-mixed-use="moment" data-sb-keep-together>
+                      {t("ucomposer.keepTogether")}
+                    </button>
+                    <button type="button" onClick={(e) => openOrganizer("group", e.currentTarget)} className="sb-press inline-flex min-h-9 items-center rounded-full border border-[var(--hair)] px-3 text-[13px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-review-group>
+                      {t("ucomposer.reviewGroup")}
+                    </button>
+                  </span>
+                </div>
+              )}
+              {organisedSummary && (
+                <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted" data-sb-organised-summary>
+                  <span className="font-medium text-text">{t("ucomposer.yourPost")}</span>
+                  {groupView.groups.map((g) => (
+                    <span key={g.id} data-sb-organised-line={g.category}>{g.category === "review" ? t("ucomposer.needsReview") : kindName(g.category as RecordIntent)} · {g.mediaIds.length}</span>
+                  ))}
+                  <button type="button" onClick={(e) => openOrganizer("group", e.currentTarget)} className="sb-press min-h-7 rounded-full px-1.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-review-group>{t("ucomposer.review")}</button>
+                </p>
+              )}
+              {actCatAsk && <ActivityCategorySuggestion onYes={() => chooseIntent("activity")} onNo={() => setActCatDismissed(true)} />}
 
               {/* DOMAIN QUICK — the same composer, adapted in place */}
-              {resolved !== "social" && (
-                <div key={resolved} className="sb-reveal mt-3" data-sb-kind-fields={resolved}>
+              {contextIntent !== "social" && (
+                <div key={contextIntent} className="sb-reveal mt-3" data-sb-kind-fields={contextIntent}>
                   <DomainQuick draft={viewDraft} set={viewSet} min={me.birthDate} onOpenSheet={(s) => openSheet(s)} activityCommon={activityCommon} />
-                  {mealAnalyzing && resolved !== "meal" && !editing &&
+                  {contextIntent === "activity" && !editing && selPhase === "analyzing" && (
+                    <div className="mt-2">
+                      <IntelWaiting key={selId ?? "photo"} subject="activity" since={selId ? actSince[selId] : undefined} />
+                    </div>
+                  )}
+                  {contextIntent === "activity" && anyMedia && !editing && <ActivitySuggestion activity={d.domains.activity} onLookRight={() => setD((x) => ({ ...x, domains: { ...x.domains, activity: confirmActivity(x.domains.activity) } }))} onAdjust={adjustActivity} />}
+                  {recKind && !editing && recKey && recPending.includes(recKey) && (
+                    <div className="mt-2">
+                      <IntelWaiting key={recKey} subject="record" label={t("ucomposer.understandingKind", { kind: kindName(recKind).toLowerCase() })} since={recSince[recKey]} />
+                    </div>
+                  )}
+                  {recKind && !editing && <RecordSuggestion kind={recKind} domain={viewDraft.domains[recKind] as RecordDomain} observation={recSelectedObs} kindName={kindName(recKind)} hintName={recSelectedObs?.categoryHint && d.intentSource !== "user" ? kindName(recSelectedObs.categoryHint) : undefined} onLookRight={() => setD((x) => ({ ...x, domains: { ...x.domains, [recKind]: confirmRecordDomain(recKind, x.domains[recKind] as RecordDomain) } }))} onAdjust={() => { setMoreOpen(true); requestAnimationFrame(() => { const first = RECORD_SHOWN[recKind][0]; const hook = recKind === "project" && first === "title" ? "projectTitle" : recKind === "problem" && first === "description" ? "problemDescription" : recKind === "health" && first === "healthType" ? "healthDescription" : first; document.querySelector<HTMLInputElement>(`[data-sb-ufield='${hook}']`)?.focus(); }); }} />}
+                  {recKind === "health" && assistOn && !editing && <p className="mt-1.5 text-[11px] text-muted" data-sb-health-ai-note>{t("ucomposer.healthAiNote")}</p>}
+                  {mealAnalyzing && contextIntent !== "meal" && contextIntent !== "activity" && !recKind && !editing &&
                     (d.intentSource === "user" ? (
                       <p className="mt-2 text-[12px] text-muted" data-sb-photo-reading role="status">Looking at your photo…</p>
                     ) : (
@@ -1218,11 +1869,11 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                         </div>
                       )
                     ))}
-                  {resolved === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: resolved }} set={setD} analyzing={mealAnalyzing} view={mealView} cells={selCells} onLookRight={lookRight} onAdjust={adjustMeal} openMore={() => setMoreOpen(true)} facts={mealFacts} since={selId ? assetSince[selId] : undefined} factsPending={selPhase === "resolving"} />}
-                  {hasMore(resolved) && (
-                    <div className={resolved === "moment" ? "" : "mt-2"}>
+                  {contextIntent === "meal" && anyMedia && <MealSuggestion draft={{ ...d, intent: contextIntent }} set={setD} analyzing={mealAnalyzing} view={mealView} cells={selCells} onLookRight={lookRight} onAdjust={adjustMeal} openMore={() => setMoreOpen(true)} facts={mealFacts} since={selId ? assetSince[selId] : undefined} factsPending={selPhase === "resolving"} />}
+                  {hasMore(contextIntent) && (
+                    <div className={contextIntent === "moment" ? "" : "mt-2"}>
                       <button type="button" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} className="sb-press -ml-2 inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-[12px] text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-more-toggle>
-                        <span aria-hidden className={`sb-transition inline-block text-[10px] ${moreOpen ? "rotate-90" : ""}`}>›</span> {t(moreLabelKey(resolved))}
+                        <span aria-hidden className={`sb-transition inline-block text-[10px] ${moreOpen ? "rotate-90" : ""}`}>›</span> {t(moreLabelKey(contextIntent))}
                       </button>
                       {moreOpen && (
                         <div className="sb-reveal mt-2" data-sb-more>
@@ -1240,7 +1891,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               {backdated && <p className="mt-1.5 text-[12px] text-muted">{t("composer.backdatedNote")}</p>}
 
               {/* §48 — Health sharing awareness: audience vs the private record, stated once */}
-              {resolved === "health" && (
+              {contextIntent === "health" && (
                 <p className="mt-3 rounded-[12px] border border-[var(--hair)] px-3 py-2 text-[12px] text-muted" data-sb-health-sharing>
                   <span className="font-medium text-text">{t("ucomposer.sharingWith", { audience: audienceName(d.audience) })}</span>{" "}
                   {t("ucomposer.healthShareNote")}
@@ -1248,7 +1899,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
               )}
 
               {/* §44 — a clear inline reason, never a mystery */}
-              {issue && <p role="alert" className="mt-2 text-[12px] text-[var(--danger)]" data-sb-composer-issue>{t(issue)}</p>}
+              {issue && <p role="alert" className="mt-2 text-[12px] text-[var(--danger)]" data-sb-composer-issue>{t(issue, issue === "ucomposer.mediaLimit" ? { limit: MEDIA_LIMIT } : undefined)}</p>}
             </div>
 
             {/* FOOTER (§55) — POST, stable and reachable; safe-area on phones (S7) */}
@@ -1266,7 +1917,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[13px] text-text">{t("ucomposer.keepDraftQ")}</p>
                     <span className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => { dispatch({ type: "udraft", draft: d }); onClose(); }} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-3 text-[13px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">{t("composer.keepDraft")}</button>
+                      <button type="button" onClick={() => { const kept = Object.values(assetMealRef.current); const cats = Object.keys(assetCategory).length ? assetCategory : undefined; const grp = grouping.organised || grouping.groups.length || Object.keys(grouping.placed).length ? grouping : undefined; dispatch({ type: "udraft", draft: { ...d, ...(kept.length ? { mealAssets: kept } : {}), ...(cats ? { assetCategories: cats } : {}), ...(grp ? { grouping: grp } : {}) } }); onClose(); }} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-3 text-[13px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]">{t("composer.keepDraft")}</button>
                       <button type="button" onClick={() => { dispatch({ type: "udraft", draft: null }); onClose(); }} className="sb-press min-h-9 rounded-full px-3 text-[13px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">{t("composer.discard")}</button>
                       {/* §55/§82 — never an ambiguous "Back" here */}
                       <button type="button" autoFocus onClick={() => setPhase("idle")} className="sb-press min-h-9 rounded-full px-3 text-[13px] text-muted hover:text-text focus-visible:outline-[var(--focus)]">{t("ucomposer.continueEditing")}</button>
@@ -1311,7 +1962,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
             {/* ============================== FOCUSED SHEETS (§6/§56) ============================== */}
 
             {sheet === "record" && (
-              <Sheet title={t("ucomposer.addDetails")} onBack={closeSheet} hook="record">
+              <Sheet title={t("ucomposer.addDetails")} onBack={() => { chooserScope.current = "post"; closeSheet(); }} hook="record">
                 <div className="grid gap-1" data-sb-record-panel>
                   <div role="radiogroup" aria-label={t("ucomposer.socialMode")}>
                     <button type="button" role="radio" aria-checked={resolved === "social"} onClick={() => { chooseIntent("social"); closeSheet(); }} className={`${ROW_BTN} ${resolved === "social" ? "bg-[var(--boom-soft)]" : ""}`} data-sb-record-social-only>
@@ -1325,9 +1976,9 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                   <p className={`${LABEL} mt-3 px-3`}>{t("ucomposer.recordThisAs")}</p>
                   <div role="radiogroup" aria-label={t("ucomposer.recordThisAs")} className="grid gap-0.5" data-sb-kind-row>
                     {RECORD_KINDS.map((k) => {
-                      const on = resolved === k;
+                      const on = contextIntent === k;
                       return (
-                        <button key={k} type="button" role="radio" aria-checked={on} aria-label={t(KIND_LABEL_KEY[k])} onClick={() => { chooseIntent(k); closeSheet(); }} className={`${ROW_BTN} ${on ? "bg-[var(--boom-soft)]" : ""}`}>
+                        <button key={k} type="button" role="radio" aria-checked={on} aria-label={t(KIND_LABEL_KEY[k])} onClick={() => { pickKind(k); closeSheet(); }} className={`${ROW_BTN} ${on ? "bg-[var(--boom-soft)]" : ""}`}>
                           <span aria-hidden className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--hair)] text-muted">{KIND_GLYPH[k]}</span>
                           <span className="min-w-0">
                             <span className={`block text-[14px] text-text ${on ? "font-semibold" : "font-medium"}`} data-sb-kind-label>{t(KIND_LABEL_KEY[k])}</span>
@@ -1342,7 +1993,7 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
             )}
 
             {sheet === "media" && (
-              <Sheet title={t("ucomposer.addMedia")} onBack={closeSheet} hook="media">
+              <Sheet title={t("ucomposer.addMedia")} onBack={() => { sheetReturn.current = null; closeSheet(); }} hook="media">
                 <p className="pb-2 text-[12px] text-muted tabular-nums">{t("composer.ofLimit", { n: d.mediaIds.length, limit: MEDIA_LIMIT })}{d.mediaIds.length >= MEDIA_LIMIT ? t("composer.removeOneToAdd") : ""}</p>
                 <div className="grid gap-0.5">
                   {/* §10 — clear SOURCES, human words. Upload/Camera are real file inputs. */}
@@ -1416,46 +2067,135 @@ export function UniversalComposer({ open, onClose, initial }: { open: boolean; o
                 hook="organizer"
                 footer={
                   <div className="flex items-center justify-between gap-2">
-                    <button type="button" onClick={() => setSheet("media")} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-3 text-[13px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)]" data-sb-organizer-add>
-                      + {t("ucomposer.addMore")}
-                    </button>
-                    <button type="button" onClick={closeSheet} className="sb-press min-h-9 rounded-full bg-[var(--boom)] px-4 text-[13px] font-semibold text-white focus-visible:outline-[var(--focus)]">{t("ucomposer.done")}</button>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <button type="button" disabled={draftMedia.length >= MEDIA_LIMIT} onClick={() => { sheetReturn.current = "organizer"; setSheet("media"); }} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-3 text-[13px] font-medium text-text hover:border-steel/60 focus-visible:outline-[var(--focus)] disabled:opacity-50" data-sb-organizer-add>
+                        + {t("ucomposer.addMore")}
+                      </button>
+                      <span className="text-[12px] text-muted tabular-nums" data-sb-organizer-count>{draftMedia.length >= MEDIA_LIMIT ? t("ucomposer.nOfLimitMedia", { n: draftMedia.length, limit: MEDIA_LIMIT }) : t("ucomposer.nMedia", { n: draftMedia.length })}</span>
+                    </span>
+                    <button type="button" onClick={closeSheet} className="sb-press min-h-9 rounded-full bg-[var(--boom)] px-4 text-[13px] font-semibold text-white focus-visible:outline-[var(--focus)]" data-sb-organizer-done>{t("ucomposer.done")}</button>
                   </div>
                 }
               >
-                <ul className="grid gap-1.5" data-sb-organizer-list>
-                  {draftMedia.map((p, i) => (
-                    <li key={p.id + i} className="flex items-center gap-2.5 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-1.5" data-sb-thumb={p.id}>
-                      <span className="relative block h-14 w-14 shrink-0 overflow-hidden rounded-[8px] bg-[var(--sheet-raised)]">
-                        <Thumb src={p.src} alt={p.alt} className="h-full w-full object-cover" />
-                        {p.videoDuration && <span className="absolute bottom-0.5 left-0.5 rounded-[3px] bg-[rgba(10,13,20,0.82)] px-1 text-[9px] font-medium text-white tabular-nums">{p.videoDuration}</span>}
-                        {p.takenAt && <span aria-hidden title={t("composer.hasDateInFile")} className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-[var(--boom)]" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px] text-text">{p.alt}</span>
-                        {i === 0 && <span className="mt-0.5 inline-block rounded-[4px] bg-[var(--boom-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-text">{t("ucomposer.cover")}</span>}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-0.5">
-                        {i > 0 && (
-                          <button type="button" aria-label={t("ucomposer.makeCover", { n: i + 1 })} title={t("ucomposer.makeCover", { n: i + 1 })} onClick={() => makeCover(i)} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-steel/15 hover:text-text focus-visible:outline-[var(--focus)]" data-sb-make-cover={i}><Star size={13} /></button>
-                        )}
-                        {/* §65 — accessible reorder (never drag-only), named for what the item IS */}
-                        {i > 0 && (
-                          <button type="button" aria-label={t(p.videoDuration ? "ucomposer.moveVideoEarlier" : "composer.movePhotoEarlier", { n: i + 1 })} onClick={() => moveAsset(i, -1)} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-steel/15 hover:text-text focus-visible:outline-[var(--focus)]"><ArrowLeft size={13} /></button>
-                        )}
-                        {i < draftMedia.length - 1 && (
-                          <button type="button" aria-label={t(p.videoDuration ? "ucomposer.moveVideoLater" : "composer.movePhotoLater", { n: i + 1 })} onClick={() => moveAsset(i, 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-steel/15 hover:text-text focus-visible:outline-[var(--focus)]"><ArrowRight size={13} /></button>
-                        )}
-                        {/* §17 — Remove unlinks from THIS post; the asset itself stays in My Media */}
-                        <button type="button" aria-label={t(p.videoDuration ? "ucomposer.removeVideo" : "composer.removePhoto", { n: i + 1 })} onClick={() => toggleAsset(p.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-steel/15 hover:text-text focus-visible:outline-[var(--focus)]"><X size={13} /></button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {singleVideo && (
-                  <div className="mt-3">
-                    <TField label={t("composer.caption")} value={d.videoCaption} onChange={(v) => setD((x) => ({ ...x, videoCaption: v }))} hook="videoCaption" />
+                {/* Phase A — ONE Media Organizer: All media (see · select · correct · cover · order · remove) and Organise (the grouping editor) */}
+                {draftMedia.length > 1 && (
+                  <div role="tablist" aria-label={t("ucomposer.organizer")} className="mb-3 inline-flex rounded-full border border-[var(--hair)] p-0.5 text-[12px]" data-sb-organizer-modes>
+                    {(["all", "group"] as const).map((mode) => (
+                      <button key={mode} type="button" role="tab" aria-selected={organizerMode === mode} onClick={() => setOrganizerMode(mode)} className={`sb-press min-h-8 rounded-full px-3 font-medium focus-visible:outline-[var(--focus)] ${organizerMode === mode ? "bg-steel/15 text-text" : "text-muted hover:text-text"}`} data-sb-organizer-mode={mode}>
+                        {mode === "all" ? t("ucomposer.allMedia") : t("ucomposer.organiseMode")}
+                      </button>
+                    ))}
                   </div>
+                )}
+                {draftMedia.length >= MEDIA_LIMIT && <p className="mb-2 text-[12px] text-muted" data-sb-organizer-limit>{t("ucomposer.mediaLimit", { limit: MEDIA_LIMIT })}</p>}
+                {organizerMode === "group" && draftMedia.length > 1 ? (
+                  <Grouping
+                    groups={groupView.groups}
+                    pending={groupView.pending}
+                    media={draftMedia.map((m) => ({ id: m.id, src: m.poster ?? m.src, alt: m.alt, error: m.error, processing: m.processing }))}
+                    kindName={(c) => kindName(c as RecordIntent)}
+                    selected={selId}
+                    onSelect={(id) => setSelectedAssetId(id)}
+                    onMove={(id, gid) => { const g = groupView.groups.find((x) => x.id === gid); setGrouping((st) => groupMoveTo(st, groupView.groups, id, gid)); if (g && g.category !== "review") setAssetCategory((prev) => ({ ...prev, [id]: g.category as AssetKind })); }}
+                    onMoveKind={(id, c) => setAssetKind(id, c as AssetKind)}
+                    onNewGroup={(id) => setGrouping((st) => startNewGroup(st, groupView.groups, id, newGroupId))}
+                    onMerge={(from, into) => { const g = groupView.groups.find((x) => x.id === into); const src = groupView.groups.find((x) => x.id === from); setGrouping((st) => mergeGroups(st, groupView.groups, from, into)); if (g && src && g.category !== "review") setAssetCategory((prev) => { const n = { ...prev }; for (const id of src.mediaIds) n[id] = g.category as AssetKind; return n; }); }}
+                    onRemove={(id) => { toggleAsset(id); setGrouping((st) => forgetAsset(st, id)); }}
+                    onDone={() => { setGrouping((st) => ({ ...st, organised: true })); chooseIntent(settleKind()); closeSheet(); }}
+                  />
+                ) : (
+                  <>
+                    {/* the SELECTED asset, larger, with everything that can be done to it */}
+                    {(() => {
+                      const p = draftMedia.find((m) => m.id === selId) ?? draftMedia[0];
+                      if (!p) return null;
+                      const idx = draftMedia.findIndex((m) => m.id === p.id);
+                      const cat = groupOf(p.id)?.category;
+                      const effective: RecordIntent = cat === "meal" || cat === "activity" ? cat : cat === "moment" ? "moment" : resolved === "meal" || resolved === "activity" || resolved === "moment" ? resolved : "moment";
+                      return (
+                        <section className="mb-3 grid gap-2 rounded-[14px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-2.5 @2xl:grid-cols-[minmax(0,220px)_1fr]" aria-label={t("ucomposer.selectedMedia")} data-sb-organizer-preview={p.id}>
+                          <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-[10px] bg-[var(--sheet)]">
+                            {p.processing ? (
+                              <span className="flex h-full w-full items-center justify-center text-[12px] text-muted">{t("ucomposer.processingPhoto")}</span>
+                            ) : p.error ? (
+                              <span className="flex h-full w-full items-center justify-center px-2 text-center text-[12px] text-muted">{t(p.error === "video" ? "ucomposer.videoUnsupported" : "ucomposer.heicFailed")}</span>
+                            ) : (
+                              <Thumb src={p.poster ?? p.src} alt={p.alt} className="h-full w-full object-cover" />
+                            )}
+                            {p.videoDuration && <span className="absolute bottom-1.5 left-1.5 rounded-[3px] bg-[rgba(10,13,20,0.82)] px-1 py-0.5 text-[10px] font-medium text-white tabular-nums">{p.videoDuration}</span>}
+                          </span>
+                          <div className="min-w-0 grid content-start gap-2">
+                            <p className="text-[12px] text-muted"><span className="tabular-nums">{t("ucomposer.mediaOf", { n: idx + 1, total: draftMedia.length })}</span>{idx === 0 && draftMedia.length > 1 ? ` · ${t("ucomposer.cover")}` : ""}</p>
+                            <p className="truncate text-[13px] text-text">{p.alt}</p>
+                            {/* category of THIS asset — the existing per-asset change; never an AI rerun */}
+                            <div className="flex flex-wrap items-center gap-1" role="group" aria-label={t("ucomposer.thisPhoto")} data-sb-organizer-kinds>
+                              {(["moment", "meal", "activity"] as const).map((k) => (
+                                <button key={k} type="button" aria-pressed={effective === k} onClick={() => setAssetKind(p.id, k)} className={`sb-press min-h-9 rounded-full px-2.5 text-[12px] font-medium focus-visible:outline-[var(--focus)] ${effective === k ? "bg-steel/15 text-text" : "border border-[var(--hair)] text-muted hover:text-text"}`} data-sb-organizer-kind={k}>
+                                  {kindName(k)}
+                                </button>
+                              ))}
+                              {/* every canonical kind: Other… opens the one record chooser (Health · Problem · Project · Meeting are post-level
+                                  kinds in this prototype; Life Moment / Meal / Activity picked there apply to THIS photo) and returns here */}
+                              <button type="button" onClick={(e) => { chooserScope.current = "asset"; sheetReturn.current = "organizer"; openSheet("record", e.currentTarget); }} className="sb-press min-h-9 rounded-full px-2.5 text-[12px] font-medium text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-organizer-kind-more>
+                                {t("ucomposer.otherKind")}
+                              </button>
+                            </div>
+                            {photoPhase(p.id) === "analyzing" && <p className="text-[12px] text-muted" role="status" data-sb-organizer-reading>{t("ucomposer.readingPhoto")}</p>}
+                            <div className="flex flex-wrap items-center gap-1" data-sb-organizer-actions>
+                              {idx > 0 && <button type="button" onClick={() => makeCover(idx)} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-2.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-organizer-cover>{t("ucomposer.makeCover", { n: idx + 1 })}</button>}
+                              {idx > 0 && <button type="button" onClick={() => moveAsset(idx, -1)} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-2.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-organizer-earlier>{t(p.videoDuration ? "ucomposer.moveVideoEarlier" : "composer.movePhotoEarlier", { n: idx + 1 })}</button>}
+                              {idx < draftMedia.length - 1 && <button type="button" onClick={() => moveAsset(idx, 1)} className="sb-press min-h-9 rounded-full border border-[var(--hair)] px-2.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-organizer-later>{t(p.videoDuration ? "ucomposer.moveVideoLater" : "composer.movePhotoLater", { n: idx + 1 })}</button>}
+                              <button type="button" onClick={() => { toggleAsset(p.id); setGrouping((st) => forgetAsset(st, p.id)); }} className="sb-press min-h-9 rounded-full px-2.5 text-[12px] font-medium text-muted hover:text-text focus-visible:outline-[var(--focus)]" data-sb-organizer-remove>{t(p.videoDuration ? "ucomposer.removeVideo" : "composer.removePhoto", { n: idx + 1 })}</button>
+                            </div>
+                          </div>
+                        </section>
+                      );
+                    })()}
+                    <ul className="grid grid-cols-3 gap-1.5 @2xl:grid-cols-4" data-sb-organizer-list>
+                      {draftMedia.map((p, i) => {
+                        const cat = groupOf(p.id)?.category;
+                        const on = selId === p.id;
+                        return (
+                          <li key={p.id} className="relative" data-sb-thumb={p.id}>
+                            <button type="button" aria-pressed={on} aria-label={p.alt} onClick={() => setSelectedAssetId(p.id)} className={`relative block aspect-square w-full overflow-hidden rounded-[10px] bg-[var(--sheet-raised)] focus-visible:outline-[var(--focus)] ${on ? "ring-2 ring-[var(--boom)]" : ""}`} data-sb-organizer-tile={p.id} data-sb-asset-state={photoPhase(p.id)}>
+                              {p.processing ? (
+                                <span className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted" data-sb-media-processing>{t("ucomposer.processingPhoto")}</span>
+                              ) : p.error ? (
+                                <span className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted" data-sb-media-error={p.error}>{p.alt}</span>
+                              ) : (
+                                <Thumb src={p.poster ?? p.src} alt="" className="h-full w-full object-cover" />
+                              )}
+                              {(photoPhase(p.id) === "analyzing" || photoPhase(p.id) === "resolving") && (
+                                <span className="sb-intel" data-sb-intel-pulse={photoPhase(p.id)} aria-hidden>
+                                  <span className="sb-intel-halo" />
+                                  <span className="sb-intel-ring" data-sb-intel-orbit>
+                                    <span className="sb-intel-arm" style={{ transform: "rotate(0deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                                    <span className="sb-intel-arm" style={{ transform: "rotate(130deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                                    <span className="sb-intel-arm" style={{ transform: "rotate(250deg)" }}><i className="sb-intel-dot" data-sb-intel-dot /></span>
+                                  </span>
+                                </span>
+                              )}
+                              {p.videoDuration && <span className="absolute bottom-1 left-1 rounded-[3px] bg-[rgba(10,13,20,0.82)] px-1 text-[9px] font-medium text-white tabular-nums">{p.videoDuration}</span>}
+                              {cat && <span className="absolute bottom-1 right-1 rounded-[4px] bg-[rgba(10,13,20,0.7)] px-1 py-0.5 text-[9px] font-semibold text-white" data-sb-asset-category={cat}>{cat === "review" ? t("ucomposer.needsReview") : kindName(cat as RecordIntent)}</span>}
+                              {i === 0 && draftMedia.length > 1 && <span className="absolute top-1 left-1 rounded-[4px] bg-[var(--boom-soft)] px-1 py-0.5 text-[9px] font-semibold text-text">{t("ucomposer.cover")}</span>}
+                            </button>
+                            {/* per-tile actions (named for what the item IS) — the same operations as the selected pane, reachable without selecting */}
+                            <span className="mt-0.5 flex items-center justify-center gap-0.5">
+                              {i > 0 && <button type="button" aria-label={t("ucomposer.makeCover", { n: i + 1 })} title={t("ucomposer.makeCover", { n: i + 1 })} onClick={() => makeCover(i)} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-steel/10 hover:text-text focus-visible:outline-[var(--focus)]" data-sb-make-cover={i}><Star size={12} strokeWidth={1.75} aria-hidden /></button>}
+                              {i > 0 && <button type="button" aria-label={t(p.videoDuration ? "ucomposer.moveVideoEarlier" : "composer.movePhotoEarlier", { n: i + 1 })} onClick={() => moveAsset(i, -1)} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-steel/10 hover:text-text focus-visible:outline-[var(--focus)]"><ArrowLeft size={12} strokeWidth={1.75} aria-hidden /></button>}
+                              {i < draftMedia.length - 1 && <button type="button" aria-label={t(p.videoDuration ? "ucomposer.moveVideoLater" : "composer.movePhotoLater", { n: i + 1 })} onClick={() => moveAsset(i, 1)} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-steel/10 hover:text-text focus-visible:outline-[var(--focus)]"><ArrowRight size={12} strokeWidth={1.75} aria-hidden /></button>}
+                              <button type="button" aria-label={t(p.videoDuration ? "ucomposer.removeVideo" : "composer.removePhoto", { n: i + 1 })} onClick={() => { toggleAsset(p.id); setGrouping((st) => forgetAsset(st, p.id)); }} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-steel/10 hover:text-text focus-visible:outline-[var(--focus)]"><X size={12} strokeWidth={1.75} aria-hidden /></button>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {singleVideo && (
+                      <div className="mt-3">
+                        <TField label={t("composer.caption")} value={d.videoCaption} onChange={(v) => setD((x) => ({ ...x, videoCaption: v }))} hook="videoCaption" />
+                      </div>
+                    )}
+                  </>
                 )}
               </Sheet>
             )}
@@ -1667,7 +2407,7 @@ function MyMediaSheet({ selected, onBack, onDone }: { selected: string[]; onBack
           const on = idx >= 0;
           return (
             <button key={p.id} type="button" aria-pressed={on} aria-label={p.alt} onClick={() => toggle(p.id)} className={`relative aspect-square overflow-hidden rounded-[8px] focus-visible:outline-[var(--focus)] ${on ? "ring-2 ring-[var(--boom)]" : ""}`}>
-              <Thumb src={p.src} alt={p.alt} className="h-full w-full object-cover" />
+              <Thumb src={p.poster ?? p.src} alt={p.alt} className="h-full w-full object-cover" />
               {on && <span aria-hidden className="absolute top-1 right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--boom)] px-1 text-[10px] font-semibold text-white tabular-nums">{idx + 1}</span>}
               {p.mediaKind === "video" && (
                 <>

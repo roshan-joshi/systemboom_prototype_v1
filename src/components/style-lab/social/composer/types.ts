@@ -8,8 +8,9 @@
  *
  * Nothing here is a Post or a Human Record: until POST everything is draft (§27).
  */
-import type { FoodItemState, FoodSource, MealAIObservation, MealNutritionRecord, Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
+import type { ActivitySource, RecordSource, FoodItemState, FoodSource, MealAIObservation, MealAssetState, MealNutritionRecord, Moment, Privacy, RecordPlace, RecordPlaceSource } from "../data";
 import { LIBRARY } from "../data";
+import type { FieldCell } from "./field-contract";
 
 /** §6 — the eight resolutions of one composition. `social` = no Human Record at all. */
 export type RecordIntent = "social" | "moment" | "meal" | "activity" | "health" | "problem" | "project" | "meeting";
@@ -111,6 +112,14 @@ export type ActivityType =
   | "sport" | "mindbody" | "travel" | "learning" | "hobby" | "other";
 export interface ActivityDomain {
   type?: ActivityType;
+  /** V3 — where it happened in human words (outdoor, gym, pool …); record-only. */
+  setting?: string;
+  /** V3 — the specific activity as a person names it ("Carpentry", "Yoga", "Football"), beside the Quick family in `type`. */
+  activityName?: string;
+  /** V3 — per intelligent field, its V2 field-contract cell (state · original reading · source · confidence). The effective
+   *  values stay in the plain fields beside it; these cells say how each one came to be and who owns it. Travels with the
+   *  draft, so Keep draft preserves ownership. */
+  field?: Partial<Record<"type" | "activityName" | "distance" | "duration" | "setting" | "pace" | "avgSpeed", FieldCell<string, ActivitySource>>>;
   distance?: string;
   duration?: string;
   session?: string;
@@ -148,6 +157,10 @@ export type HealthType =
 export interface HealthDomain {
   bodyArea?: string;
   healthType?: HealthType;
+  /** SOCIAL-4 — what happened, in the person's words (record-only, private). */
+  description?: string;
+  /** SOCIAL-4 — V2 cells for the intelligent fields (travel with the draft). */
+  field?: Partial<Record<"healthType" | "description" | "bodyArea" | "severity", FieldCell<string, RecordSource>>>;
   severity?: string;
   /** Type-adaptive (Measurement): original value + unit, retained as given. */
   measureValue?: string;
@@ -158,6 +171,9 @@ export interface HealthDomain {
   privateNote?: string;
 }
 export interface ProblemDomain {
+  /** SOCIAL-4 — the problem as observed/reported (the record's own title; the card already renders it). */
+  description?: string;
+  field?: Partial<Record<"description" | "category" | "urgency" | "attempt" | "nextAction", FieldCell<string, RecordSource>>>;
   category?: string;
   impact?: string;
   /** IMPACT ≠ URGENCY (17_PROBLEM) — two separate optional dimensions. */
@@ -171,6 +187,7 @@ export interface ProblemDomain {
 export interface ProjectDomain {
   title?: string;
   goal?: string;
+  field?: Partial<Record<"title" | "goal" | "focus" | "target", FieldCell<string, RecordSource>>>;
   milestone?: string;
   /** Aimed completion, the person's words (date object + change history are live). */
   target?: string;
@@ -183,6 +200,7 @@ export interface ProjectDomain {
 export interface MeetingDomain {
   subject?: string;
   purpose?: string;
+  field?: Partial<Record<"subject" | "purpose", FieldCell<string, RecordSource>>>;
   online?: boolean;
   duration?: string;
   related?: string;
@@ -202,6 +220,15 @@ export interface DomainDrafts {
 export interface UDraft {
   origin: "social" | "circle";
   text: string;
+  /** Prototype UX closure — the per-photo Meal state (each photo's own effective values + interaction state, keyed by its stable
+   *  asset id) carried by KEEP DRAFT only, so a person's edit or clear on a photo survives closing and reopening the composer.
+   *  Never written by POST (the record keeps its own `fields.mealAssets`); absent on every other draft. */
+  mealAssets?: MealAssetState[];
+  /** Mixed-media prototype — the person's own per-photo category corrections (by stable asset id), carried by Keep draft. */
+  assetCategories?: Record<string, "meal" | "activity" | "moment" | "health" | "problem" | "project" | "meeting">;
+  /** Mixed-media prototype — the person's own grouping of this post's media (Composer-local structure carried by Keep draft only:
+   *  the groups they created/retargeted, which photos they placed by hand, and whether they organised the post). Never a record. */
+  grouping?: { groups: { id: string; category: "meal" | "activity" | "moment" | "health" | "problem" | "project" | "meeting" | "review" }[]; placed: Record<string, string>; organised: boolean };
   /** §28 — the SOCIAL audience. Record privacy is a separate axis (owner-private default). */
   audience: Privacy;
   /* common media — UC-C3 §9: ordered ASSET references (photos and videos mixed; the lead
@@ -348,7 +375,7 @@ export function uDraftFromMoment(m: Moment): UDraft {
         nutrition: f.mealNutrition,
       },
       activity: {
-        type: f.activityType as ActivityType, distance: f.distance, duration: f.duration, intensity: f.intensity,
+        type: f.activityType as ActivityType, setting: f.activitySetting, activityName: f.activityName, distance: f.distance, duration: f.duration, intensity: f.intensity,
         route: f.route, goal: f.goal, notes: f.notes, purpose: f.purpose, felt: f.felt, steps: f.steps,
         pace: f.pace, avgSpeed: f.avgSpeed, elevation: f.elevation, exercises: f.exercises,
         matchKind: f.matchKind as ActivityDomain["matchKind"], team: f.team, opponent: f.opponent,
@@ -357,9 +384,9 @@ export function uDraftFromMoment(m: Moment): UDraft {
       },
       health: {
         bodyArea: f.bodyArea, healthType: f.healthType as HealthDomain["healthType"], severity: f.severity,
-        measureValue: f.measureValue, measureUnit: f.measureUnit, medication: f.medication, privateNote: f.privateNote,
+        measureValue: f.measureValue, measureUnit: f.measureUnit, medication: f.medication, privateNote: f.privateNote, description: f.healthDescription,
       },
-      problem: { category: f.category, impact: f.impact, urgency: f.urgency, attempt: f.attempt, nextAction: f.nextAction, relatedProject: f.relatedProject, notes: f.notes },
+      problem: { description: f.title, category: f.category, impact: f.impact, urgency: f.urgency, attempt: f.attempt, nextAction: f.nextAction, relatedProject: f.relatedProject, notes: f.notes },
       project: { title: f.name ?? f.title, goal: f.goal, milestone: f.milestone, target: f.target, focus: f.focus, relatedProblem: f.relatedProblem, notes: f.notes },
       meeting: { subject: f.subject, purpose: f.purpose, online: f.online, duration: f.duration, related: f.relatedProject, notes: f.notes },
     },

@@ -86,7 +86,10 @@ function kindLine(
     case "activity": {
       // §29 — type + duration + the one provided metric; never private routes or sensor depth.
       const at = f.activityType ? tr(`ucomposer.act${f.activityType.charAt(0).toUpperCase()}${f.activityType.slice(1)}`) : null;
-      return { word: "ACTIVITY", parts: [at, f.what, f.measure, f.distance, f.duration].filter(Boolean) as string[] };
+      // V3 — the specific activity as the person names it ("Carpentry" beside the family "Other"); shown only when it says more
+      // than the family word. Record-only depth (provenance, observation, setting) never reaches the card.
+      const name = f.activityName && f.activityName.toLowerCase() !== (at ?? "").toLowerCase() ? f.activityName : null;
+      return { word: "ACTIVITY", parts: [at, name, f.what, f.measure, f.distance, f.duration].filter(Boolean) as string[] };
     }
     case "project": {
       const [n, total] = f.progress ?? [0, 0];
@@ -119,6 +122,14 @@ function kindLine(
       return { word: "HEALTH", parts: [f.measurement, f.value, only].filter(Boolean) as string[] };
     case "problem":
       return { word: "PROBLEM", parts: [f.title, f.status, only].filter(Boolean) as string[] };
+    case "moment": {
+      // MIXED-MEDIA PROTOTYPE — a generic post whose photos read as different kinds says only how many of each (never the readings)
+      const mixed = f.mixedAssets;
+      if (!mixed?.length || new Set(mixed.map((a) => a.category)).size < 2) return null;
+      const count = (c: "meal" | "activity") => mixed.filter((a) => a.category === c).length;
+      const parts = [count("meal") ? `${tr("kind.meal")} · ${count("meal")}` : null, count("activity") ? `${tr("kind.activity")} · ${count("activity")}` : null, only].filter(Boolean) as string[];
+      return { word: "MIXED", parts };
+    }
     default:
       return null;
   }

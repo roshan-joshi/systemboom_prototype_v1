@@ -15,13 +15,17 @@
  */
 "use client";
 
+import { strengthOf } from "@/lib/ai/universal-observation";
+import type { RecordSource } from "../data";
 import { useEffect, useId, useState } from "react";
-import { FEELINGS, type AIConfidence, type FoodFacts, type MealAIObservation, type MealAssetState, type MealFieldCell, type MealNutrientValue, type MealNutritionRecord, type NutritionValue, type ObservedFood } from "../data";
+import { FEELINGS, type RecordAIObservation, type RecordKindAI, type AIConfidence, type FoodFacts, type MealAIObservation, type MealAssetState, type MealFieldCell, type MealNutrientValue, type MealNutritionRecord, type NutritionValue, type ObservedFood } from "../data";
 import { DateField } from "../DateField";
 import { useT } from "@/lib/i18n/LocaleProvider";
 import { sbDate, sbDateCoarse } from "@/lib/i18n/format";
+import { ACT_SHOWN, activityHasUnconfirmed, editActivity } from "./activity-fields";
+import { editRecordDomain, recordHasUnconfirmed, recordSuggested } from "./record-fields";
 import { confirmFields, edit as editFieldCell, emptyCell as emptyFieldCell, hasUnconfirmed, isBlankValue, supersede, suggest } from "./field-contract";
-import { resolveIntent, type ActivityType, type DomainDrafts, type FoodItem, type MealDomain, type HealthType, type RecordIntent, type RecordKind, type UDraft } from "./types";
+import { resolveIntent, type ActivityDomain, type ActivityType, type HealthDomain, type MeetingDomain, type ProblemDomain, type ProjectDomain, type DomainDrafts, type FoodItem, type MealDomain, type HealthType, type RecordIntent, type RecordKind, type UDraft } from "./types";
 
 export const FIELD = "min-h-9 rounded-[10px] border border-[var(--hair)] bg-[var(--sheet-raised)] px-2.5 text-[13px] text-text outline-none placeholder:text-muted focus-visible:outline-[var(--focus)]";
 export const LABEL = "text-[11px] font-semibold tracking-[0.14em] text-muted uppercase";
@@ -109,6 +113,17 @@ export function activityQuickMetrics(t: ActivityType | undefined): Array<"distan
 export type SetDraft = (f: (d: UDraft) => UDraft) => void;
 
 export function setDomain<K extends keyof DomainDrafts>(set: SetDraft, key: K, patch: Partial<DomainDrafts[K]>) {
+  // V3 — every Activity editor goes through here, so a person's edit / clear of an intelligent Activity field is recorded
+  // through the V2 field contract (ownership), never silently overwritten later by automation.
+  if (key === "activity") {
+    set((d) => ({ ...d, domains: { ...d.domains, activity: editActivity(d.domains.activity, patch as Partial<ActivityDomain>) } }));
+    return;
+  }
+  // SOCIAL-4 — the four specialist kinds record a person's edit / clear through the same V2 contract
+  if (key === "project" || key === "problem" || key === "meeting" || key === "health") {
+    set((d) => ({ ...d, domains: { ...d.domains, [key]: editRecordDomain(key, d.domains[key] as never, patch as never) } }));
+    return;
+  }
   set((d) => ({ ...d, domains: { ...d.domains, [key]: { ...d.domains[key], ...patch } } }));
 }
 
@@ -286,6 +301,7 @@ const MORE_DEFS: Record<Exclude<RecordKind, "health">, MoreDef[]> = {
     { key: "route", labelKey: "ucomposer.route" },
     { key: "goal", labelKey: "ucomposer.goal" },
     { key: "notes", labelKey: "ucomposer.notes" },
+    { key: "setting", labelKey: "ucomposer.setting" },
   ],
   problem: [
     { key: "impact", labelKey: "ucomposer.impact" },
@@ -337,6 +353,16 @@ const ACTIVITY_EXTRAS: Partial<Record<ActivityType, MoreDef[]>> = {
   learning: [{ key: "topic", labelKey: "ucomposer.topic" }, { key: "learned", labelKey: "ucomposer.learned" }],
   travel: [{ key: "transport", labelKey: "ucomposer.transport" }],
 };
+
+/** V3 — Social More is ADAPTIVE: only what is relevant to this kind of Activity. The specific activity name and the human fields
+ *  (purpose · felt · effort · goal · notes) are common; a route belongs to movement through places (walk · run · cycle · hike ·
+ *  travel), never to a gym session, a yoga class, a hobby or a lesson. The fields all still exist on the record — only Social's
+ *  visibility is narrowed. */
+const ROUTE_TYPES: readonly string[] = ["walk", "run", "cycling", "hiking", "travel"];
+function activityMoreDefs(type: ActivityType | undefined): MoreDef[] {
+  const base: MoreDef[] = [{ key: "activityName", labelKey: "ucomposer.activityName" }, ...MORE_DEFS.activity];
+  return base.filter((def) => def.key !== "route" || !type || ROUTE_TYPES.includes(type));
+}
 
 function domainValue(d: UDraft, kind: RecordKind, key: string): unknown {
   return (d.domains[kind] as Record<string, unknown>)[key];
@@ -429,7 +455,7 @@ export function DomainQuick({ draft, set, min, onOpenSheet, activityCommon = ACT
           ) : (
             <p className="flex flex-wrap items-baseline gap-x-2 text-[13px]" data-sb-activity-chosen={d.activity.type}>
               <span className={LABEL}>{t("ucomposer.activityType")}</span>
-              <span className="font-medium text-text">{t(activityKey(d.activity.type))}</span>
+              <span className="font-medium text-text">{t(activityKey(d.activity.type))}{d.activity.activityName && d.activity.activityName.toLowerCase() !== t(activityKey(d.activity.type)).toLowerCase() ? ` · ${d.activity.activityName}` : ""}</span>
               <button type="button" onClick={() => onOpenSheet("activityType")} className="sb-press min-h-7 rounded-full px-1.5 text-[12px] font-medium text-text hover:bg-steel/10 focus-visible:outline-[var(--focus)]" data-sb-activity-change>
                 {t("ucomposer.change")}
               </button>
@@ -468,11 +494,13 @@ export function DomainQuick({ draft, set, min, onOpenSheet, activityCommon = ACT
               {d.health.healthType ? t("ucomposer.change") : t("ucomposer.choose")}
             </button>
           </p>
+          <TField label={t("ucomposer.healthDescription")} value={d.health.description} onChange={(v) => setDomain(set, "health", { description: v })} hook="healthDescription" />
           <TField label={t("ucomposer.bodyArea")} value={d.health.bodyArea} onChange={(v) => setDomain(set, "health", { bodyArea: v })} hook="bodyArea" />
         </div>
       );
     case "problem":
-      // §17/§50 — quick Problem is the words themselves; Status=Open is internal, never asked.
+      // §17/§50 — quick Problem is the words themselves; Status=Open is internal, never asked. SOCIAL-4 keeps that contract:
+      // the observed/reported description lives in More details (the card names it; Adjust opens it).
       return null;
     case "project":
       return (
@@ -530,7 +558,7 @@ export function DomainMore({ draft, set, min, assets }: { draft: UDraft; set: Se
       );
     }
     case "activity": {
-      const defs = [...(ACTIVITY_EXTRAS[d.activity.type as ActivityType] ?? []), ...MORE_DEFS.activity];
+      const defs = [...(ACTIVITY_EXTRAS[d.activity.type as ActivityType] ?? []), ...activityMoreDefs(d.activity.type)];
       return (
         <div className="grid gap-3" data-sb-domain-more="activity">
           <AddableFields draft={draft} set={set} kind="activity" defs={defs} />
@@ -577,6 +605,7 @@ export function DomainMore({ draft, set, min, assets }: { draft: UDraft; set: Se
     case "problem":
       return (
         <div className="grid gap-3" data-sb-domain-more="problem">
+          <TField label={t("ucomposer.problemDescription")} value={d.problem.description} onChange={(v) => setDomain(set, "problem", { description: v })} hook="problemDescription" />
           <AddableFields draft={draft} set={set} kind="problem" defs={MORE_DEFS.problem} />
           <WhenControl draft={draft} set={set} min={min} />
         </div>
@@ -998,8 +1027,9 @@ function MealAssetEditors({ cells, onEdit }: { cells: MealAssetState; onEdit: (f
  * state the Composer already holds (analysis in flight → nutrition lookups in flight → ready · manual); it adds no request,
  * no timer that changes logic and no stored truth. Copy is exact and fixed.
  */
-export type IntelPhase = "analyzing" | "resolving" | "ready" | "manual";
+export type IntelPhase = "processing" | "analyzing" | "resolving" | "ready" | "manual";
 export const INTEL_PRIMARY = "Understanding this meal…";
+export const INTEL_PRIMARY_ACTIVITY = "Understanding this activity…";
 export const INTEL_SECONDARY = "Reading the photo and preparing the details.";
 export const INTEL_NUTRITION = "Checking nutrition…";
 export const INTEL_LONG_PRIMARY = "Still working on the details…";
@@ -1015,7 +1045,7 @@ const SKEL = "sb-skel block rounded-[6px]";
 
 /** The calm processing card: the exact copy + skeletons that match the resolved card's geometry. The only timer is a display
  *  timeout that swaps the copy once the wait is longer than usual — it triggers nothing else (no retry, no request). */
-export function IntelWaiting({ since, view }: { since?: number; view?: MealView }) {
+export function IntelWaiting({ since, view, subject = "meal", label }: { since?: number; view?: MealView; subject?: "meal" | "activity" | "record"; label?: string }) {
   const [long, setLong] = useState(false);
   useEffect(() => {
     const override = new URLSearchParams(window.location.search).get("mockwait"); // test seam, same convention as mockai/mockfacts
@@ -1024,10 +1054,10 @@ export function IntelWaiting({ since, view }: { since?: number; view?: MealView 
     return () => window.clearTimeout(t);
   }, [since]);
   return (
-    <div className="grid gap-2 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-3" data-sb-meal-analyzing data-sb-intel-state="analyzing" data-sb-asset={view?.assetId} role="status" aria-live="polite">
+    <div className="grid gap-2 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] p-3"  {...(subject === "activity" ? { "data-sb-activity-analyzing": true } : subject === "record" ? { "data-sb-record-analyzing": true } : { "data-sb-meal-analyzing": true })} data-sb-intel-state="analyzing" data-sb-asset={view?.assetId} role="status" aria-live="polite">
       {view && <p className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase" data-sb-photo-indicator>Photo {view.index} of {view.total}</p>}
       <div className="grid gap-0.5">
-        <p className="text-[13px] font-medium text-text" data-sb-intel-primary>{long ? INTEL_LONG_PRIMARY : INTEL_PRIMARY}</p>
+        <p className="text-[13px] font-medium text-text" data-sb-intel-primary>{long ? INTEL_LONG_PRIMARY : subject === "activity" ? INTEL_PRIMARY_ACTIVITY : subject === "record" && label ? label : INTEL_PRIMARY}</p>
         <p className="text-[12px] text-muted" data-sb-intel-secondary>{long ? INTEL_LONG_SECONDARY : INTEL_SECONDARY}</p>
       </div>
       <div className="grid gap-1.5" aria-hidden>
@@ -1246,6 +1276,184 @@ export function MealCategorySuggestion({ onYes, onNo }: { onYes: () => void; onN
       <span>Looks like a Meal — use it?</span>
       <button type="button" onClick={onYes} className={ADD_CHIP} data-sb-meal-cat-yes>Yes</button>
       <button type="button" onClick={onNo} className={ADD_CHIP} data-sb-meal-cat-no>No</button>
+    </div>
+  );
+}
+
+
+/**
+ * V0.4 P1 — SMART CATEGORY SUGGESTIONS: what the Pass 1 vision saw (one neutral sentence), the strongest category, up to two
+ * other possibilities, and three thumb-sized actions. A mobile card inside the existing Composer body (never a new bottom
+ * sheet over the controls): stacked 44px actions below @2xl, one row from @2xl. No technical AI detail is ever shown.
+ */
+export function VisionSuggestionCard({ seen, sceneLabel, primary, primaryName, confidence, alternatives, noMatch, organized, onUse, onChoose, onSkip }: { seen: string; sceneLabel: string; primary: string; primaryName: string; confidence: "high" | "medium" | "low"; alternatives: { kind: string; name: string }[]; noMatch: boolean; organized?: boolean; onUse: () => void; onChoose: () => void; onSkip: () => void }) {
+  const { t } = useT();
+  const GLYPH: Record<string, string> = { meal: "🍽", activity: "🏃", moment: "✨", health: "♥", problem: "⚠", project: "◆", meeting: "▣" };
+  const glyph = GLYPH[primary] ?? "✨";
+  // UHI-DEC-017 — three honest states: SYSTEMBOOM organised it · the experience is genuinely unclear · nothing is supported
+  const ambiguous = !noMatch && !organized && confidence !== "high" && alternatives.length > 0;
+  const matchWord = organized
+    ? `✓ ${t("ucomposer.visionOrganized", { kind: primaryName })}`
+    : noMatch
+      ? t("ucomposer.visionNoMatch")
+      : ambiguous
+        ? `${t("ucomposer.visionPossible")}: ${[primaryName, ...alternatives.map((a) => a.name)].join(" / ")}`
+        : `${t("ucomposer.visionBest")}: ${primaryName}`;
+  return (
+    <section
+      aria-label={t("ucomposer.visionTitle")}
+      className="sb-intel-card relative mt-2 grid gap-2.5 overflow-hidden rounded-[14px] border border-[var(--hair)] px-3.5 py-3 text-[13px] text-text [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom,0px)*0)]"
+      style={{ background: "linear-gradient(160deg, color-mix(in srgb, var(--steel) 14%, var(--sheet-raised)) 0%, var(--sheet-raised) 58%, color-mix(in srgb, var(--boom) 7%, var(--sheet-raised)) 100%)" }}
+      data-sb-vision-card={primary}
+      data-sb-vision-nomatch={noMatch ? "true" : undefined}
+      data-sb-vision-confidence={confidence}
+    >
+      <p className={`${LABEL} flex items-center gap-1.5`} data-sb-vision-title>
+        <span aria-hidden className="text-[12px] leading-none text-[var(--boom)]">✦</span>
+        {t("ucomposer.visionTitle")}
+      </p>
+      <p className="flex min-w-0 items-start gap-2 text-[15px] font-semibold leading-snug" data-sb-vision-seen>
+        <span aria-hidden className="shrink-0 text-[16px] leading-[1.3]">{glyph}</span>
+        <span className="min-w-0 break-words">{noMatch ? seen : t("ucomposer.visionRecognized", { scene: sceneLabel || seen })}</span>
+      </p>
+      {!noMatch && seen && seen !== sceneLabel && (
+        <p className="min-w-0 break-words text-[12.5px] leading-snug text-muted" data-sb-vision-detail>“{seen}”</p>
+      )}
+      <p className="min-w-0 break-words text-[14px] font-medium" data-sb-vision-primary={primary}>{matchWord}</p>
+      {alternatives.length > 0 && !ambiguous && !organized && (
+        <p className="min-w-0 break-words text-[12.5px] text-muted" data-sb-vision-others>
+          {t("ucomposer.visionAlt")}: {alternatives.map((a) => a.name).join(" · ")}
+        </p>
+      )}
+      <div className="grid gap-1.5 @2xl:flex @2xl:flex-wrap @2xl:items-center" data-sb-vision-actions>
+        {/* UHI-DEC-017 — an already-organised category needs no "Continue as …": the one action is to CHANGE it */}
+        {!organized && (
+          <button type="button" onClick={onUse} className="sb-press inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full bg-[var(--boom)] px-4 text-[14px] font-semibold text-white focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:w-auto" data-sb-vision-use={primary}>
+            {noMatch ? t("ucomposer.visionKeepMoment") : t("ucomposer.visionContinue", { kind: primaryName })}
+            <span aria-hidden>→</span>
+          </button>
+        )}
+        <div className="flex items-center gap-1 @2xl:ml-1">
+          <button type="button" onClick={onChoose} className={`sb-press inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-3 text-[13px] font-medium focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:flex-none ${organized ? "border border-[var(--hair)] text-text" : "text-text underline-offset-2 hover:underline"}`} data-sb-vision-choose>
+            {organized ? t("ucomposer.visionChangeCat") : t("ucomposer.visionChooseCat")}
+          </button>
+          {/* an organised category is a status, not an offer: there is nothing to decline, only a category to change */}
+          {!organized && (
+            <button type="button" onClick={onSkip} aria-label={t("ucomposer.visionNotNow")} title={t("ucomposer.visionNotNow")} className="sb-press inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-[18px] leading-none text-muted hover:text-text focus-visible:outline-[var(--focus)] @2xl:min-h-9 @2xl:min-w-9" data-sb-vision-skip>
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** V3 — the MEDIUM-confidence Activity category ask (same grammar as Meal's: one quiet line, Yes IS an explicit selection). */
+export function ActivityCategorySuggestion({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  const { t } = useT();
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] px-3 py-2 text-[13px] text-text" data-sb-activity-category-suggestion>
+      <span>{t("ucomposer.activityLooksLike")}</span>
+      <button type="button" onClick={onYes} className={ADD_CHIP} data-sb-activity-cat-yes>Yes</button>
+      <button type="button" onClick={onNo} className={ADD_CHIP} data-sb-activity-cat-no>No</button>
+    </div>
+  );
+}
+
+/**
+ * V3 — the Activity suggestion line once Activity is selected and the AI has filled something: the person's Activity as it now
+ * reads (type · distance · duration), then Looks right / Adjust while any of it is still an untouched suggested default. The
+ * facts are NOT shown with source/confidence — provenance lives on the record, never in ordinary UI. Looks right confirms
+ * what is shown (state only); Adjust opens the existing fields; neither is required to Post.
+ */
+export function ActivitySuggestion({ activity, onLookRight, onAdjust }: { activity: ActivityDomain; onLookRight: () => void; onAdjust: () => void }) {
+  const { t } = useT();
+  const aiFilled = ACT_SHOWN.some((k) => {
+    const c = activity.field?.[k];
+    return !!c && !!c.value && c.state !== "cleared" && (c.source === "photo_ai" || c.source === "photo_ai_secondary" || c.source === "ocr");
+  });
+  if (!aiFilled) return null;
+  const parts = [activity.type ? t(activityKey(activity.type)) : undefined, activity.activityName && activity.activityName.toLowerCase() !== (activity.type ? t(activityKey(activity.type)).toLowerCase() : "") ? activity.activityName : undefined, activity.distance, activity.duration].filter(Boolean).join(" · ");
+  const pending = activityHasUnconfirmed(activity);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[12px] border border-[var(--hair)] bg-[var(--sheet-raised)] px-3 py-2 text-[13px] text-text" data-sb-activity-card>
+      <span className="font-medium" data-sb-activity-summary>{parts}</span>
+      {pending && (
+        <span className="inline-flex gap-1">
+          <button type="button" onClick={onLookRight} className={ADD_CHIP} data-sb-activity-looks-right>Looks right</button>
+          <button type="button" onClick={onAdjust} className={ADD_CHIP} data-sb-activity-adjust>Adjust</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * SOCIAL-4 — the specialist suggestion card for Project · Problem · Meeting · Health: what the reading filled (the person's Quick
+ * fields hold the values; this lists them), the few read-only observations that are evidence rather than fields (a Problem's
+ * affected item / visible damage · a Meeting's agenda, actions, decisions · a Health document type), then Looks right / Adjust
+ * while something is still an untouched suggestion. No badge, no model name, no confidence number, no evidence quotes.
+ */
+export function RecordSuggestion({ kind, domain, observation, kindName, hintName, onLookRight, onAdjust }: { kind: RecordKindAI; domain: ProjectDomain | ProblemDomain | MeetingDomain | HealthDomain; observation: RecordAIObservation | null | undefined; kindName: string; hintName?: string; onLookRight: () => void; onAdjust: () => void }) {
+  const { t } = useT();
+  const filled = recordSuggested(kind, domain);
+  const o = observation;
+  const extras: { label: string; items: string[] }[] = [];
+  if (o?.status === "complete") {
+    if (kind === "problem") {
+      const p = o.problem ?? {};
+      const bits = [p.affectedItem?.value, p.visibleDamage?.value, p.errorMessage?.value].filter((x): x is string => !!x);
+      if (bits.length) extras.push({ label: t("ucomposer.affected"), items: bits });
+    }
+    if (kind === "meeting") {
+      const m = o.meeting ?? {};
+      if (m.agenda?.value.length) extras.push({ label: t("ucomposer.agenda"), items: m.agenda.value });
+      if (m.actions?.value.length) extras.push({ label: t("ucomposer.actions"), items: m.actions.value.map((a) => `${a.action}${a.owner ? ` — ${a.owner}` : ""}${a.due ? ` · ${a.due}` : ""}`) });
+      if (m.decisions?.value.length) extras.push({ label: t("ucomposer.decisions"), items: m.decisions.value });
+    }
+    if (kind === "health" && o.health?.documentType?.value) extras.push({ label: t("ucomposer.healthType"), items: [o.health.documentType.value] });
+  }
+  // V3: the Knowledge Engine's category hint — stated, never acted on, and NEVER after the person has chosen for themselves
+  // (UHI-UX-134: the caller passes no hint once the category is theirs, so no competing recommendation can survive a choice).
+  const hint = hintName ? <p className="mt-1 text-[12px] text-muted" data-sb-record-category-hint>{t("ucomposer.looksLike", { kind: hintName })}</p> : null;
+  // UHI-UX-134 — a value READ from the evidence (the person's words, text in the image, what is plainly visible) was
+  // EXTRACTED; only an inference is a suggestion. The wording follows the Universal Observation Contract's own strength,
+  // so it can never imply a category preference the person has already overruled.
+  const cells = (domain as { field?: Record<string, { source?: RecordSource } | undefined> }).field ?? {};
+  const extracted = filled.length > 0 && filled.every((k) => { const src = cells[k]?.source; return !!src && src !== "user" && strengthOf(src as Exclude<RecordSource, "user">) === "direct"; });
+  if (!filled.length && !extras.length) {
+    if (o?.status === "insufficient") return <><p className="mt-2 text-[12px] text-muted" data-sb-record-insufficient>{t("ucomposer.nothingToSuggest")}</p>{hint}</>;
+    return hint;
+  }
+  const pending = recordHasUnconfirmed(kind, domain);
+  const dm = domain as Record<string, unknown>;
+  // Correction 1 — the card is a PROVISIONAL suggestion, visually distinct from the real field; once nothing is pending and
+  // there is nothing else to show, it leaves (no repeated confirmation of a value the person already accepted).
+  if (!pending && !extras.length && !hintName) return null;
+  return (
+    <div className="mt-2 grid gap-1.5 rounded-[12px] border border-dashed border-[var(--hair)] bg-[var(--sheet-raised)] px-3 py-2 text-[13px] text-text" data-sb-record-card={kind}>
+      {pending && filled.length > 0 && (
+        <p className="min-w-0 break-words" data-sb-record-summary>
+          <span className={`${LABEL} mr-1`} data-sb-record-origin={extracted ? "extracted" : "suggested"}>{t(extracted ? "ucomposer.aiExtracted" : "ucomposer.aiSuggested")}</span>
+          “{filled.map((k) => (k === "healthType" ? t(healthTypeKey(dm[k] as HealthType)) : String(dm[k]))).join(" · ")}”
+        </p>
+      )}
+      {hint}
+      {extras.map((e) => (
+        <p key={e.label} className="text-[12px] text-muted" data-sb-record-extra={e.label}>
+          <span className={`${LABEL} mr-1`}>{e.label}</span>
+          {e.items.join(" · ")}
+        </p>
+      ))}
+      {pending && (
+        <span className="inline-flex gap-1">
+          <button type="button" onClick={onLookRight} className={ADD_CHIP} data-sb-record-accept>Looks right</button>
+          <button type="button" onClick={onAdjust} className={ADD_CHIP} data-sb-record-adjust>Adjust</button>
+        </span>
+      )}
+      <span className="sr-only" aria-hidden>{kindName}</span>
     </div>
   );
 }

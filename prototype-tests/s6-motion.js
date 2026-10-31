@@ -12,7 +12,7 @@ const ok = (c, label) => { if (c) { passed += 1; console.log(`  ✓ ${label}`); 
 async function open(page, w, h, { theme = "light", viewer = "maya", lang = "en", extra = {} } = {}) {
   await page.setViewport({ width: w, height: h, deviceScaleFactor: 1, hasTouch: w < 700 });
   await page.setCookie({ name: "sb-locale", value: lang, domain: "localhost", path: "/" });
-  const u = new URL(HOST + S); u.searchParams.set("theme", theme); u.searchParams.set("harness", "0"); u.searchParams.set("lang", lang); u.searchParams.set("viewer", viewer);
+  const u = new URL(HOST + S); u.searchParams.set("theme", theme); u.searchParams.set("harness", "0"); u.searchParams.set("lang", lang); u.searchParams.set("viewer", viewer); u.searchParams.set("mockrecord", "off");
   for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, String(v));
   await page.goto(u.toString(), { waitUntil: "networkidle2" }); await sleep(550);
 }

@@ -139,6 +139,29 @@ export interface KindFields {
    *  original AI observation and its own effective field values with their interaction state. The Meal is
    *  still ONE record; these are how it remembers what each photo said and what the person did with it. */
   mealAssets?: MealAssetState[];
+  /** V3 — the ONE Activity's AI reading of the attached media (category + type/setting/screen readout), persisted exactly
+   *  as produced. RECORD-ONLY: never rendered by a Social projection; immutable once written (a person's correction
+   *  changes the effective fields, never this). Absent with AI off/unavailable/declined and on every fixture. */
+  activityAIObservation?: ActivityAIObservation;
+  /** V3 — per effective Activity field, how its value came to be (record-only): source, interaction state, reading confidence. */
+  activityProvenance?: Record<string, { source?: ActivitySource; state: "default" | "confirmed" | "corrected" | "cleared"; confidence?: AIConfidence }>;
+  /** V3 — where the Activity happened in human words (outdoor, gym, pool …); record-only. */
+  activitySetting?: string;
+  /** MIXED-MEDIA PROTOTYPE (no real database yet) — a post whose photos read as different record kinds, kept as ONE generic
+   *  Life-Moment-shell post: each asset's own category + its own AI readings, record-only (never rendered beyond a count line).
+   *  A prototype stand-in for the deferred cross-domain Social publication architecture — not a canonical Meal/Activity record. */
+  mixedAssets?: { assetId: string; category: "meal" | "activity" | "moment" | "health" | "problem" | "project" | "meeting"; mealAIObservation?: MealAIObservation; activityAIObservation?: ActivityAIObservation; recordAIObservation?: RecordAIObservation }[];
+  /** V3 — the specific activity name beside the Quick family in `activityType` ("Carpentry" beside "other"). */
+  activityName?: string;
+  /** SOCIAL-4 — a Health record's own description in the person's words (RECORD-ONLY, private: never rendered socially). */
+  healthDescription?: string;
+  /** SOCIAL-4 — the specialist reading (Project · Problem · Meeting · Health) of the attached media/words, persisted exactly as
+   *  produced, record-only and immutable; absent on every fixture and on any record made with AI off/unavailable. */
+  recordAIObservation?: RecordAIObservation;
+  /** V0.4 P1 — the primary asset's neutral visual observation (record-only; never rendered) */
+  visualObservation?: import("@/lib/ai/vision/universal-visual-observation").UniversalVisualObservationV1;
+  /** SOCIAL-4 — per intelligent field, how its value came to be (source · state · confidence), record-only. */
+  recordProvenance?: Record<string, { source?: RecordSource; state: "default" | "confirmed" | "corrected" | "cleared"; confidence?: AIConfidence }>;
   /* Activity — adaptive per-subtype More-details fields (04_ACTIVITY_TYPES). */
   felt?: string;
   steps?: string;
@@ -403,6 +426,16 @@ export interface MealAIObservation {
    *  string; a missing or malformed provider value degrades to false, never to true.
    *  Category auto-selection reads THIS together with `confidence` — never the foods list. */
   isFood: boolean;
+  /** V3 — the SAME category call, extended: for an image that is NOT food, whether it meaningfully shows an ACTIVITY (a person doing,
+   *  or evidently having just done, something physical or practised) and how sure the model is. Category signal only — it names
+   *  nothing and measures nothing; the Activity-specific reading is a separate request made only once Activity is selected.
+   *  Present only when the model said so; absent on food images and on every legacy/fixture observation. */
+  /** V3.1: `primary` says whether the ACTIVITY ITSELF is the photo's subject (absent = treated as primary, the pre-V3.1 reading) */
+  activityCategory?: { isActivity: boolean; confidence: AIConfidence; primary?: boolean };
+  /** V0.4 P1 — the category-NEUTRAL Pass 1 reading of this image (objects · scene · actions · legible text · limitations) */
+  vision?: import("@/lib/ai/vision/universal-visual-observation").UniversalVisualObservationV1;
+  /** V0.4 P1 — the seven-category SUGGESTION derived from `vision` (Stage B) — never a selection */
+  suggestion?: import("@/lib/ai/vision/classify").CategorySuggestion;
   /** MEAL CAPTURE UX — the specific Meal identity (see `MealIdentity`). Present on observations
    *  from the current recognition contract; older/legacy observations carry only `foods`. */
   meal?: MealIdentity;
@@ -432,6 +465,66 @@ export interface MealAIObservation {
   ocrObservations?: OcrObservation[];
   /** Overall reading confidence — a LOW observation must never auto-confirm a food item. */
   confidence: AIConfidence;
+}
+
+/** V3 — where an Activity field's value came from. `user` is the person's own entry; `user_text` is read out of THEIR words;
+ *  `photo_ai` / `photo_ai_secondary` are the AI's visual reading of the primary / a later asset; `ocr` is text read off a
+ *  visible screen/sign; `derived` is arithmetic over two valid values. */
+export type ActivitySource = "user" | "user_text" | "photo_ai" | "photo_ai_secondary" | "ocr" | "derived";
+
+/**
+ * V3 — SYSTEMBOOM-owned Activity reading of attached media. Category and observation arrive in ONE request: `isActivity`
+ * + `confidence` are the CATEGORY signal (HIGH selects Activity, MEDIUM asks, LOW says nothing); the optional fields are
+ * VISUAL claims only and carry their own confidence. Never invented: distance, duration, route, pace, calories, heart rate,
+ * steps, elevation, reps, weight, score, exact time, place, people or feelings are NOT part of this schema — the only
+ * measurement that can appear is one legibly READ off a visible screen (`readout`, OCR provenance).
+ */
+export interface ActivityAIObservation {
+  isActivity: boolean;
+  confidence: AIConfidence;
+  activityType?: string;
+  activityTypeConfidence?: AIConfidence;
+  /** The specific activity as a person names it ("Carpentry", "Yoga", "Football") — preserved even when the Quick family is
+   *  only "other". An observable activity, never an occupation, employer or qualification. */
+  activityName?: string;
+  activityNameConfidence?: AIConfidence;
+  setting?: string;
+  settingConfidence?: AIConfidence;
+  /** A measurement printed on a visible watch / app / treadmill screen — evidence, never a measurement SYSTEMBOOM made. */
+  readout?: { distanceKm?: number; durationMinutes?: number; confidence: AIConfidence };
+}
+
+/** SOCIAL-4 — where a specialist field's value came from: the person, their own words, text read off the image, a visual
+ *  observation, or an AI interpretation of them. */
+export type RecordSource = "user" | "user_text" | "image_text" | "visible_image" | "ai_interpretation" | "system_knowledge";
+export type RecordKindAI = "project" | "problem" | "meeting" | "health";
+/** one observed value with its own honesty attached */
+export interface RecordValue<T = string> {
+  value: T;
+  confidence: AIConfidence;
+  source: Exclude<RecordSource, "user">;
+  /** a short quote or description of the evidence — never fabricated; absent when none */
+  evidence?: string;
+  /** Universal Observation Contract (V3): how the value is supported — stamped by the validator */
+  evidenceStrength?: "direct" | "supported_inference" | "generic_fallback" | "unknown";
+  /** V3: anything not directly read/seen/said at high confidence is provisional until the person confirms/edits */
+  requiresConfirmation?: boolean;
+}
+/**
+ * SOCIAL-4 — SYSTEMBOOM-owned specialist reading. Each category carries ONLY the observations its contract allows; nothing is
+ * diagnosed, priced, scheduled, decided or attributed to a face. `insufficient` = the evidence did not support a reading.
+ */
+export interface RecordAIObservation {
+  category: RecordKindAI;
+  status: "complete" | "insufficient";
+  project?: { name?: RecordValue; goal?: RecordValue; description?: RecordValue; stage?: RecordValue; tasks?: RecordValue<string[]> };
+  problem?: { description?: RecordValue; affectedItem?: RecordValue; visibleDamage?: RecordValue; errorMessage?: RecordValue; urgency?: RecordValue; attempt?: RecordValue; nextAction?: RecordValue; hazard?: RecordValue };
+  meeting?: { subject?: RecordValue; purpose?: RecordValue; agenda?: RecordValue<string[]>; actions?: RecordValue<{ action: string; owner?: string; due?: string }[]>; decisions?: RecordValue<string[]>; participants?: RecordValue<string[]> };
+  health?: { type?: RecordValue; description?: RecordValue; bodyArea?: RecordValue; severity?: RecordValue; onset?: RecordValue; reportedDiagnosis?: RecordValue; documentType?: RecordValue };
+  /** V3 Knowledge Engine: the evidence points at another category — a hint for the existing suggestion UI, never an override */
+  categoryHint?: RecordKindAI | "meal" | "activity";
+  /** V3: the Knowledge-Base rule ids that matched (record-only, for the handover/tests) */
+  knowledge?: string[];
 }
 
 export interface Moment {
@@ -753,6 +846,17 @@ export interface LibraryPhoto extends Photo {
    * whose `takenAt`/`takenPlace` remain the accepted hand-authored simulation).
    */
   sourceMetadata?: SourceMetadata;
+  /** HEIC/HEIF prototype — the browser cannot decode the original, so a JPEG DERIVATIVE is being made client-side; `src` is the
+   *  derivative once ready. Until then the asset is a photo being processed (not analysed, not previewed). */
+  processing?: boolean;
+  /** HEIC/HEIF prototype — the derivative could not be made; VIDEO — the browser cannot decode this format. The asset stays
+   *  attached with a clear per-asset message either way. */
+  error?: "heic" | "video";
+  /** VIDEO prototype — a poster frame (JPEG data URL) drawn client-side from the video's own first frame at attach; what every
+   *  image surface shows for a real uploaded video (`src` stays the playable object URL for keyframes). */
+  poster?: string;
+  /** HEIC/HEIF prototype — the ORIGINAL file's truth (name, type, its own object URL). `src` is only the browser-safe derivative. */
+  original?: { name: string; type: string; src: string };
 }
 /** The canonical name going forward: MEDIA ASSET ≠ HUMAN RECORD ≠ SOCIAL POST (§13). */
 export type MediaAsset = LibraryPhoto;

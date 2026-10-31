@@ -51,7 +51,7 @@ const PHONE = { width: 360, height: 800, deviceScaleFactor: 2, isMobile: true, h
 async function open(page, vp = DESKTOP, theme = "light", locale = "en", extra = "") {
   await page.setCookie({ name: "sb-locale", value: locale, url: HOST });
   await page.setViewport(vp);
-  await page.goto(`${B}&theme=${theme}${extra}`, { waitUntil: "networkidle2" });
+  await page.goto(`${B}&theme=${theme}&mockrecord=off${extra}`, { waitUntil: "networkidle2" });
   await sleep(900);
 }
 const state = (page) => page.evaluate(() => window.__SB_SOCIAL_STATE);

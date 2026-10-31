@@ -5,7 +5,8 @@
  * persisted, nothing leaks to localStorage. Reset restores the seed.
  */
 
-import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
+import { publicMomentFor, publicPostPayload } from "@/lib/privacy/record-intelligence";
+import { useEffect, createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
 import { now } from "@/lib/clock";
 import { canSeeMoment, connectedRel, type ViewerRelationship } from "./view-model";
 import type { UDraft } from "./composer/types";
@@ -162,7 +163,9 @@ export function composeFeed(
       const rel = relTo(m.authorId);
       return connectedRel(rel) && canSeeMoment(m, viewerId, rel);
     })
-    .sort((a, b) => key(b) - key(a));
+    .sort((a, b) => key(b) - key(a))
+    // PRIVACY — another person's post arrives without its private intelligence (observations, provenance, per-asset readings)
+    .map((m) => publicMomentFor(m, m.authorId === viewerId));
 }
 export function actingPerson(mode: ViewerMode): Person {
   if (mode === "visitor") return PEOPLE.bikash;
@@ -433,6 +436,7 @@ export function AudienceScope({ relTo, children }: { relTo: (otherId: string) =>
 const PREVIEW_READ_ONLY = new Set<Action["type"]>(["loadMore", "reveal", "landed"]);
 
 export function PreviewScope({ viewer, children }: { viewer: Person | null; children: ReactNode }) {
+
   const c = useContext(StoreContext);
   if (!c) throw new Error("PreviewScope outside <SocialStore>");
   const { state, dispatch } = c;
@@ -441,6 +445,14 @@ export function PreviewScope({ viewer, children }: { viewer: Person | null; chil
     () => (viewer ? composeFeed(state.moments, state.hidden, viewer.id, c.profile.id, strangerRel) : null),
     [viewer, state.moments, state.hidden, c.profile.id, strangerRel],
   );
+  // Dev hooks (never shipped): the public composition the preview renders, and the serializer a suite can call with a
+  // "hidden property" request — proving the deny-list holds (PRI-P1-008).
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as { __SB_PREVIEW_FEED?: unknown }).__SB_PREVIEW_FEED = ordered;
+      (window as unknown as { __SB_PUBLIC_PAYLOAD?: unknown }).__SB_PUBLIC_PAYLOAD = publicPostPayload;
+    }
+  }, [ordered]);
   const guarded = useCallback((a: Action) => {
     if (PREVIEW_READ_ONLY.has(a.type)) dispatch(a);
   }, [dispatch]);

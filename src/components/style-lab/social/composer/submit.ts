@@ -16,6 +16,8 @@ import type { GalleryItem, KindFields, Media, Moment } from "../data";
 import { LIBRARY } from "../data";
 import { localISO } from "../store";
 import { now } from "@/lib/clock";
+import { activityProvenance } from "./activity-fields";
+import { recordProvenance } from "./record-fields";
 import { allAssets, assetById } from "./media-assets";
 import { hasAnyMedia, resolveIntent, type RecordIntent, type UDraft } from "./types";
 
@@ -95,6 +97,10 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("topic", a.topic);
       set("learned", a.learned);
       set("transport", a.transport);
+      // V3 — where it happened (record-only) and how each intelligent field came to be (source · state · confidence).
+      set("activitySetting", a.setting);
+      set("activityName", a.activityName);
+      set("activityProvenance", activityProvenance(a));
       break;
     }
     case "health":
@@ -106,9 +112,12 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("measureUnit", d.domains.health.healthType === "measurement" ? d.domains.health.measureUnit : undefined);
       set("medication", d.domains.health.healthType === "medication" ? d.domains.health.medication : undefined);
       set("privateNote", d.domains.health.privateNote);
+      set("healthDescription", d.domains.health.description); // record-only, private
+      set("recordProvenance", recordProvenance("health", d.domains.health));
       break;
     case "problem":
       set("status", "open"); // §17 — internal default, never asked
+      set("title", d.domains.problem.description); // the problem as observed/reported — the card's own line
       set("category", d.domains.problem.category);
       set("impact", d.domains.problem.impact);
       set("urgency", d.domains.problem.urgency);
@@ -116,6 +125,7 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("nextAction", d.domains.problem.nextAction);
       set("relatedProject", d.domains.problem.relatedProject);
       set("notes", d.domains.problem.notes);
+      set("recordProvenance", recordProvenance("problem", d.domains.problem));
       break;
     case "project":
       set("name", d.domains.project.title);
@@ -126,6 +136,7 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("focus", d.domains.project.focus);
       set("relatedProblem", d.domains.project.relatedProblem);
       set("notes", d.domains.project.notes);
+      set("recordProvenance", recordProvenance("project", d.domains.project));
       break;
     case "meeting": {
       const m = d.domains.meeting;
@@ -135,6 +146,7 @@ function projectedFields(d: UDraft, intent: RecordIntent): KindFields | undefine
       set("duration", m.duration);
       set("relatedProject", m.related);
       set("notes", m.notes);
+      set("recordProvenance", recordProvenance("meeting", m));
       break;
     }
     default:
@@ -179,7 +191,7 @@ export function buildMedia(d: UDraft, original: Moment | undefined, linkTitle: s
   const items: GalleryItem[] = d.mediaIds
     .map((id, i) => {
       const a = assetById(id);
-      if (a) return { src: a.src, w: a.w, h: a.h, alt: a.alt, videoDuration: a.mediaKind === "video" ? a.duration ?? "0:00" : undefined };
+      if (a) return { src: a.poster ?? a.src, w: a.w, h: a.h, alt: a.alt, videoDuration: a.mediaKind === "video" ? a.duration ?? "0:00" : undefined };
       const idx = id.startsWith("orig-") ? Number(id.slice(5)) : -1;
       return origItems[idx] ?? origItems[i];
     })

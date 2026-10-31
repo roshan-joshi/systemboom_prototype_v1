@@ -83,3 +83,29 @@ export async function extractVideoKeyframes(url: string): Promise<string[]> {
     return [];
   }
 }
+
+/**
+ * VIDEO PREVIEW (prototype UX) — ONE poster frame from the start of the clip (the first decodable frame, ~0.1 s in), drawn with the
+ * same `<video>` + `<canvas>` path as the keyframes above. Resolves `null` on any failure (unsupported container/codec, no
+ * metadata, no canvas) — the caller shows a clear per-asset state instead of a blank box. Never a provider call.
+ */
+export async function extractPosterFrame(url: string): Promise<string | null> {
+  if (typeof document === "undefined") return null;
+  try {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.crossOrigin = "anonymous";
+    video.src = url;
+    await loadVideoMetadata(video);
+    const duration = video.duration;
+    if (!Number.isFinite(duration) || duration <= 0 || !video.videoWidth) return null;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    return await captureFrame(video, canvas, ctx, Math.min(0.1, duration / 2));
+  } catch {
+    return null;
+  }
+}

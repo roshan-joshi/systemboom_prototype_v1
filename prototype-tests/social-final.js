@@ -24,7 +24,7 @@ async function go(page, params, { theme = "light", w = "desktop" } = {}) {
   // PHASE C mock-safety (same owner-approved Option A as social-composer.js): composer
   // flows here attach photos; `mockai=nonfood` keeps the broadened photo trigger off the
   // real provider and guarantees zero category side effects. Nothing else reads `mockai`.
-  const qs = new URLSearchParams({ w, theme, mockai: "nonfood", ...params }).toString();
+  const qs = new URLSearchParams({ w, theme, mockai: "nonfood", mockrecord: "off", ...params }).toString();
   await page.goto(`${BASE}?${qs}`, { waitUntil: "networkidle2" });
   await sleep(700);
 }

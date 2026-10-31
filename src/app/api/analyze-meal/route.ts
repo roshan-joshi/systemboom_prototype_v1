@@ -20,6 +20,8 @@
  * loaded with `?mockai=`.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { classifyCategories } from "@/lib/ai/vision/classify";
+import { normalizeVision } from "@/lib/ai/vision/universal-visual-observation";
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import type { AIConfidence, MealAIObservation, MealIdentity, NutritionEstimate, NutritionValue, ObservedFood, OcrObservation } from "@/components/style-lab/social/data";
@@ -71,6 +73,9 @@ function buildProviderPayload(images: ImageInput[]) {
     '  "setting"?: {"value": "home"|"restaurant"|"takeaway"|"packaged"|"work"|"event"|"travel", "confidence": "high"|"medium"|"low"},\n' +
     '  "nutrition"?: {"calories"?: {"min": number, "max": number}, "protein"?: {"min": number, "max": number}, "carbs"?: {"min": number, "max": number}, "fat"?: {"min": number, "max": number}},\n' +
     '  "ocr"?: [{"kind": "menu"|"package"|"receipt", "text": string}],\n' +
+    '  "activity"?: {"isActivity": boolean, "primary": boolean, "confidence": "high"|"medium"|"low"},\n' +
+    '  "vision": {"scene": {"label": string, "description": string, "evidence"?: string}, "objects": [{"label": string, "confidence": "high"|"medium"|"low", "evidence"?: string}], "actions": [{"label": string, "confidence": "high"|"medium"|"low"}], "text": [{"text": string, "legible": boolean}], "primarySubject": "person"|"food"|"place"|"object"|"document"|"screen"|"animal"|"scene", "limitations": string[]},\n' +
+    '  "categories": {"moment": number, "meal": number, "activity": number, "health": number, "problem": number, "project": number, "meeting": number},\n' +
     '  "confidence": "high"|"medium"|"low"\n' +
     "}\n" +
     '"isFood" is true ONLY if the image meaningfully depicts food, drink, or a meal context. ' +
@@ -94,7 +99,23 @@ function buildProviderPayload(images: ImageInput[]) {
     "nutrition source. Never claim a nutrition data source, database, or authority of any kind: any " +
     "nutrition you provide is always your own visual estimate and nothing else. " +
     'If the image is not meaningfully food-related, return {"isFood": false, "confidence": "high"} ' +
-    "and omit every other key. When the image IS food, always include your whole-meal " +
+    'plus, only when it applies, an "activity" category call and omit every other key. "activity" says ONLY whether the image ' +
+    "meaningfully shows a person doing, or evidently having just done, a physical or practised activity (exercise, sport, a walk, " +
+    "a swim, a gym session, yoga, a manual task, a practised hobby) and how sure you are — it never names, describes or measures " +
+    'the activity; omit it for food images and when the image is not about an activity. "activity.primary" is about what the ' +
+    "picture is OF: true only when the person's activity is the primary subject (the runner, the swimmer, the person at the " +
+    "bench); false when people are incidental to a scene whose subject is a site, building, construction work, landscape, " +
+    "vehicle, document, screen or object (workers visible on a construction site = primary false). " +
+    'ALWAYS include "vision" — a category-NEUTRAL description of what the image shows: the scene (one label + one neutral ' +
+    "sentence), up to 12 clearly visible objects, observable actions only (never intent), text ONLY when legible (otherwise " +
+    'list "illegible text" under limitations), the primarySubject (what the picture is OF), and limitations (blurry, dark, ' +
+    'partial, unknown). ALWAYS include "categories": your relevance score 0–1 for each SYSTEMBOOM record category — moment (an ' +
+    "ordinary life moment, people, places, celebrations), meal (food is the subject), activity (a person's activity is the " +
+    "subject), health (injury, symptom, medical document), problem (damage, error, something wrong), project (construction, " +
+    "building, plans, mockups, work in progress), meeting (whiteboard, agenda, notes, slides). PRIMARY-SUBJECT RULE: a " +
+    "construction site with workers is project, not activity; a runner is activity; plated food is meal; an agenda board is " +
+    "meeting; a lab report is health; an empty chair or a plain scene is moment. " +
+    'When the image IS food, always include your whole-meal ' +
     "\"nutrition\" estimate (calories, protein, carbs and fat, each as a min/max range for the amount " +
     "visible) — it is your own visual estimate, so keep the ranges honest and wide enough. Never " +
     "invent a fact you cannot actually see. Prefer a min/max " +
@@ -288,11 +309,25 @@ function normalizeProviderOutput(raw: string | null | undefined): MealAIObservat
   // NOT derived from `foods.length` (a menu/receipt photo can list foods without BEING food).
   const isFood = o.isFood === true;
 
+  // V3 — the category call for a NON-food image: only the literal `true` counts, bounded to the one confidence it carries.
+  let activityCategory: MealAIObservation["activityCategory"];
+  if (!isFood && o.activity && typeof o.activity === "object" && !Array.isArray(o.activity)) {
+    const a = o.activity as Record<string, unknown>;
+    if (a.isActivity === true) activityCategory = { isActivity: true, confidence: toConfidence(a.confidence) ?? "low", ...(a.primary === false ? { primary: false } : a.primary === true ? { primary: true } : {}) };
+  }
+
+  // V0.4 P1 — Pass 1 (neutral vision) + Stage B (the deterministic seven-category suggestion). Additive; legacy fields untouched.
+  const vision = normalizeVision(o.vision, MODEL);
+  const suggestion = vision || o.categories ? classifyCategories(vision, o.categories, { isFood, activityHigh: !!activityCategory && activityCategory.confidence === "high" && activityCategory.primary !== false }) : undefined;
+
   return {
     schemaVersion: 1,
     providerModel: MODEL,
     analyzedAt: new Date().toISOString(),
     isFood,
+    ...(activityCategory ? { activityCategory } : null),
+    ...(vision ? { vision } : null),
+    ...(suggestion ? { suggestion } : null),
     ...(meal ? { meal } : null),
     ...(visibleComponents ? { visibleComponents } : null),
     ...(preparation ? { preparation, preparationConfidence: prepRaw!.confidence } : null),
@@ -347,6 +382,16 @@ function buildMockObservation(scenario: string): MealAIObservation | null {
       return null;
     case "nonfood":
       return { ...base, isFood: false, foods: [], confidence: "high" };
+    // V3 — the Activity category call on a non-food image (mock seam only): HIGH selects, MEDIUM asks, LOW is silent.
+    case "nonfood-act-high":
+      return { ...base, isFood: false, foods: [], confidence: "high", activityCategory: { isActivity: true, confidence: "high" } };
+    // V3.1 — an activity read at HIGH whose subject is NOT the activity (workers on a site): never an auto-selection
+    case "nonfood-act-incidental":
+      return { ...base, isFood: false, foods: [], confidence: "high", activityCategory: { isActivity: true, confidence: "high", primary: false } };
+    case "nonfood-act-medium":
+      return { ...base, isFood: false, foods: [], confidence: "high", activityCategory: { isActivity: true, confidence: "medium" } };
+    case "nonfood-act-low":
+      return { ...base, isFood: false, foods: [], confidence: "high", activityCategory: { isActivity: true, confidence: "low" } };
     case "lowconf":
       return { ...base, isFood: true, foods: [{ name: "a dish", confidence: "low" }], confidence: "low" };
     // PHASE C — the medium path's deterministic fixture: genuinely food, but not confidently
@@ -575,6 +620,42 @@ function buildMockObservation(scenario: string): MealAIObservation | null {
   }
 }
 
+/* ----------------------------------------------------------------------------- V0.4 P1 vision fixtures (raw model shapes) */
+const VISION_RAW: Record<string, Record<string, unknown>> = {
+  construction: { isFood: false, confidence: "high", activity: { isActivity: true, primary: false, confidence: "medium" }, vision: { scene: { label: "Construction site", description: "A building under construction with a tower crane, exposed reinforcement bars and workers in safety helmets" }, objects: [{ label: "tower crane", confidence: "high" }, { label: "unfinished building", confidence: "high" }, { label: "reinforcement bars", confidence: "high" }, { label: "workers in safety helmets", confidence: "high" }], actions: [{ label: "workers looking at drawings", confidence: "medium" }], text: [], primarySubject: "place", limitations: [] }, categories: { moment: 0.3, meal: 0, activity: 0.5, health: 0, problem: 0.1, project: 0.9, meeting: 0.1 } },
+  runner: { isFood: false, confidence: "high", activity: { isActivity: true, primary: true, confidence: "high" }, vision: { scene: { label: "Park path", description: "A person running along a tree-lined path in sports clothing" }, objects: [{ label: "runner", confidence: "high" }, { label: "running shoes", confidence: "medium" }, { label: "trees", confidence: "high" }], actions: [{ label: "running", confidence: "high" }], text: [], primarySubject: "person", limitations: [] }, categories: { moment: 0.4, meal: 0, activity: 0.95, health: 0.05, problem: 0, project: 0, meeting: 0 } },
+  meal: { isFood: true, confidence: "high", meal: { name: "Dal bhat", canonicalName: "dal bhat set", confidence: "high" }, nutrition: { calories: { min: 500, max: 800 } }, vision: { scene: { label: "Dining table", description: "A steel plate of rice, lentil soup, vegetable curry and pickle on a table" }, objects: [{ label: "plate of rice", confidence: "high" }, { label: "lentil soup", confidence: "high" }, { label: "vegetable curry", confidence: "high" }], actions: [], text: [], primarySubject: "food", limitations: [] }, categories: { moment: 0.3, meal: 0.95, activity: 0, health: 0, problem: 0, project: 0, meeting: 0 } },
+  birthday: { isFood: false, confidence: "high", vision: { scene: { label: "Birthday celebration", description: "People gathered around a table with a cake and lit candles, balloons behind them" }, objects: [{ label: "cake with candles", confidence: "high" }, { label: "balloons", confidence: "high" }, { label: "people", confidence: "high" }], actions: [{ label: "gathering around a table", confidence: "medium" }], text: [], primarySubject: "scene", limitations: ["faces are not identified"] }, categories: { moment: 0.9, meal: 0.3, activity: 0.1, health: 0, problem: 0, project: 0, meeting: 0.05 } },
+  laptop: { isFood: false, confidence: "high", vision: { scene: { label: "Desk", description: "A laptop on a desk with a visibly cracked display" }, objects: [{ label: "laptop", confidence: "high" }, { label: "cracked screen", confidence: "high", evidence: "a crack across the display" }], actions: [], text: [], primarySubject: "object", limitations: [] }, categories: { moment: 0.2, meal: 0, activity: 0, health: 0, problem: 0.9, project: 0.1, meeting: 0 } },
+  whiteboard: { isFood: false, confidence: "high", vision: { scene: { label: "Whiteboard", description: "A whiteboard with a heading and a bullet list of planning items" }, objects: [{ label: "whiteboard", confidence: "high" }, { label: "markers", confidence: "medium" }], actions: [], text: [{ text: "Marketing Planning", legible: true }, { text: "Launch campaign", legible: true }, { text: "Budget review", legible: true }, { text: "???", legible: false }], primarySubject: "document", limitations: ["one line is illegible"] }, categories: { moment: 0.1, meal: 0, activity: 0, health: 0, problem: 0, project: 0.3, meeting: 0.9 } },
+  lab: { isFood: false, confidence: "high", vision: { scene: { label: "Laboratory report", description: "A printed laboratory report with a table of test results and reference ranges" }, objects: [{ label: "laboratory report", confidence: "high" }, { label: "results table", confidence: "high" }], actions: [], text: [{ text: "Laboratory Report", legible: true }], primarySubject: "document", limitations: ["values are not transcribed"] }, categories: { moment: 0.1, meal: 0, activity: 0, health: 0.9, problem: 0.05, project: 0, meeting: 0.1 } },
+  // UHI-DEC-014 fixtures — the raw model shapes these scenes actually produce (verified live, `live-birthday-before.log`)
+  birthdayparty: { isFood: true, confidence: "high", vision: { scene: { label: "Birthday party", description: "People gathered around a table with a lit birthday cake, balloons and a HAPPY BIRTHDAY banner behind them" }, objects: [{ label: "cake with candles", confidence: "high" }, { label: "balloons", confidence: "high" }, { label: "people gathered", confidence: "high" }, { label: "banner", confidence: "high" }], actions: [{ label: "gathering around a table", confidence: "medium" }], text: [{ text: "HAPPY BIRTHDAY", legible: true }], primarySubject: "scene", limitations: [] }, categories: { moment: 1, meal: 0.2, activity: 0.4, health: 0, problem: 0, project: 0, meeting: 0 } },
+  plaincake: { isFood: true, confidence: "high", meal: { name: "Chocolate cake", canonicalName: "chocolate cake", confidence: "high" }, vision: { scene: { label: "Cake on a plate", description: "A slice of chocolate cake on a white plate on a table, photographed close up" }, objects: [{ label: "chocolate cake", confidence: "high" }, { label: "plate", confidence: "high" }, { label: "fork", confidence: "medium" }], actions: [], text: [], primarySubject: "food", limitations: [] }, categories: { moment: 0.3, meal: 0.95, activity: 0, health: 0, problem: 0, project: 0, meeting: 0 } },
+  ambiguouscake: { isFood: true, confidence: "high", meal: { name: "Birthday cake", canonicalName: "cake", confidence: "medium" }, vision: { scene: { label: "Cake on a table", description: "A cake with a few candles on a table, with no clear view of who is present or what the occasion is" }, objects: [{ label: "cake", confidence: "high" }, { label: "candles", confidence: "medium" }], actions: [], text: [], primarySubject: "food", limitations: ["the wider occasion is not visible"] }, categories: { moment: 0.62, meal: 0.7, activity: 0, health: 0, problem: 0, project: 0, meeting: 0 } },
+  wedding: { isFood: true, confidence: "medium", vision: { scene: { label: "Wedding reception", description: "Guests seated at decorated tables under flowers and bunting, with plates of food in front of them" }, objects: [{ label: "wedding decorations", confidence: "high" }, { label: "guests", confidence: "high" }, { label: "plates of food", confidence: "high" }, { label: "flowers", confidence: "high" }], actions: [{ label: "guests seated together", confidence: "medium" }], text: [{ text: "MR & MRS", legible: true }], primarySubject: "scene", limitations: ["no identities are recognized"] }, categories: { moment: 0.95, meal: 0.45, activity: 0.1, health: 0, problem: 0, project: 0, meeting: 0 } },
+  laptopdesk: { isFood: false, confidence: "high", vision: { scene: { label: "Desk", description: "A closed laptop and a notebook on a wooden desk" }, objects: [{ label: "laptop", confidence: "high" }, { label: "notebook", confidence: "high" }, { label: "desk", confidence: "high" }], actions: [], text: [], primarySubject: "object", limitations: [] }, categories: { moment: 0.45, meal: 0, activity: 0.05, health: 0, problem: 0.15, project: 0.3, meeting: 0.2 } },
+  chair: { isFood: false, confidence: "high", vision: { scene: { label: "Room", description: "An empty wooden chair in a quiet room beside a window" }, objects: [{ label: "chair", confidence: "high" }, { label: "window", confidence: "medium" }], actions: [], text: [], primarySubject: "object", limitations: [] }, categories: { moment: 0.5, meal: 0, activity: 0, health: 0, problem: 0.1, project: 0.1, meeting: 0 } },
+  ambiguous: { isFood: false, confidence: "high", vision: { scene: { label: "Workshop", description: "A person at a workbench beside a half-built wooden frame with tools around" }, objects: [{ label: "workbench", confidence: "high" }, { label: "wooden frame", confidence: "high" }, { label: "tools", confidence: "high" }], actions: [{ label: "working with tools", confidence: "medium" }], text: [], primarySubject: "person", limitations: [] }, categories: { moment: 0.3, meal: 0, activity: 0.6, health: 0, problem: 0.1, project: 0.6, meeting: 0 } },
+  text: { isFood: false, confidence: "high", vision: { scene: { label: "Notice board", description: "A printed notice pinned to a board" }, objects: [{ label: "notice", confidence: "high" }], actions: [], text: [{ text: "Water off Tuesday 9–12", legible: true }, { text: "~~~~", legible: false }], primarySubject: "document", limitations: ["lower lines are illegible"] }, categories: { moment: 0.4, meal: 0, activity: 0, health: 0, problem: 0.35, project: 0, meeting: 0 } },
+};
+/** `vision-byasset`: the mock-library photographs answer by aspect ratio (w/h × 1000, from the JPEG SOF header — survives any resize) */
+const VISION_BY_ASPECT: Record<string, string> = { "1234": "construction", "1333": "laptop", "1547": "whiteboard", "1500": "lab", "1778": "runner" };
+function imageAspect(dataUrl: string): string {
+  try {
+    const buf = Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
+    if (buf[0] !== 0xff || buf[1] !== 0xd8) return "?";
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return String(Math.round((buf.readUInt16BE(i + 7) / buf.readUInt16BE(i + 5)) * 1000));
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  } catch { /* fall through */ }
+  return "?";
+}
+
 export async function POST(req: NextRequest) {
   let body: { images?: unknown };
   try {
@@ -612,6 +693,18 @@ export async function POST(req: NextRequest) {
       const id = PERASSET_IMAGES[createHash("sha1").update(b64).digest("hex").slice(0, 12)];
       if (id && delayStr === `slow${id.toLowerCase()}`) await sleep(2500);
       return NextResponse.json({ observation: id ? buildPerAssetObservation(id) : buildMockObservation("nonfood") });
+    }
+    // V3 — `mixed`: a MIXED-domain composition's category reads, keyed by the photographs' own bytes: the thali is food, the snow-ridge
+    // photo is a HIGH-confidence Activity, anything else is plain non-food. Mock seam only.
+    if (scenario === "mixed") {
+      const b64 = images[0].dataUrl.slice(images[0].dataUrl.indexOf(",") + 1);
+      const h = createHash("sha1").update(b64).digest("hex").slice(0, 12);
+      return NextResponse.json({ observation: h === "54cd531da511" ? buildV1Observation("A") : h === "931b66477ec9" || h === "22a4118cf19d" ? buildV1Observation("B") : buildMockObservation(h === "70cd430e0860" ? "nonfood-act-high" : h === "aa489c635ac9" ? "lowconf" : "nonfood") });
+    }
+    // V0.4 P1 — `vision-<scene>` / `vision-byasset`: RAW model shapes run through the REAL normalization + classifier
+    if (scenario.startsWith("vision-")) {
+      const tag = scenario === "vision-byasset" ? VISION_BY_ASPECT[imageAspect(images[0].dataUrl)] ?? "chair" : scenario.slice("vision-".length);
+      return NextResponse.json({ observation: normalizeProviderOutput(JSON.stringify(VISION_RAW[tag] ?? VISION_RAW.chair)) });
     }
     return NextResponse.json({ observation: buildMockObservation(scenario) });
   }
